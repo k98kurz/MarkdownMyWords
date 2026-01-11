@@ -22,12 +22,12 @@ This ticket will produce a comprehensive architecture document and break down th
 │  │                            │                              │  │
 │  │                  ┌─────────▼─────────┐                   │  │
 │  │                  │  State Management  │                   │  │
-│  │                  │  (Zustand/Jotai)  │                   │  │
+│  │                  │  (Zustand)        │                   │  │
 │  │                  └────────────────────┘                   │  │
 │  │                            │                              │  │
 │  │                  ┌─────────▼─────────┐                   │  │
 │  │                  │  Encryption Layer │                   │  │
-│  │                  │  (PBKDF2 + AES)   │                   │  │
+│  │                  │  (Web Crypto API)  │                   │  │
 │  │                  └────────────────────┘                   │  │
 │  │                            │                              │  │
 │  │                  ┌─────────▼─────────┐                   │  │
@@ -47,11 +47,12 @@ This ticket will produce a comprehensive architecture document and break down th
 ### Component Architecture
 
 1. **Frontend Components**
-   - `Editor`: Syntax-highlighted Markdown editor (Monaco or CodeMirror)
+   - `Editor`: Syntax-highlighted Markdown editor (CodeMirror 6)
    - `Preview`: Rendered markdown preview
    - `DocumentList`: List of user's documents
    - `AISidebar`: AI features panel (review, revise, suggest)
    - `SharingSidebar`: Document sharing and permissions
+   - `BranchMergeUI`: Branch review and merge interface (for shared documents)
    - `ThemeProvider`: Dark/light mode management
    - `AuthProvider`: Authentication and encryption key management
 
@@ -61,6 +62,8 @@ This ticket will produce a comprehensive architecture document and break down th
    - `llmService`: OpenRouter API integration
    - `exportService`: Document export to various formats
    - `storageService`: Browser storage abstraction
+   - `branchService`: Branch creation, management, and merge operations (for shared documents)
+   - `syncService`: Conflict resolution (last-write-wins for single-user, branch management for shared)
 
 3. **State Management**
    - Global state: User authentication, current document, theme
@@ -84,12 +87,21 @@ user
   │   │   │   ├── title
   │   │   │   ├── createdAt
   │   │   │   ├── updatedAt
+  │   │   │   ├── lastModifiedBy (for last-write-wins)
   │   │   │   └── tags
-  │   │   └── sharing
-  │   │       ├── isPublic
-  │   │       ├── readAccess
-  │   │       ├── writeAccess
-  │   │       └── shareToken
+  │   │   ├── sharing
+  │   │   │   ├── isPublic
+  │   │   │   ├── owner (user ID)
+  │   │   │   ├── readAccess
+  │   │   │   ├── writeAccess
+  │   │   │   └── shareToken
+  │   │   └── branches (for shared documents only)
+  │   │       ├── branch-{userId}-{timestamp}
+  │   │       │   ├── encryptedContent
+  │   │       │   ├── createdBy
+  │   │       │   ├── createdAt
+  │   │       │   └── status (pending, merged, rejected)
+  │   │       └── main (current merged state)
   └── settings
       ├── theme
       ├── editorSettings
@@ -98,23 +110,27 @@ user
 
 #### Encryption Model
 
-- **Key Derivation**: PBKDF2(username + password, salt, iterations)
-- **Document Encryption**: AES-GCM with derived key
+- **Primary**: GunDB SEA for all standard encryption
+  - User authentication with SEA
+  - Automatic document encryption/decryption
+  - ECDH-based sharing
+- **Fallback**: Manual AES-256-GCM only for document-specific keys (branching model)
 - **Metadata**: Some metadata (title, dates) may be unencrypted for search/indexing
-- **Sharing**: Shared documents use separate encryption keys
+- **Sharing**: Document-specific keys encrypted with SEA's ECDH for each collaborator
 
 ### Security Architecture
 
 1. **Authentication Flow**
    - User enters username + password
-   - PBKDF2 derives encryption key
-   - Key stored in memory (never persisted)
-   - GunDB user authentication for peer identity
+   - Create/authenticate with GunDB SEA
+   - SEA automatically handles key pair generation and management
+   - SEA user object stored in state
 
 2. **Data Encryption**
-   - All document content encrypted before storage
+   - Standard documents: Encrypted automatically by SEA
+   - Shared documents: Document-specific keys encrypted with SEA's ECDH for each collaborator
    - Encryption keys never leave client
-   - Shared documents: recipient gets encrypted key (encrypted with their public key)
+   - SEA handles all key management
 
 3. **Sharing Security**
    - Share tokens for public links
@@ -152,11 +168,11 @@ user
 
 - **React**: ^18.0.0
 - **GunDB**: ^0.2020.x
-- **Monaco Editor** or **CodeMirror 6**: For syntax highlighting
+- **CodeMirror 6**: For syntax highlighting (finalized decision)
 - **react-markdown**: For markdown rendering
-- **zustand** or **jotai**: State management
-- **crypto-js** or **Web Crypto API**: Encryption
-- **OpenRouter SDK**: LLM API client
+- **Zustand**: State management (finalized decision)
+- **Web Crypto API**: Encryption (native browser API, finalized decision)
+- **OpenRouter API**: LLM API client (user-provided keys)
 
 ### Infrastructure Dependencies
 
@@ -166,19 +182,50 @@ user
 
 ### Internal Dependencies
 
-The tickets will be created in this order:
+All tickets have been created (TICKET-002 through TICKET-012). Dependency graph:
 
-1. **TICKET-002**: Project Setup (React, Vite, TypeScript, dependencies)
-2. **TICKET-003**: GunDB Integration (setup, basic operations)
-3. **TICKET-004**: Encryption System (PBKDF2, document encryption)
-4. **TICKET-005**: Authentication System (login, key derivation)
-5. **TICKET-006**: Markdown Editor Component (syntax highlighting, editing)
-6. **TICKET-007**: Document Management (CRUD operations, list view)
-7. **TICKET-008**: Sharing & Permissions System
-8. **TICKET-009**: OpenRouter LLM Integration
-9. **TICKET-010**: UI Theme System (dark/light mode)
-10. **TICKET-011**: Cloudflare Workers Relay
-11. **TICKET-012**: Cloudflare Pages Deployment
+```
+TICKET-002 (Project Setup)
+  ├── TICKET-003 (GunDB Integration) ──┐
+  ├── TICKET-006 (Markdown Editor) ───┤
+  ├── TICKET-010 (Theme System) ──────┤
+  └── TICKET-011 (Workers Relay) ─────┤
+                                       │
+TICKET-003 (GunDB Integration)        │
+  ├── TICKET-004 (Encryption System) ─┤
+  └── TICKET-005 (Authentication) ────┤
+                                       │
+TICKET-004 (Encryption System)        │
+  ├── TICKET-005 (Authentication) ────┤
+  └── TICKET-008 (Sharing) ───────────┤
+                                       │
+TICKET-005 (Authentication)            │
+  ├── TICKET-007 (Document Management)┤
+  └── TICKET-009 (LLM Integration) ───┤
+                                       │
+TICKET-006 (Markdown Editor)          │
+  └── TICKET-007 (Document Management)┤
+                                       │
+TICKET-007 (Document Management)      │
+  └── TICKET-008 (Sharing) ───────────┤
+                                       │
+TICKET-011 (Workers Relay)             │
+  └── TICKET-012 (Pages Deployment) ────┘
+```
+
+**Implementation Order** (respecting dependencies):
+
+1. **TICKET-002**: Project Setup (foundation)
+2. **TICKET-010**: Theme System (can be done early, depends only on TICKET-002)
+3. **TICKET-003**: GunDB Integration (core infrastructure)
+4. **TICKET-011**: Cloudflare Workers Relay (infrastructure, can be done in parallel)
+5. **TICKET-004**: Encryption System (requires GunDB)
+6. **TICKET-005**: Authentication System (requires GunDB + Encryption)
+7. **TICKET-006**: Markdown Editor Component (requires TICKET-002)
+8. **TICKET-009**: OpenRouter LLM Integration (requires TICKET-002 + TICKET-005)
+9. **TICKET-007**: Document Management (requires TICKET-003, TICKET-004, TICKET-005, TICKET-006)
+10. **TICKET-008**: Sharing & Permissions (requires TICKET-003, TICKET-004, TICKET-007)
+11. **TICKET-012**: Cloudflare Pages Deployment (requires TICKET-002 + TICKET-011)
 
 ## Risks
 
@@ -211,8 +258,10 @@ The tickets will be created in this order:
    - Mitigation: Export functionality, multiple peer sync, relay caching
 
 2. **Conflict Resolution**
-   - Risk: Concurrent edits from multiple devices
-   - Mitigation: Last-write-wins with timestamps, document locking for collaboration
+   - Risk: Concurrent edits from multiple devices or collaborators
+   - Mitigation:
+     - Single-user multi-device: Last-write-wins with timestamps (automatic)
+     - Shared documents: Git branching model with manual merge UI (owner-controlled)
 
 3. **Scalability**
    - Risk: Large number of documents may slow UI

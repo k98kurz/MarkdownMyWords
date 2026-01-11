@@ -1,10 +1,10 @@
 # [TICKET-001] Project Architecture and Implementation Planning
 
 ## Metadata
-- **Status**: draft
+- **Status**: done
 - **Complexity**: plan
 - **Service(s)**: frontend, backend, infrastructure
-- **Created**: 2024-01-XX
+- **Created**: 2026-01-11
 - **Estimate**: 8h
 
 ## Request
@@ -22,7 +22,7 @@ As a developer, I want a complete architectural plan for MarkdownMyWords so that
    - GunDB for decentralized, peer-to-peer database
    - Cloudflare Pages for static site hosting
    - Cloudflare Workers for GunDB relay server
-   - End-to-end encryption using PBKDF2 (username + password)
+   - End-to-end encryption using GunDB's SEA (Security, Encryption, Authorization)
    - OpenRouter API for LLM integration (client-side)
 
 2. **Core Features**
@@ -41,10 +41,10 @@ As a developer, I want a complete architectural plan for MarkdownMyWords so that
    - Theme switching (dark/light mode)
 
 4. **Security & Privacy**
-   - End-to-end encryption for all documents
-   - PBKDF2 key derivation from username + password
+   - End-to-end encryption for all documents (GunDB SEA)
+   - SEA-based authentication and key management
    - Encrypted data storage in GunDB
-   - Secure sharing with access control
+   - Secure sharing with ECDH-based key exchange
 
 5. **Infrastructure**
    - Static site deployment on Cloudflare Pages
@@ -54,16 +54,16 @@ As a developer, I want a complete architectural plan for MarkdownMyWords so that
 
 ## Acceptance Criteria
 
-- [ ] Complete architecture document created
-- [ ] Technology stack decisions documented with rationale
-- [ ] Data model and GunDB schema designed
-- [ ] Security architecture documented (encryption, key management)
-- [ ] UI/UX wireframes or mockups created
-- [ ] Implementation plan broken down into discrete tickets
-- [ ] Dependencies between tickets identified
-- [ ] Risk assessment completed
-- [ ] Performance considerations documented
-- [ ] Deployment strategy documented
+- [x] Complete architecture document created
+- [x] Technology stack decisions documented with rationale
+- [x] Data model and GunDB schema designed
+- [x] Security architecture documented (encryption, key management)
+- [x] UI/UX wireframes or mockups created
+- [x] Implementation plan broken down into discrete tickets
+- [x] Dependencies between tickets identified
+- [x] Risk assessment completed
+- [x] Performance considerations documented
+- [x] Deployment strategy documented
 
 ## Technical Notes
 
@@ -71,7 +71,7 @@ As a developer, I want a complete architectural plan for MarkdownMyWords so that
 
 1. **GunDB Relay**: A simple relay server will be deployed on Cloudflare Workers to help with peer discovery and initial connections. This is optional - users can also connect directly via WebRTC.
 
-2. **Encryption**: PBKDF2 will be used to derive encryption keys from username + password. This ensures that even if data is synced to other peers, it remains encrypted and only accessible with the correct credentials.
+2. **Encryption**: GunDB's SEA will be used as the primary encryption method, providing automatic encryption/decryption and ECDH-based sharing. Manual AES-256-GCM is only used as a fallback for document-specific keys needed for the branching model.
 
 3. **OpenRouter Integration**: Client-side integration means users will need to provide their own OpenRouter API key. This keeps the application free and avoids proxying costs.
 
@@ -94,4 +94,4 @@ As a developer, I want a complete architectural plan for MarkdownMyWords so that
 - Cloudflare Pages: https://developers.cloudflare.com/pages/
 - Cloudflare Workers: https://developers.cloudflare.com/workers/
 - OpenRouter API: https://openrouter.ai/docs
-- PBKDF2 Specification: RFC 2898
+- GunDB SEA Documentation: https://gun.eco/docs/SEA
