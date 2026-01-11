@@ -1,0 +1,12 @@
+{
+  "id": "docs",
+  "name": "Documentation",
+  "description": "Documentation update or creation",
+  "complexity": "simple",
+  "services": [
+    "extension"
+  ],
+  "content": {
+    "request": "## Documentation Request\n\n### What Needs Documentation\n\nDescribe what needs to be documented.\n\n### Target Audience\n\nWho will be reading this documentation?\n\n### Scope\n\n- Topic 1\n- Topic 2\n- Topic 3\n\n## Acceptance Criteria\n\n- [ ] Documentation is clear and accurate\n- [ ] Examples are provided where helpful\n- [ ] Reviewed by team member\n"
+  }
+}

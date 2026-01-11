@@ -1,0 +1,23 @@
+name: Review Ticket
+description: Review a ticket for completion
+version: "1.0"
+
+steps:
+  - id: ticketId
+    prompt: "Enter ticket ID (e.g., TICKET-001)"
+    type: text
+    required: true
+
+  - id: reviewType
+    prompt: "Review type"
+    type: select
+    options:
+      - start
+      - complete
+    default: complete
+
+output:
+  command: cursor-agent-pm.reviewTicketCompletion
+  args:
+    ticketId: "{{ticketId}}"
+    reviewType: "{{reviewType}}"

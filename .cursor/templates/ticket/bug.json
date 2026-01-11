@@ -1,0 +1,13 @@
+{
+  "id": "bug",
+  "name": "Bug Fix",
+  "description": "Bug report and fix",
+  "complexity": "task_list",
+  "services": [
+    "extension"
+  ],
+  "content": {
+    "request": "## Bug Description\n\nDescribe the bug clearly and concisely.\n\n### Steps to Reproduce\n\n1. Step 1\n2. Step 2\n3. Step 3\n\n### Expected Behavior\n\nWhat should happen.\n\n### Actual Behavior\n\nWhat actually happens.\n\n### Environment\n\n- OS: \n- VS Code Version: \n- Extension Version: \n\n## Acceptance Criteria\n\n- [ ] Bug is fixed\n- [ ] No regression in related functionality\n- [ ] Tests added to prevent recurrence\n",
+    "tasks": "## Tasks\n\n- [ ] Reproduce the bug\n- [ ] Identify root cause\n- [ ] Implement fix\n- [ ] Add regression test\n- [ ] Verify fix in all environments\n"
+  }
+}

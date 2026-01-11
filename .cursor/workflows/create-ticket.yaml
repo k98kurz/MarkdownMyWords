@@ -1,0 +1,36 @@
+name: Create Ticket
+description: Create a new development ticket
+version: "1.0"
+
+steps:
+  - id: title
+    prompt: "What is the ticket title?"
+    type: text
+    required: true
+
+  - id: complexity
+    prompt: "Select complexity level"
+    type: select
+    options:
+      - simple
+      - task_list
+      - plan
+    default: task_list
+
+  - id: services
+    prompt: "Select services (comma-separated)"
+    type: text
+    default: "extension"
+
+  - id: estimate
+    prompt: "Estimate (e.g., 2h, 1d)"
+    type: text
+    required: false
+
+output:
+  command: cursor-agent-pm.createTicket
+  args:
+    title: "{{title}}"
+    complexity: "{{complexity}}"
+    services: "{{services}}"
+    estimate: "{{estimate}}"

@@ -1,0 +1,14 @@
+{
+  "id": "feature",
+  "name": "Feature Request",
+  "description": "New feature implementation",
+  "complexity": "plan",
+  "services": [
+    "extension"
+  ],
+  "content": {
+    "request": "## Request\n\nDescribe the feature to be implemented.\n\n### User Story\n\nAs a [type of user], I want [goal] so that [benefit].\n\n### Requirements\n\n1. Requirement 1\n2. Requirement 2\n3. Requirement 3\n\n## Acceptance Criteria\n\n- [ ] Criteria 1\n- [ ] Criteria 2\n- [ ] Criteria 3\n\n## Technical Notes\n\nAny technical considerations or constraints.\n\n## Related\n\n- Related tickets\n- External documentation\n",
+    "tasks": "## Tasks\n\n### Phase 1: Setup\n- [ ] Task 1.1: Initial setup\n- [ ] Task 1.2: Configuration\n\n### Phase 2: Implementation\n- [ ] Task 2.1: Core implementation\n- [ ] Task 2.2: Integration\n\n### Phase 3: Testing & Polish\n- [ ] Task 3.1: Unit tests\n- [ ] Task 3.2: Integration tests\n- [ ] Task 3.3: Documentation\n",
+    "plan": "## Implementation Plan\n\n### Overview\nHigh-level approach to implementing this feature.\n\n### Architecture\n- Component 1: Description\n- Component 2: Description\n\n### Dependencies\n- External dependencies\n- Internal dependencies\n\n### Risks\n- Risk 1: Mitigation strategy\n- Risk 2: Mitigation strategy\n\n### Timeline\n- Phase 1: X hours/days\n- Phase 2: X hours/days\n- Phase 3: X hours/days\n"
+  }
+}

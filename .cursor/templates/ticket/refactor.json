@@ -1,0 +1,14 @@
+{
+  "id": "refactor",
+  "name": "Refactoring",
+  "description": "Code refactoring and cleanup",
+  "complexity": "plan",
+  "services": [
+    "extension"
+  ],
+  "content": {
+    "request": "## Refactoring Request\n\n### Current State\n\nDescribe the current code/architecture that needs refactoring.\n\n### Proposed Changes\n\nDescribe the proposed refactoring approach.\n\n### Motivation\n\nWhy is this refactoring needed?\n- Performance?\n- Maintainability?\n- Technical debt?\n\n## Acceptance Criteria\n\n- [ ] Code refactored as proposed\n- [ ] All existing tests pass\n- [ ] No functional changes\n- [ ] Documentation updated if needed\n",
+    "tasks": "## Tasks\n\n### Analysis\n- [ ] Review current implementation\n- [ ] Identify areas for improvement\n- [ ] Document proposed changes\n\n### Implementation\n- [ ] Refactor component A\n- [ ] Refactor component B\n- [ ] Update dependencies\n\n### Verification\n- [ ] Run all tests\n- [ ] Performance comparison\n- [ ] Code review\n",
+    "plan": "## Refactoring Plan\n\n### Goals\n- Goal 1\n- Goal 2\n\n### Approach\nStep-by-step approach to the refactoring.\n\n### Risk Mitigation\n- Incremental changes\n- Feature flags if needed\n- Rollback plan\n"
+  }
+}

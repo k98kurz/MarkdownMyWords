@@ -1,0 +1,33 @@
+# Ticket Review Mandatory
+
+## Rule
+
+After completing work on any ticket (TICKET-XXX), you MUST:
+
+1. Run the review command: `cursor-agent-pm.reviewTicketCompletion`
+2. OR use MCP tool: `ticket_review` with reviewType "complete"
+3. Wait for review results before marking ticket as done
+
+## When This Applies
+
+- After completing all tasks in TaskList.md
+- Before marking ticket status as "done"
+- When agent believes work is complete
+
+## How to Trigger Review
+
+- Via Command Palette: "Review Ticket Completion"
+- Via MCP: Call `ticket_review` tool
+- Via Panel: Click "Review" button in ticket detail view
+
+## Review Output
+
+The review will analyze:
+- Task completion status
+- Acceptance criteria
+- Implementation plan progress
+- Discussion decisions
+
+## Important
+
+Do NOT skip this step. Always review before marking complete.

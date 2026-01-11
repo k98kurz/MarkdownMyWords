@@ -1,0 +1,13 @@
+{
+  "id": "spike",
+  "name": "Technical Spike",
+  "description": "Research and prototyping",
+  "complexity": "task_list",
+  "services": [
+    "extension"
+  ],
+  "content": {
+    "request": "## Spike Request\n\n### Question to Answer\n\nWhat are we trying to learn or prove?\n\n### Background\n\nContext and motivation for this spike.\n\n### Success Criteria\n\nWhat constitutes a successful spike?\n\n### Time Box\n\nMaximum time to spend: X hours\n\n## Deliverables\n\n- [ ] Summary document\n- [ ] Prototype (if applicable)\n- [ ] Recommendation\n",
+    "tasks": "## Tasks\n\n- [ ] Research existing solutions\n- [ ] Create proof of concept\n- [ ] Document findings\n- [ ] Present recommendations\n"
+  }
+}
