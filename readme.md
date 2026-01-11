@@ -1,6 +1,6 @@
 # MarkdownMyWords
 
-A Free and Open Slop Software project for local-first, collaborative document
+A Free and Open Source Slopware project for local-first, collaborative document
 writing with GunDB and OpenRouter for LLM-powered spell check, grammar, review,
 revision, and proompt-based generation (if you really want that, but eww -- try
 writing creatively for a change maybe?). Bring your own OpenRouter key for LLM
