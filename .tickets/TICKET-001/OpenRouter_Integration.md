@@ -476,3 +476,225 @@ function AISidebar({ documentContent, onApplySuggestion, apiKey }: AISidebarProp
 - [ ] UI components for AI features
 - [ ] Model selection UI
 - [ ] Cost display to user
+
+## Ollama Integration
+
+### Overview
+
+Ollama provides local LLM inference, allowing users to run models on their own hardware. This provides complete privacy and eliminates API costs.
+
+### API Basics
+
+#### Endpoint
+```
+POST http://localhost:11434/api/chat
+```
+
+#### Authentication
+None required (local server)
+
+#### Request Format
+```typescript
+interface OllamaRequest {
+  model: string;              // Model name (e.g., "llama2", "mistral")
+  messages: Array<{
+    role: 'system' | 'user' | 'assistant';
+    content: string;
+  }>;
+  stream?: boolean;           // Default: false
+  options?: {
+    temperature?: number;     // 0-1, default varies by model
+    top_p?: number;           // 0-1
+    top_k?: number;           // Default: 40
+  };
+}
+```
+
+#### Response Format
+```typescript
+interface OllamaResponse {
+  model: string;
+  created_at: string;
+  message: {
+    role: string;
+    content: string;
+  };
+  done: boolean;
+  total_duration?: number;    // nanoseconds
+  load_duration?: number;
+  prompt_eval_count?: number;
+  prompt_eval_duration?: number;
+  eval_count?: number;
+  eval_duration?: number;
+}
+```
+
+### Model Discovery
+
+```typescript
+// GET http://localhost:11434/api/tags
+interface OllamaModelsResponse {
+  models: Array<{
+    name: string;
+    modified_at: string;
+    size: number;
+    digest: string;
+    details: {
+      parent_model: string;
+      format: string;
+      family: string;
+      families: string[];
+      parameter_size: string;
+      quantization_level: string;
+    };
+  }>;
+}
+```
+
+### Integration Pattern
+
+```typescript
+class OllamaService implements LLMService {
+  private baseUrl: string;
+  private model: string;
+
+  constructor(baseUrl: string = 'http://localhost:11434', model: string = 'llama2') {
+    this.baseUrl = baseUrl;
+    this.model = model;
+  }
+
+  async reviewDocument(content: string, options?: ReviewOptions): Promise<ReviewResult> {
+    const systemPrompt = `You are a writing assistant...`;
+    const userPrompt = `Please review this markdown document:\n\n${content}`;
+
+    const response = await fetch(`${this.baseUrl}/api/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: this.model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        stream: false,
+        options: {
+          temperature: 0.3
+        }
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Ollama error: ${response.statusText}`);
+    }
+
+    const data: OllamaResponse = await response.json();
+    return parseReviewResponse(data.message.content);
+  }
+
+  async getAvailableModels(): Promise<string[]> {
+    const response = await fetch(`${this.baseUrl}/api/tags`);
+    const data: OllamaModelsResponse = await response.json();
+    return data.models.map(m => m.name);
+  }
+
+  async validateConnection(): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/tags`);
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+}
+```
+
+### Configuration
+
+```typescript
+interface OllamaConfig {
+  baseUrl: string;  // Default: http://localhost:11434
+  model: string;   // User's selected model
+}
+
+// Store in user settings (encrypted)
+async function storeOllamaConfig(config: OllamaConfig, userKey: CryptoKey) {
+  const encrypted = await encryptDocument(JSON.stringify(config), userKey);
+  await gun.get(`user~${userId}`).get('settings').get('ollamaConfig').put(encrypted);
+}
+```
+
+### Error Handling
+
+```typescript
+interface OllamaError {
+  code: 'connection_failed' | 'model_not_found' | 'timeout' | 'cors_error' | 'unknown';
+  message: string;
+  details?: string;
+}
+
+async function handleOllamaError(error: any): Promise<OllamaError> {
+  if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
+    return {
+      code: 'connection_failed',
+      message: 'Cannot connect to Ollama. Make sure Ollama is running.',
+      details: 'Start Ollama with: ollama serve'
+    };
+  }
+
+  if (error.status === 404) {
+    return {
+      code: 'model_not_found',
+      message: `Model not found. Install it with: ollama pull ${modelName}`
+    };
+  }
+
+  // ... other error types
+}
+```
+
+### CORS Configuration
+
+If Ollama is running on a different origin, CORS must be configured:
+
+```bash
+# Set environment variable
+export OLLAMA_ORIGINS="http://localhost:5173,https://yourdomain.com"
+```
+
+Or configure in `~/.ollama/config.json`:
+```json
+{
+  "origins": ["http://localhost:5173", "https://yourdomain.com"]
+}
+```
+
+## Provider Abstraction
+
+### Service Factory
+
+```typescript
+class LLMServiceFactory {
+  static create(config: LLMConfig): LLMService {
+    switch (config.provider) {
+      case 'openrouter':
+        return new OpenRouterService(config.openRouterApiKey!);
+      case 'ollama':
+        return new OllamaService(config.ollamaBaseUrl, config.ollamaModel);
+      default:
+        throw new Error(`Unknown provider: ${config.provider}`);
+    }
+  }
+}
+```
+
+### Unified Interface
+
+Both providers implement the same `LLMService` interface, allowing seamless switching:
+
+```typescript
+const service = LLMServiceFactory.create(config);
+const result = await service.reviewDocument(content);
+// Works the same regardless of provider
+```

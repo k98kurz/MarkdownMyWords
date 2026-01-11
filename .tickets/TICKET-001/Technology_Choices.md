@@ -210,21 +210,25 @@
 
 ## LLM Integration
 
-### OpenRouter API
+### OpenRouter API + Ollama
 
-**Choice**: OpenRouter for LLM access
+**Choice**: OpenRouter for cloud-based LLM access, Ollama for local/self-hosted LLM access
 
 **Rationale**:
-- Unified API for multiple LLM providers
-- User provides own API key (no proxy costs)
-- Good pricing
-- Active development
-- Simple REST API
+- **OpenRouter**: Unified API for multiple LLM providers, user provides own API key (no proxy costs), good pricing, active development, simple REST API
+- **Ollama**: Complete privacy (data never leaves device), no API costs, works offline, supports multiple open-source models, aligns with decentralized architecture
+- Provider abstraction allows users to choose based on privacy/cost preferences
+- Both use similar API patterns, making integration straightforward
 
 **Models**:
-- GPT-4 for high-quality reviews
-- GPT-3.5 Turbo for suggestions (cost-effective)
-- Claude as alternative
+- **OpenRouter**: GPT-4 for high-quality reviews, GPT-3.5 Turbo for suggestions (cost-effective), Claude as alternative
+- **Ollama**: llama2, mistral, codellama, and any user-installed models
+
+**Architecture**:
+- Provider abstraction layer
+- Factory pattern for service creation
+- Unified interface for both providers
+- Provider-specific configuration stored encrypted
 
 ## Hosting
 
@@ -342,7 +346,7 @@
 | Types | TypeScript | Type safety, better DX |
 | Styling | CSS Modules | Scoped, performant |
 | HTTP | Fetch API | Native, no dependencies |
-| LLM | OpenRouter | Unified API, user-provided keys |
+| LLM | OpenRouter + Ollama | Cloud (OpenRouter) and local (Ollama) options |
 | Hosting | Cloudflare Pages | Free, fast, simple |
 | Relay | Cloudflare Workers | Free tier, edge computing |
 

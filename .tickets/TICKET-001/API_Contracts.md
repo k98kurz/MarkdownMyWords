@@ -14,6 +14,81 @@ HTTP-Referer: {origin}
 X-Title: MarkdownMyWords
 ```
 
+## Ollama API
+
+### Base URL
+```
+http://localhost:11434
+```
+(Configurable by user)
+
+### Authentication
+None required (local server)
+
+### Chat Completions
+
+**Endpoint**: `POST /api/chat`
+
+**Request**:
+```typescript
+interface OllamaChatRequest {
+  model: string;
+  messages: Array<{
+    role: 'system' | 'user' | 'assistant';
+    content: string;
+  }>;
+  stream?: boolean;
+  options?: {
+    temperature?: number;
+    top_p?: number;
+    top_k?: number;
+  };
+}
+```
+
+**Response**:
+```typescript
+interface OllamaChatResponse {
+  model: string;
+  created_at: string;
+  message: {
+    role: string;
+    content: string;
+  };
+  done: boolean;
+  total_duration?: number;
+  load_duration?: number;
+  prompt_eval_count?: number;
+  prompt_eval_duration?: number;
+  eval_count?: number;
+  eval_duration?: number;
+}
+```
+
+### Models List
+
+**Endpoint**: `GET /api/tags`
+
+**Response**:
+```typescript
+interface OllamaModelsResponse {
+  models: Array<{
+    name: string;
+    modified_at: string;
+    size: number;
+    digest: string;
+    details: {
+      parent_model: string;
+      format: string;
+      family: string;
+      families: string[];
+      parameter_size: string;
+      quantization_level: string;
+    };
+  }>;
+}
+```
+
 ### Chat Completions
 
 **Endpoint**: `POST /chat/completions`
@@ -332,7 +407,23 @@ interface GunService {
 ### LLM Service
 
 ```typescript
+type LLMProvider = 'openrouter' | 'ollama';
+
+interface LLMConfig {
+  provider: LLMProvider;
+  // OpenRouter config
+  openRouterApiKey?: string;
+  // Ollama config
+  ollamaBaseUrl?: string; // Default: http://localhost:11434
+  ollamaModel?: string;   // User's installed model
+}
+
 interface LLMService {
+  // Provider management
+  setProvider(provider: LLMProvider): void;
+  getProvider(): LLMProvider;
+  validateConnection(): Promise<boolean>;
+
   // Review document
   reviewDocument(content: string, options?: ReviewOptions): Promise<ReviewResult>;
 
@@ -342,12 +433,15 @@ interface LLMService {
   // Suggest content
   suggestContent(context: string, prompt: string): Promise<string[]>;
 
-  // Cost estimation
+  // Cost estimation (OpenRouter only)
   estimateCost(model: string, promptTokens: number, completionTokens: number): Promise<number>;
 
-  // Usage tracking
+  // Usage tracking (OpenRouter only)
   trackUsage(model: string, usage: TokenUsage): void;
   getUsageStats(): UsageStats;
+
+  // Model discovery (Ollama only)
+  getAvailableModels(): Promise<string[]>;
 }
 ```
 
@@ -426,6 +520,12 @@ interface ErrorResponse {
 - **Rate Limits**: Per API key
 - **Handling**: Retry with exponential backoff
 
+### Ollama API
+
+- **No Rate Limits**: Local inference
+- **Hardware Limits**: Limited by local resources
+- **Handling**: Queue requests if needed, show progress
+
 ### GunDB
 
 - **No Rate Limits**: P2P sync
@@ -451,6 +551,12 @@ interface ErrorResponse {
 - API key in Authorization header
 - Key stored encrypted in GunDB
 - Decrypted on use
+
+### Ollama
+
+- No authentication required (local server)
+- Connection validation via health check
+- CORS configuration if needed for cross-origin access
 
 ### GunDB
 

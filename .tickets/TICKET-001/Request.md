@@ -23,13 +23,13 @@ As a developer, I want a complete architectural plan for MarkdownMyWords so that
    - Cloudflare Pages for static site hosting
    - Cloudflare Workers for GunDB relay server
    - End-to-end encryption using GunDB's SEA (Security, Encryption, Authorization)
-   - OpenRouter API for LLM integration (client-side)
+   - LLM integration (OpenRouter API and Ollama) for AI-powered features (client-side)
 
 2. **Core Features**
    - Syntax-highlighted Markdown editor
    - Document management and storage
    - Per-document sharing settings
-   - AI-powered review and revision (via OpenRouter)
+   - AI-powered review and revision (via OpenRouter or Ollama)
    - Dark mode and light mode UI themes
 
 3. **UI/UX Requirements**
@@ -73,7 +73,7 @@ As a developer, I want a complete architectural plan for MarkdownMyWords so that
 
 2. **Encryption**: GunDB's SEA will be used as the primary encryption method, providing automatic encryption/decryption and ECDH-based sharing. Manual AES-256-GCM is only used as a fallback for document-specific keys needed for the branching model.
 
-3. **OpenRouter Integration**: Client-side integration means users will need to provide their own OpenRouter API key. This keeps the application free and avoids proxying costs.
+3. **LLM Integration**: Support for both OpenRouter (cloud) and Ollama (local) providers. Users can choose based on privacy/cost preferences. OpenRouter requires user-provided API key (keeps app free). Ollama runs locally for complete privacy and zero API costs.
 
 4. **Sharing Model**: Each document will have sharing settings that control:
    - Public/private visibility
@@ -94,4 +94,5 @@ As a developer, I want a complete architectural plan for MarkdownMyWords so that
 - Cloudflare Pages: https://developers.cloudflare.com/pages/
 - Cloudflare Workers: https://developers.cloudflare.com/workers/
 - OpenRouter API: https://openrouter.ai/docs
+- Ollama: https://ollama.ai/
 - GunDB SEA Documentation: https://gun.eco/docs/SEA

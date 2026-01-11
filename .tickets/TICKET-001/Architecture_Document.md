@@ -143,7 +143,8 @@ MarkdownMyWords is a decentralized, peer-to-peer markdown editor with offline-fi
    - Shared document key handling
 
 3. **llmService**
-   - OpenRouter API integration
+   - Multi-provider LLM integration (OpenRouter and Ollama)
+   - Provider abstraction layer
    - Review document
    - Revise document
    - Suggest content
@@ -355,7 +356,8 @@ Deploy to CDN
 
 - Browser storage limits (IndexedDB quotas)
 - GunDB peer connections
-- OpenRouter API rate limits
+- OpenRouter API rate limits (cloud provider)
+- Ollama hardware/resource limits (local provider)
 
 ### Mitigation Strategies
 
@@ -385,7 +387,7 @@ Deploy to CDN
 - **Build**: Vite
 - **Hosting**: Cloudflare Pages
 - **Relay**: Cloudflare Workers
-- **LLM**: OpenRouter API
+- **LLM**: OpenRouter API + Ollama
 
 ## Related Documents
 
