@@ -142,7 +142,8 @@ async function createBranch(request: CreateBranchRequest) {
   const encrypted = await encryptDocument(request.proposedContent, docKey);
 
   // 4. Create branch node
-  const branchId = `branch~${currentUserId}~${Date.now()}`;
+  // All paths are namespaced with app name to avoid collisions
+  const branchId = `${appNamespace}~branch~${currentUserId}~${Date.now()}`;
   await createBranchNode(branchId, {
     encryptedContent: encrypted.encryptedContent,
     contentIV: encrypted.contentIV,

@@ -15,10 +15,10 @@
      │
      │ 2. Retrieve salt from GunDB
      ▼
-┌─────────────────┐
-│  GunDB          │
-│  user~{id}/salt │
-└────┬────────────┘
+┌────────────────────────────────┐
+│  GunDB                         │
+│  {appNamespace}~user~{id}/salt │
+└────┬───────────────────────────┘
      │
      │ 3. Salt returned
      ▼
@@ -68,10 +68,10 @@
      │
      │ 3. docId
      ▼
-┌─────────────────┐
-│  Create Node    │
-│  doc~{docId}    │
-└────┬────────────┘
+┌─────────────────────────────┐
+│  Create Node                │
+│  {appNamespace}~doc~{docId} │
+└────┬────────────────────────┘
      │
      │ 4. Encrypt content
      ▼
@@ -130,10 +130,10 @@
      │
      │ 4. Update GunDB
      ▼
-┌─────────────────┐
-│  GunDB          │
-│  doc~{docId}    │
-└────┬────────────┘
+┌─────────────────────────────┐
+│  GunDB                      │
+│  {appNamespace}~doc~{docId} │
+└────┬────────────────────────┘
      │
      │ 5. Sync to other devices
      ▼
@@ -186,10 +186,10 @@
        │
        │ 5. Store branch node
        ▼
-┌─────────────────┐
-│  GunDB          │
-│  branch~{id}    │
-└──────┬──────────┘
+┌─────────────────────────────┐
+│  GunDB                      │
+│  {appNamespace}~branch~{id} │
+└──────┬──────────────────────┘
        │
        │ 6. Notify owner
        ▼
@@ -213,10 +213,10 @@
        │
        │ 9. Update main document
        ▼
-┌─────────────────┐
-│  GunDB          │
-│  doc~{docId}    │
-└─────────────────┘
+┌──────────────────────────────┐
+│  GunDB                       │
+│  {appNamespace}~doc~{docId}  │
+└──────────────────────────────┘
 ```
 
 ## Sharing Flow
@@ -365,7 +365,7 @@ Device 1 wins              Device 2 loses
 
 ```
 Contributor 1          Contributor 2          Owner
-    │                       │                   │
+    │                        │                   │
     │ Edit                   │                   │
     │                        │                   │
     ▼                        │                   │

@@ -201,7 +201,7 @@ gun.user().get('profile').once((profile) => {
 
 #### Create Document
 ```typescript
-const docRef = gun.get(`doc~${docId}`);
+const docRef = gun.get(`${appNamespace}~doc~${docId}`);
 docRef.put({
   metadata: {
     title: string,
@@ -224,27 +224,27 @@ docRef.put({
 
 #### Read Document
 ```typescript
-gun.get(`doc~${docId}`).once((doc) => {
+gun.get(`${appNamespace}~doc~${docId}`).once((doc) => {
   // doc: Document
 });
 ```
 
 #### Update Document
 ```typescript
-gun.get(`doc~${docId}`).get('encryptedContent').put(encryptedContent);
-gun.get(`doc~${docId}`).get('metadata').get('updatedAt').put(Date.now());
-gun.get(`doc~${docId}`).get('metadata').get('lastModifiedBy').put(userId);
+gun.get(`${appNamespace}~doc~${docId}`).get('encryptedContent').put(encryptedContent);
+gun.get(`${appNamespace}~doc~${docId}`).get('metadata').get('updatedAt').put(Date.now());
+gun.get(`${appNamespace}~doc~${docId}`).get('metadata').get('lastModifiedBy').put(userId);
 ```
 
 #### Delete Document
 ```typescript
-gun.get(`doc~${docId}`).put(null);
-gun.get(`user~${userId}`).get('documents').get(docId).put(null);
+gun.get(`${appNamespace}~doc~${docId}`).put(null);
+gun.get(`${appNamespace}~user~${userId}`).get('documents').get(docId).put(null);
 ```
 
 #### Subscribe to Document Changes
 ```typescript
-gun.get(`doc~${docId}`).on((doc) => {
+gun.get(`${appNamespace}~doc~${docId}`).on((doc) => {
   // Called whenever document changes
 });
 ```
@@ -253,7 +253,7 @@ gun.get(`doc~${docId}`).on((doc) => {
 
 #### Create Branch
 ```typescript
-const branchId = `branch~${userId}~${Date.now()}`;
+const branchId = `${appNamespace}~branch~${userId}~${Date.now()}`;
 gun.get(branchId).put({
   encryptedContent: string,
   contentIV: string,
@@ -265,12 +265,12 @@ gun.get(branchId).put({
 });
 
 // Add to document's branches
-gun.get(`doc~${docId}`).get('branches').get(branchId).put(true);
+gun.get(`${appNamespace}~doc~${docId}`).get('branches').get(branchId).put(true);
 ```
 
 #### List Branches
 ```typescript
-gun.get(`doc~${docId}`).get('branches').map((branchId) => {
+gun.get(`${appNamespace}~doc~${docId}`).get('branches').map((branchId) => {
   gun.get(branchId).once((branch) => {
     if (branch.status === 'pending') {
       // Handle pending branch
@@ -282,7 +282,7 @@ gun.get(`doc~${docId}`).get('branches').map((branchId) => {
 #### Merge Branch
 ```typescript
 // Update main document
-gun.get(`doc~${docId}`).get('branches').get('main').put({
+gun.get(`${appNamespace}~doc~${docId}`).get('branches').get('main').put({
   encryptedContent: branch.encryptedContent,
   contentIV: branch.contentIV,
   mergedAt: Date.now(),
@@ -308,14 +308,14 @@ gun.get(branchId).get('reason').put(reason);
 #### Share Document
 ```typescript
 // Add to access list
-gun.get(`doc~${docId}`).get('sharing').get('readAccess').set([...readAccess, userId]);
-gun.get(`doc~${docId}`).get('sharing').get('writeAccess').set([...writeAccess, userId]);
+gun.get(`${appNamespace}~doc~${docId}`).get('sharing').get('readAccess').set([...readAccess, userId]);
+gun.get(`${appNamespace}~doc~${docId}`).get('sharing').get('writeAccess').set([...writeAccess, userId]);
 
 // Store encrypted document key
-gun.get(`doc~${docId}`).get('sharing').get('documentKey').get(userId).put(encryptedKey);
+gun.get(`${appNamespace}~doc~${docId}`).get('sharing').get('documentKey').get(userId).put(encryptedKey);
 
 // Create reference for collaborator
-gun.get(`user~${userId}`).get('documents').get(docId).put({
+gun.get(`${appNamespace}~user~${userId}`).get('documents').get(docId).put({
   docId: docId,
   accessLevel: 'read' | 'write',
   addedAt: Date.now()
@@ -325,21 +325,21 @@ gun.get(`user~${userId}`).get('documents').get(docId).put({
 #### Revoke Access
 ```typescript
 // Remove from access lists
-gun.get(`doc~${docId}`).get('sharing').get('readAccess').unset(userId);
-gun.get(`doc~${docId}`).get('sharing').get('writeAccess').unset(userId);
+gun.get(`${appNamespace}~doc~${docId}`).get('sharing').get('readAccess').unset(userId);
+gun.get(`${appNamespace}~doc~${docId}`).get('sharing').get('writeAccess').unset(userId);
 
 // Remove encrypted key
-gun.get(`doc~${docId}`).get('sharing').get('documentKey').get(userId).put(null);
+gun.get(`${appNamespace}~doc~${docId}`).get('sharing').get('documentKey').get(userId).put(null);
 
 // Remove reference
-gun.get(`user~${userId}`).get('documents').get(docId).put(null);
+gun.get(`${appNamespace}~user~${userId}`).get('documents').get(docId).put(null);
 ```
 
 #### Generate Share Token
 ```typescript
 const token = generateSecureToken();
-gun.get(`doc~${docId}`).get('sharing').get('shareToken').put(token);
-gun.get(`doc~${docId}`).get('sharing').get('isPublic').put(true);
+gun.get(`${appNamespace}~doc~${docId}`).get('sharing').get('shareToken').put(token);
+gun.get(`${appNamespace}~doc~${docId}`).get('sharing').get('isPublic').put(true);
 ```
 
 ## Service API Contracts

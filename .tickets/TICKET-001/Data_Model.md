@@ -3,7 +3,10 @@
 ## GunDB Graph Structure
 
 ### User Node
-**Path**: `user~{userId}`
+**Path**: `{appNamespace}~user~{userId}`
+**Example**: `markdownmywords~user~{userId}`
+
+> **Note**: All paths are namespaced with the app name (`markdownmywords` by default) to avoid collisions when multiple applications share the same GunDB relay server.
 
 ```typescript
 {
@@ -29,7 +32,10 @@
 ```
 
 ### Document Node
-**Path**: `doc~{docId}`
+**Path**: `{appNamespace}~doc~{docId}`
+**Example**: `markdownmywords~doc~{docId}`
+
+> **Note**: All paths are namespaced with the app name to avoid collisions.
 
 ```typescript
 {
@@ -67,7 +73,10 @@
 ```
 
 ### Branch Node (for shared documents)
-**Path**: `branch~{userId}~{timestamp}`
+**Path**: `{appNamespace}~branch~{userId}~{timestamp}`
+**Example**: `markdownmywords~branch~{userId}~{timestamp}`
+
+> **Note**: All paths are namespaced with the app name to avoid collisions.
 
 ```typescript
 {
@@ -84,7 +93,10 @@
 ```
 
 ### User-Document Relationship
-**Path**: `user~{userId}/documents/{docId}`
+**Path**: `{appNamespace}~user~{userId}/documents/{docId}`
+**Example**: `markdownmywords~user~{userId}/documents/{docId}`
+
+> **Note**: All paths are namespaced with the app name to avoid collisions.
 
 ```typescript
 {
@@ -101,32 +113,32 @@
 1. User creates new document
 2. Generate unique `docId` (UUID or GunDB soul)
 3. Encrypt content with user's derived key
-4. Create `doc~{docId}` node with metadata and encrypted content
-5. Add reference to `user~{userId}/documents/{docId}`
+4. Create `{appNamespace}~doc~{docId}` node with metadata and encrypted content
+5. Add reference to `{appNamespace}~user~{userId}/documents/{docId}`
 6. Set `sharing.owner` to current userId
 
 ### Editing a Document (Single User)
 
 1. User edits document
 2. Encrypt new content
-3. Update `doc~{docId}/encryptedContent`
+3. Update `{appNamespace}~doc~{docId}/encryptedContent`
 4. Update `metadata.updatedAt` and `metadata.lastModifiedBy`
 5. GunDB syncs to other devices (last-write-wins)
 
 ### Editing a Shared Document (Multiple Contributors)
 
 1. Collaborator edits document
-2. Create branch: `branch~{userId}~{timestamp}`
+2. Create branch: `{appNamespace}~branch~{userId}~{timestamp}`
 3. Encrypt proposed changes
 4. Set branch status to 'pending'
-5. Add branch reference to `doc~{docId}/branches`
+5. Add branch reference to `{appNamespace}~doc~{docId}/branches`
 6. Owner is notified of pending branch
 
 ### Merging a Branch
 
 1. Owner reviews branch
 2. Owner decides to merge
-3. Copy branch content to `doc~{docId}/branches/main`
+3. Copy branch content to `{appNamespace}~doc~{docId}/branches/main`
 4. Update branch status to 'merged'
 5. Update `metadata.updatedAt`
 6. Increment version number
@@ -139,7 +151,7 @@
 3. Encrypt document key with recipient's public key
 4. Store encrypted key in `sharing.documentKey[userId]`
 5. Add userId to `sharing.readAccess` or `sharing.writeAccess`
-6. Create reference in `user~{recipientId}/documents/{docId}`
+6. Create reference in `{appNamespace}~user~{recipientId}/documents/{docId}`
 
 ## Encryption Schema
 
@@ -191,7 +203,8 @@ const encryptedKey = await SEA.encrypt(docKey, collaboratorPub);
 ### Get User's Documents
 
 ```javascript
-gun.get(`user~${userId}`).get('documents').map((docRef) => {
+// All paths are namespaced with app name to avoid collisions
+gun.get(`${appNamespace}~user~${userId}`).get('documents').map((docRef) => {
   return gun.get(docRef).get('metadata');
 });
 ```
@@ -199,7 +212,8 @@ gun.get(`user~${userId}`).get('documents').map((docRef) => {
 ### Get Document Content
 
 ```javascript
-gun.get(`doc~${docId}`).get('encryptedContent').once((encrypted) => {
+// All paths are namespaced with app name to avoid collisions
+gun.get(`${appNamespace}~doc~${docId}`).get('encryptedContent').once((encrypted) => {
   // Decrypt with user's key
   const decrypted = decrypt(encrypted, userKey);
 });
@@ -208,7 +222,8 @@ gun.get(`doc~${docId}`).get('encryptedContent').once((encrypted) => {
 ### Get Pending Branches
 
 ```javascript
-gun.get(`doc~${docId}`).get('branches').map((branchRef) => {
+// All paths are namespaced with app name to avoid collisions
+gun.get(`${appNamespace}~doc~${docId}`).get('branches').map((branchRef) => {
   return gun.get(branchRef).once((branch) => {
     if (branch.status === 'pending') {
       return branch;
@@ -220,7 +235,8 @@ gun.get(`doc~${docId}`).get('branches').map((branchRef) => {
 ### Check Document Access
 
 ```javascript
-gun.get(`doc~${docId}`).get('sharing').once((sharing) => {
+// All paths are namespaced with app name to avoid collisions
+gun.get(`${appNamespace}~doc~${docId}`).get('sharing').once((sharing) => {
   const hasAccess =
     sharing.owner === userId ||
     sharing.readAccess.includes(userId) ||
@@ -236,7 +252,7 @@ gun.get(`doc~${docId}`).get('sharing').once((sharing) => {
 Store lightweight document references in user node for fast listing:
 
 ```typescript
-user~{userId}/documentIndex: {
+{appNamespace}~user~{userId}/documentIndex: {
   [docId: string]: {
     title: string,        // May be encrypted
     updatedAt: number,
@@ -257,7 +273,7 @@ For client-side search:
 ### Document Versioning
 
 ```typescript
-doc~{docId}/branches/main: {
+{appNamespace}~doc~{docId}/branches/main: {
   version: number,        // Increment on each merge
   history: {
     [version: number]: {

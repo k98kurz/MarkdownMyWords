@@ -33,7 +33,7 @@
 
 #### User Node Structure
 ```
-user~{userId}
+{appNamespace}~user~{userId}
   ├── profile
   │   ├── username (public)
   │   ├── encryptedProfile (encrypted user data)
@@ -44,9 +44,11 @@ user~{userId}
       └── editorSettings
 ```
 
+> **Note**: All paths are namespaced with the app name (`markdownmywords` by default) to avoid collisions when multiple applications share the same GunDB relay server.
+
 #### Document Node Structure
 ```
-doc~{docId}
+{appNamespace}~doc~{docId}
   ├── metadata
   │   ├── title (encrypted or public based on sharing)
   │   ├── createdAt (timestamp)
@@ -62,16 +64,18 @@ doc~{docId}
   │   └── shareToken (for public links)
   └── branches (only for shared documents)
       ├── main (current merged state)
-      └── branch~{userId}~{timestamp}
+      └── {appNamespace}~branch~{userId}~{timestamp}
           ├── encryptedContent
           ├── createdBy (userId)
           ├── createdAt (timestamp)
           └── status (pending|merged|rejected)
 ```
 
+> **Note**: All paths are namespaced with the app name to avoid collisions.
+
 #### Branch Node Structure (for shared documents)
 ```
-branch~{userId}~{timestamp}
+{appNamespace}~branch~{userId}~{timestamp}
   ├── encryptedContent (proposed changes)
   ├── createdBy (userId)
   ├── createdAt (timestamp)
@@ -79,6 +83,8 @@ branch~{userId}~{timestamp}
   ├── mergedAt (timestamp, if merged)
   └── mergedBy (userId, if merged)
 ```
+
+> **Note**: All paths are namespaced with the app name to avoid collisions.
 
 ### GunDB Operations
 

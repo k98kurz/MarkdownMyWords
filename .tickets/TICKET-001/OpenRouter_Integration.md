@@ -388,12 +388,14 @@ class RateLimiter {
 // Encrypt API key with user's derived key
 async function storeApiKey(apiKey: string, userKey: CryptoKey) {
   const encrypted = await encryptDocument(apiKey, userKey);
-  await gun.get(`user~${userId}`).get('settings').get('openRouterApiKey').put(encrypted);
+  // All paths are namespaced with app name to avoid collisions
+  await gun.get(`${appNamespace}~user~${userId}`).get('settings').get('openRouterApiKey').put(encrypted);
 }
 
 // Retrieve and decrypt API key
 async function getApiKey(userKey: CryptoKey): Promise<string | null> {
-  const encrypted = await gun.get(`user~${userId}`).get('settings').get('openRouterApiKey').once();
+  // All paths are namespaced with app name to avoid collisions
+  const encrypted = await gun.get(`${appNamespace}~user~${userId}`).get('settings').get('openRouterApiKey').once();
   if (!encrypted) {
     return null;
   }
@@ -621,7 +623,8 @@ interface OllamaConfig {
 // Store in user settings (encrypted)
 async function storeOllamaConfig(config: OllamaConfig, userKey: CryptoKey) {
   const encrypted = await encryptDocument(JSON.stringify(config), userKey);
-  await gun.get(`user~${userId}`).get('settings').get('ollamaConfig').put(encrypted);
+  // All paths are namespaced with app name to avoid collisions
+  await gun.get(`${appNamespace}~user~${userId}`).get('settings').get('ollamaConfig').put(encrypted);
 }
 ```
 

@@ -91,7 +91,8 @@ const encrypted = await encryptDocument(content, docKey);
 for (const collaborator of collaborators) {
   // Use SEA to encrypt the document key
   const encryptedKey = await SEA.encrypt(docKey, collaborator.pub);
-  store(`doc~{docId}/sharing/documentKey/${collaborator.userId}`, encryptedKey);
+  // All paths are namespaced with app name to avoid collisions
+  store(`${appNamespace}~doc~{docId}/sharing/documentKey/${collaborator.userId}`, encryptedKey);
 }
 ```
 
@@ -138,7 +139,8 @@ const encrypted = await encryptDocument(content, docKey);
 // Encrypt document key for each collaborator using SEA's ECDH
 for (const collaborator of collaborators) {
   const encryptedKey = await SEA.encrypt(docKey, collaborator.pub);
-  store(`doc~{docId}/sharing/documentKey/${collaborator.userId}`, encryptedKey);
+  // All paths are namespaced with app name to avoid collisions
+  store(`${appNamespace}~doc~{docId}/sharing/documentKey/${collaborator.userId}`, encryptedKey);
 }
 ```
 
