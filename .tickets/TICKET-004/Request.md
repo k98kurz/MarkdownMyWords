@@ -88,18 +88,26 @@ As a developer, I want a complete encryption system so that:
 
 ```typescript
 interface EncryptionService {
+  // SEA initialization (for key sharing)
+  initializeSEA(): Promise<void>;
+
   // Document encryption (primary: manual AES-256-GCM)
   generateDocumentKey(): Promise<CryptoKey>;
   encryptDocument(content: string, key: CryptoKey): Promise<EncryptedDocument>;
   decryptDocument(encrypted: EncryptedDocument, key: CryptoKey): Promise<string>;
 
   // Key sharing (SEA's ECDH)
-  encryptKeyForRecipient(docKey: CryptoKey, recipientPub: string): Promise<string>;
-  decryptKeyForMe(encryptedKey: string): Promise<CryptoKey>;
+  encryptDocumentKeyWithSEA(docKey: CryptoKey, recipientEpub: string): Promise<{ encryptedKey: string; ephemeralPub: string }>;
+  decryptDocumentKeyWithSEA(encryptedKey: string, senderEpub: string): Promise<CryptoKey>;
+  storeEncryptedDocumentKey(docId: string, docKey: CryptoKey, collaboratorUserId: string, collaboratorPub: string): Promise<{ encryptedKey: string; ephemeralPub: string }>;
+  retrieveDocumentKey(docId: string): Promise<CryptoKey>;
 
   // Key serialization (for URL parameters)
   exportKey(key: CryptoKey): Promise<string>;
   importKey(keyString: string): Promise<CryptoKey>;
+
+  // Helper methods
+  getCurrentUserPublicKey(): Promise<string>;
 }
 ```
 
