@@ -153,3 +153,26 @@ When reviewing code or AI agent output, ask:
 - If semicolons are present in the codebase, keep them
 - Only add semicolons if they were removed accidentally
 - Preserve the existing code formatting style
+
+### NEVER USE "any" TYPE OR "as any" ASSERTIONS
+
+- **ABSOLUTELY FORBIDDEN**: The use of `any` type or `as any` type assertions is strictly prohibited
+- **NO EXCEPTIONS**: Under no circumstances should `any` be used anywhere in the codebase
+- `as any` covers up type errors and leads to runtime bugs and maintenance issues
+- If you encounter a type error, fix it properly by:
+  - Adding proper type definitions
+  - Using `unknown` and type guards when the type is truly unknown
+  - Creating proper interfaces or types for the data structure
+  - Using generics when appropriate
+- If you see existing `any` usage, replace it with proper types as part of your changes
+- Type safety is critical - don't bypass it with `any`
+
+### NEVER USE "as unknown as" to cover up type erorrs
+
+- **ABSOLUTELY FORBIDDEN**: Covering up type errors with `as unknown` or
+`as unknown as` is strictly prohibited because it is extremely harmful
+- **NO EXCEPTIONS**: Under no circumstances are type errors to be covered up
+- If you have a type error, it means the way you are writing the code is WRONG
+- DO NOT PERSIST IN ERROR
+- DO NOT COVER UP ERRORS
+- **FIX ERRORS** and write **ACCURATE CODE**
