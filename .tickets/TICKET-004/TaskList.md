@@ -1,65 +1,67 @@
 # Task List
 
-## SEA Integration
+## Document Encryption (Primary: Manual AES-256-GCM)
 
-- [x] Install/import GunDB SEA module
-- [x] Initialize SEA with GunDB instance
-- [x] Configure SEA settings
-- [x] Test SEA initialization
+- [ ] Implement document-specific symmetric key generation (256-bit random keys)
+- [ ] Implement AES-256-GCM encryption for document content
+- [ ] Implement AES-256-GCM decryption for document content
+- [ ] Test encryption/decryption with various document sizes
+- [ ] Test encryption/decryption with various content types
+- [ ] Verify encryption is working correctly
+- [ ] Test that same key can decrypt multiple documents (for branching)
 
-## User Operations with SEA
+## Key Sharing via SEA (ECDH)
 
-- [x] Implement user creation with SEA
-- [x] Implement user authentication with SEA
-- [x] Test user creation flow
-- [x] Test user authentication flow
-- [x] Handle SEA authentication errors
+- [ ] Import/configure SEA module for ECDH operations
+- [ ] Implement encrypting document keys with SEA's ECDH for recipients
+- [ ] Implement decrypting document keys with SEA's ECDH for recipients
+- [ ] Test key encryption with recipient's public key
+- [ ] Test key decryption with recipient's private key
+- [ ] Test that each collaborator gets their own encrypted copy of the document key
+- [ ] Verify ECDH key exchange is working correctly
+- [ ] Test sharing document keys with multiple recipients
 
-## Document Encryption with SEA
+## Key Serialization (for URL Parameters)
 
-- [x] Implement document storage with SEA encryption
-- [x] Implement document retrieval with SEA decryption
-- [x] Test automatic encryption/decryption
-- [ ] Test with various document sizes
-- [x] Verify encryption is working correctly
-
-## Sharing with SEA (ECDH)
-
-- [x] Implement sharing using SEA's ECDH
-- [x] Encrypt data with recipient's public key
-- [ ] Test key exchange via ECDH
-- [x] Test decryption by recipient
-- [x] Verify shared secret derivation
-
-## Fallback: Manual Encryption (for Branching)
-
-- [x] Implement document-specific key generation
-- [x] Implement manual AES-256-GCM encryption
-- [x] Implement manual AES-256-GCM decryption
-- [x] Test document key encryption/decryption
-- [x] Integrate with SEA for key encryption
-
-## Hybrid Approach (Document Keys + SEA)
-
-- [x] Generate document-specific keys
-- [x] Encrypt document with document key (manual)
-- [x] Encrypt document key with SEA's ECDH for each collaborator
-- [x] Store encrypted document keys
-- [x] Test full sharing flow with document keys
+- [ ] Implement key export to string format (for URL parameters)
+- [ ] Implement key import from string format (from URL parameters)
+- [ ] Test key serialization/deserialization round-trip
+- [ ] Test URL-safe encoding/decoding
+- [ ] Verify keys can be shared via URL parameters
+- [ ] Test that imported keys work for document decryption
 
 ## Service Layer
 
-- [x] Create encryptionService file
-- [x] Implement all SEA methods
-- [x] Implement fallback manual methods
-- [x] Add error handling
-- [x] Add type definitions
-- [x] Create unit tests
+- [ ] Create encryptionService file
+- [ ] Implement generateDocumentKey() method
+- [ ] Implement encryptDocument() method
+- [ ] Implement decryptDocument() method
+- [ ] Implement encryptKeyForRecipient() method (using SEA's ECDH)
+- [ ] Implement decryptKeyForMe() method (using SEA's ECDH)
+- [ ] Implement exportKey() method
+- [ ] Implement importKey() method
+- [ ] Add error handling for all methods
+- [ ] Add type definitions (EncryptedDocument, etc.)
+- [ ] Create unit tests for all methods
+
+## Integration & Workflows
+
+- [ ] Test document creation workflow (generate key → encrypt → store)
+- [ ] Test sharing workflow (encrypt key for recipient → store → recipient decrypts)
+- [ ] Test URL-based sharing workflow (export key → include in URL → import → decrypt)
+- [ ] Test multi-branch collaboration workflow (same key for all branches)
+- [ ] Test that all collaborators can decrypt all branches with shared key
+- [ ] Integrate with GunDB storage for encrypted documents
+- [ ] Integrate with GunDB storage for encrypted document keys
 
 ## Testing
 
-- [ ] Test SEA operations
-- [x] Test manual encryption (fallback)
-- [x] Test hybrid approach (document keys + SEA)
-- [x] Test error scenarios
-- [x] Test performance
+- [ ] Test document encryption/decryption with various sizes
+- [ ] Test key sharing with multiple recipients
+- [ ] Test URL-based sharing with key in parameter
+- [ ] Test multi-branch collaboration with shared keys
+- [ ] Test error scenarios (invalid keys, corrupted data, missing keys)
+- [ ] Test performance with large documents
+- [ ] Test performance with multiple collaborators
+- [ ] Verify security: keys cannot be recovered without proper access
+- [ ] Verify security: documents cannot be decrypted without correct key

@@ -82,36 +82,21 @@ export async function testVariousDocumentSizes(): Promise<void> {
     console.log(`Testing ${testSize.name} (${testSize.bytes} bytes)...`);
 
     try {
-      // Generate test content
-      const content = generateTestContent(testSize.bytes);
-
       // Test SEA encryption/decryption
-      const encryptStart = performance.now();
-      const encrypted = await encryptionService.encryptWithSEA(content);
-      const encryptTime = performance.now() - encryptStart;
-
-      const decryptStart = performance.now();
-      const decrypted = await encryptionService.decryptWithSEA(encrypted);
-      const decryptTime = performance.now() - decryptStart;
-
-      // Verify decryption
-      const success = decrypted === content;
-      const encryptedSize = new Blob([encrypted]).size;
+      // NOTE: Self-encryption is no longer supported. For self-encryption,
+      // use GunDB's automatic encryption via gun.user().get().put()
+      // This test is skipped.
+      console.log('  ⚠  Self-encryption test skipped - use GunDB automatic encryption')
 
       results.push({
         size: testSize.name,
         originalBytes: testSize.bytes,
-        encryptedBytes: encryptedSize,
-        success,
-        encryptTime: Math.round(encryptTime),
-        decryptTime: Math.round(decryptTime),
-      });
-
-      if (success) {
-        console.log(`  ✅ Success - Encrypt: ${Math.round(encryptTime)}ms, Decrypt: ${Math.round(decryptTime)}ms`);
-      } else {
-        console.log(`  ❌ Failed - Content mismatch`);
-      }
+        encryptedBytes: 0,
+        success: false,
+        encryptTime: 0,
+        decryptTime: 0,
+        error: 'Self-encryption not supported - use GunDB automatic encryption',
+      })
     } catch (error) {
       // Extract error message from EncryptionError objects or regular errors
       let errorMessage: string;
@@ -169,7 +154,9 @@ export async function testVariousDocumentSizes(): Promise<void> {
       const success = decrypted === content;
 
       if (success) {
-        console.log(`  ✅ Success - Encrypt: ${Math.round(encryptTime)}ms, Decrypt: ${Math.round(decryptTime)}ms`);
+        console.log(
+          `  ✅ Success - Encrypt: ${Math.round(encryptTime)}ms, Decrypt: ${Math.round(decryptTime)}ms`
+        );
       } else {
         console.log(`  ❌ Failed - Content mismatch`);
       }
