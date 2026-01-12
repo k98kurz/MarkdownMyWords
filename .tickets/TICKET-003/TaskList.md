@@ -2,33 +2,33 @@
 
 ## GunDB Setup
 
-- [ ] Install GunDB package
-- [ ] Create GunDB client initialization
-- [ ] Configure relay server URL
-- [ ] Set up IndexedDB storage
-- [ ] Test peer connections
+- [x] Install GunDB package
+- [x] Create GunDB client initialization
+- [x] Configure relay server URL
+- [x] Set up IndexedDB storage
+- [x] Test peer connections
 
 ## Service Implementation
 
-- [ ] Create gunService file
-- [ ] Implement initialization function
-- [ ] Implement user operations (get, create, update)
-- [ ] Implement document operations (CRUD)
-- [ ] Implement subscription functionality
-- [ ] Add error handling
+- [x] Create gunService file
+- [x] Implement initialization function
+- [x] Implement user operations (get, create, update)
+- [x] Implement document operations (CRUD)
+- [x] Implement subscription functionality
+- [x] Add error handling
 
 ## Type Definitions
 
-- [ ] Define User type
-- [ ] Define Document type
-- [ ] Define Sharing type
-- [ ] Define Branch type
-- [ ] Create GunDB node types
+- [x] Define User type
+- [x] Define Document type
+- [x] Define Sharing type
+- [x] Define Branch type
+- [x] Create GunDB node types
 
 ## Testing
 
 - [ ] Test user operations
-- [ ] Test document operations
-- [ ] Test real-time subscriptions
-- [ ] Test offline functionality
-- [ ] Test error handling
+- [x] Test document operations
+- [x] Test real-time subscriptions
+- [x] Test offline functionality
+- [x] Test error handling

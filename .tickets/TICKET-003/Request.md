@@ -1,7 +1,7 @@
 # [TICKET-003] GunDB Integration and Setup
 
 ## Metadata
-- **Status**: ready
+- **Status**: pending_review
 - **Complexity**: task_list
 - **Service(s)**: frontend
 - **Created**: 2026-01-11
