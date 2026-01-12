@@ -134,21 +134,60 @@ class EncryptionService {
           return;
         }
 
-        if (!ack.ok) {
+        // In GunDB, ack.ok === 0 might mean user already exists
+        // But if there's a pub key, the user was created or exists
+        // Check if user is authenticated by checking gun.user().is
+        const user = gun.user();
+        const userIs = user.is as any;
+
+        // Get public key from user.is or ack.pub
+        const pub = (userIs?.pub as string) || ack.pub || '';
+
+        // If we have a pub key, user was created or exists
+        // If ack.ok is 0 and no pub, it's a real failure
+        if (!pub) {
           reject({
             code: 'USER_CREATION_FAILED',
-            message: 'User creation returned not ok',
+            message: ack.ok === 0
+              ? 'User creation failed or user already exists'
+              : 'User created but no public key found',
             details: ack,
           } as EncryptionError);
           return;
         }
 
-        // Get user data
-        const user = gun.user();
-        const userIs = user.is as any; // GunDB user.is type is complex
+        // If user.is is not set but we have a pub, authenticate the user
+        // This handles the case where user was created but not automatically authenticated
+        if (!userIs && pub) {
+          // User was created but not authenticated, authenticate now
+          gun.user().auth(username, password, (authAck: any) => {
+            if (authAck.err) {
+              reject({
+                code: 'USER_CREATION_FAILED',
+                message: 'User created but authentication failed',
+                details: authAck.err,
+              } as EncryptionError);
+              return;
+            }
+
+            // Get authenticated user data
+            const authUser = gun.user();
+            const authUserIs = authUser.is as any;
+            const userData: SEAUser = {
+              alias: username,
+              pub: (authUserIs?.pub as string) || pub,
+            };
+
+            this.currentUser = userData;
+            resolve(userData);
+          });
+          return;
+        }
+
+        // User is authenticated, return user data
         const userData: SEAUser = {
           alias: username,
-          pub: (userIs?.pub as string) || '',
+          pub: pub,
         };
 
         this.currentUser = userData;
@@ -177,34 +216,89 @@ class EncryptionService {
 
       // Authenticate user with SEA
       this.gun.user().auth(username, password, (ack: any) => {
+        // Check for explicit error from GunDB
         if (ack.err) {
           reject({
             code: 'AUTHENTICATION_FAILED',
-            message: 'Failed to authenticate user',
+            message: 'Invalid username or password',
             details: ack.err,
           } as EncryptionError);
           return;
         }
 
-        if (!ack.ok) {
-          reject({
-            code: 'AUTHENTICATION_FAILED',
-            message: 'Authentication returned not ok',
-            details: ack,
-          } as EncryptionError);
+        // Check if user is already authenticated
+        const user = this.gun!.user();
+        const userIs = user.is as any;
+
+        // If user.is is set with a pub key, authentication succeeded
+        if (userIs && userIs.pub) {
+          const userData: SEAUser = {
+            alias: username,
+            pub: userIs.pub as string,
+          };
+
+          this.currentUser = userData;
+          resolve(userData);
           return;
         }
 
-        // Get authenticated user data
-        const user = this.gun!.user();
-        const userIs = user.is as any; // GunDB user.is type is complex
-        const userData: SEAUser = {
-          alias: username,
-          pub: (userIs?.pub as string) || '',
-        };
+        // If ack.ok is 1, authentication succeeded but user.is might not be set yet
+        // Wait a short time for GunDB to set user.is
+        if (ack.ok === 1) {
+          setTimeout(() => {
+            const checkUser = this.gun!.user();
+            const checkUserIs = checkUser.is as any;
+            if (checkUserIs && checkUserIs.pub) {
+              const userData: SEAUser = {
+                alias: username,
+                pub: checkUserIs.pub as string,
+              };
+              this.currentUser = userData;
+              resolve(userData);
+            } else {
+              reject({
+                code: 'AUTHENTICATION_FAILED',
+                message: 'Authentication succeeded but user state not set',
+                details: ack,
+              } as EncryptionError);
+            }
+          }, 100);
+          return;
+        }
 
-        this.currentUser = userData;
-        resolve(userData);
+        // If ack.ok is 0, check once more after a brief delay
+        // This handles the edge case where GunDB returns ok: 0 but auth actually works
+        // (which happens on session recall after page refresh)
+        if (ack.ok === 0) {
+          setTimeout(() => {
+            const checkUser = this.gun!.user();
+            const checkUserIs = checkUser.is as any;
+            if (checkUserIs && checkUserIs.pub) {
+              // Authentication actually succeeded despite ok: 0
+              const userData: SEAUser = {
+                alias: username,
+                pub: checkUserIs.pub as string,
+              };
+              this.currentUser = userData;
+              resolve(userData);
+            } else {
+              // Authentication really failed - wrong password
+              reject({
+                code: 'AUTHENTICATION_FAILED',
+                message: 'Invalid username or password',
+                details: 'Authentication failed',
+              } as EncryptionError);
+            }
+          }, 100);
+          return;
+        }
+
+        // Unexpected response - fail with user-friendly message
+        reject({
+          code: 'AUTHENTICATION_FAILED',
+          message: 'Invalid username or password',
+          details: ack,
+        } as EncryptionError);
       });
     });
   }

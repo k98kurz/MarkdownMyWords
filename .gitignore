@@ -33,3 +33,6 @@ dist-ssr
 # Build outputs
 build
 *.tsbuildinfo
+
+# GunDB local storage (radisk)
+radata*

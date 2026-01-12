@@ -258,35 +258,74 @@ class GunService {
 
         const userNode = gun.get(this.getNodePath('user', userId));
 
-        // Merge with existing data
-        userNode.once((existing: User | null) => {
-          const mergedData: User = {
-            profile: userData.profile || existing?.profile || { username: '' },
-            documents: userData.documents || existing?.documents || {},
-            settings: userData.settings || existing?.settings,
-          };
+        // GunDB works better with flat puts on each nested path
+        // rather than one big nested object put
+        let pendingPuts = 0;
+        let hasError = false;
+        let errorDetails: any = null;
 
-          userNode.put(mergedData, (ack: any) => {
+        const checkDone = () => {
+          pendingPuts--;
+          if (pendingPuts <= 0) {
             clearTimeout(timeout);
-
-            if (ack.err) {
-              // In offline mode, GunDB may still store locally
-              if (isOffline) {
-                console.warn('User creation error (offline mode):', ack.err);
-                resolve(); // Resolve anyway - data may be in local storage
-                return;
-              }
-
+            if (hasError && !isOffline) {
               reject({
                 code: GunErrorCode.SYNC_ERROR,
                 message: 'Failed to create user',
-                details: ack.err,
+                details: errorDetails,
               } as GunError);
             } else {
               resolve();
             }
-          });
-        });
+          }
+        };
+
+        const handleAck = (ack: any) => {
+          if (ack.err && !hasError) {
+            hasError = true;
+            errorDetails = ack.err;
+            if (isOffline) {
+              console.warn('User creation error (offline mode):', ack.err);
+            }
+          }
+          checkDone();
+        };
+
+        // Store profile data (flat properties only)
+        if (userData.profile) {
+          const profile = userData.profile;
+          if (profile.username) {
+            pendingPuts++;
+            userNode.get('profile').get('username').put(profile.username, handleAck);
+          }
+          if (profile.publicKey) {
+            pendingPuts++;
+            userNode.get('profile').get('publicKey').put(profile.publicKey, handleAck);
+          }
+          if (profile.encryptedProfile) {
+            pendingPuts++;
+            userNode.get('profile').get('encryptedProfile').put(profile.encryptedProfile, handleAck);
+          }
+        }
+
+        // Store settings if provided (flat properties only)
+        if (userData.settings) {
+          const settings = userData.settings;
+          if (settings.theme) {
+            pendingPuts++;
+            userNode.get('settings').get('theme').put(settings.theme, handleAck);
+          }
+          if (settings.openRouterApiKey) {
+            pendingPuts++;
+            userNode.get('settings').get('openRouterApiKey').put(settings.openRouterApiKey, handleAck);
+          }
+        }
+
+        // If no properties to store, resolve immediately
+        if (pendingPuts === 0) {
+          clearTimeout(timeout);
+          resolve();
+        }
       });
     } catch (error) {
       if ((error as GunError).code) {

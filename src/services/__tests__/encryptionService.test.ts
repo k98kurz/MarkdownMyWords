@@ -2,7 +2,7 @@
  * Encryption Service Tests
  */
 
-import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { encryptionService } from '../encryptionService';
 import { gunService } from '../gunService';
 
