@@ -5,7 +5,6 @@
  */
 
 import { create } from 'zustand';
-import { encryptionService } from '../services/encryptionService';
 import { gunService } from '../services/gunService';
 import { useErrorStore } from './errorStore';
 
@@ -57,7 +56,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       }
 
       // Create user with SEA
-      const seaUser = await encryptionService.createUser(username.trim(), password);
+      const seaUser = await gunService.createSEAUser(username.trim(), password);
 
       // Get GunDB instance to access user object
       const gun = gunService.getInstance();
@@ -72,7 +71,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       // Create user profile in GunDB
       const userId = userIs?.pub || seaUser.pub;
       if (userId) {
-        await gunService.createUser(userId, {
+        await gunService.putUserProfile(userId, {
           profile: {
             username: username.trim(),
           },
@@ -129,7 +128,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       }
 
       // Authenticate with SEA
-      await encryptionService.authenticateUser(username.trim(), password);
+      await gunService.authenticateSEAUser(username.trim(), password);
 
       // Get GunDB instance to access user object
       const gun = gunService.getInstance();

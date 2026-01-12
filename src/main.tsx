@@ -36,7 +36,7 @@ if (typeof window !== 'undefined') {
   (window as any).clearGunDB = clearGunDBLocalStorage;
   (window as any).clearAllGunDBData = clearAllGunDBData;
   console.log('🧪 Dev console functions available:');
-  console.log('   - window.testDocumentSizes()');
+  console.log('   - window.testDocumentSizes() - Test encryption with various document sizes');
   console.log('   - window.listUsers() - Returns array of all users (profiles + SEA)');
   console.log('   - window.listUsersDetailed() - Prints formatted user list');
   console.log('   - window.getUserById(userId) - Get specific user by ID');

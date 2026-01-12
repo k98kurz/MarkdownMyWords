@@ -24,6 +24,14 @@ import type {
 import { GunErrorCode } from '../types/gun';
 
 /**
+ * SEA User interface
+ */
+export interface SEAUser {
+  alias: string;
+  pub: string; // Public key
+}
+
+/**
  * GunDB Service Class
  *
  * All GunDB paths are namespaced with the app name to avoid collisions
@@ -233,11 +241,13 @@ class GunService {
   }
 
   /**
-   * Create or update user
-   * @param userId - User ID
-   * @param userData - User data to store
+   * Put user profile data in GunDB
+   * Stores or updates user profile information (username, preferences, etc.) in GunDB.
+   * Note: This does NOT create the authentication account - use createSEAUser() for that.
+   * @param userId - User ID (typically the public key from SEA authentication)
+   * @param userData - User profile data to store
    */
-  async createUser(userId: string, userData: Partial<User>): Promise<void> {
+  async putUserProfile(userId: string, userData: Partial<User>): Promise<void> {
     try {
       const gun = this.getGun();
       const isOffline = this.isOffline();
@@ -346,14 +356,6 @@ class GunService {
     }
   }
 
-  /**
-   * Update user
-   * @param userId - User ID
-   * @param updates - Partial user data to update
-   */
-  async updateUser(userId: string, updates: Partial<User>): Promise<void> {
-    return this.createUser(userId, updates);
-  }
 
   /**
    * Get document by ID
@@ -820,6 +822,226 @@ class GunService {
    */
   getInstance(): GunInstance | null {
     return this.gun;
+  }
+
+  /**
+   * Create user with SEA
+   * @param username - Username/alias
+   * @param password - User password
+   * @returns Promise resolving to SEAUser
+   */
+  async createSEAUser(username: string, password: string): Promise<SEAUser> {
+    if (!this.gun) {
+      throw {
+        code: GunErrorCode.CONNECTION_FAILED,
+        message: 'GunDB not initialized',
+      } as GunError;
+    }
+
+    const gun = this.gun;
+
+    return new Promise<SEAUser>((resolve, reject) => {
+      // Create user with SEA
+      gun.user().create(username, password, (ack: any) => {
+        if (ack.err) {
+          reject({
+            code: GunErrorCode.SYNC_ERROR,
+            message: 'Failed to create user',
+            details: ack.err,
+          } as GunError);
+          return;
+        }
+
+        // Check if user is authenticated by checking gun.user().is
+        const user = gun.user();
+        const userIs = user.is as any;
+
+        // Get public key from user.is or ack.pub
+        const pub = (userIs?.pub as string) || ack.pub || '';
+
+        // If we have a pub key, user was created or exists
+        // If ack.ok is 0 and no pub, it's a real failure
+        if (!pub) {
+          reject({
+            code: GunErrorCode.SYNC_ERROR,
+            message:
+              ack.ok === 0
+                ? 'User creation failed or user already exists'
+                : 'User created but no public key found',
+            details: ack,
+          } as GunError);
+          return;
+        }
+
+        // If user.is is not set but we have a pub, authenticate the user
+        // This handles the case where user was created but not automatically authenticated
+        if (!userIs && pub) {
+          // User was created but not authenticated, authenticate now
+          gun.user().auth(username, password, (authAck: any) => {
+            if (authAck.err) {
+              reject({
+                code: GunErrorCode.SYNC_ERROR,
+                message: 'User created but authentication failed',
+                details: authAck.err,
+              } as GunError);
+              return;
+            }
+
+            // Get authenticated user data
+            const authUser = gun.user();
+            const authUserIs = authUser.is as any;
+            const userData: SEAUser = {
+              alias: username,
+              pub: (authUserIs?.pub as string) || pub,
+            };
+
+            resolve(userData);
+          });
+          return;
+        }
+
+        // User is authenticated, return user data
+        const userData: SEAUser = {
+          alias: username,
+          pub: pub,
+        };
+
+        resolve(userData);
+      });
+    });
+  }
+
+  /**
+   * Authenticate user with SEA
+   * @param username - Username/alias
+   * @param password - User password
+   * @returns Promise resolving to SEAUser
+   */
+  async authenticateSEAUser(username: string, password: string): Promise<SEAUser> {
+    if (!this.gun) {
+      throw {
+        code: GunErrorCode.CONNECTION_FAILED,
+        message: 'GunDB not initialized',
+      } as GunError;
+    }
+
+    return new Promise<SEAUser>((resolve, reject) => {
+      // Authenticate user with SEA
+      this.gun!.user().auth(username, password, (ack: any) => {
+        // Check for explicit error from GunDB
+        if (ack.err) {
+          reject({
+            code: GunErrorCode.SYNC_ERROR,
+            message: 'Invalid username or password',
+            details: ack.err,
+          } as GunError);
+          return;
+        }
+
+        // Check if user is already authenticated
+        const user = this.gun!.user();
+        const userIs = user.is as any;
+
+        // If user.is is set with a pub key, authentication succeeded
+        if (userIs && userIs.pub) {
+          const userData: SEAUser = {
+            alias: username,
+            pub: userIs.pub as string,
+          };
+
+          resolve(userData);
+          return;
+        }
+
+        // If ack.ok is 1, authentication succeeded but user.is might not be set yet
+        // Wait for user state using proper async polling
+        if (ack.ok === 1) {
+          this.waitForUserState()
+            .then(({ pub }) => {
+              const userData: SEAUser = {
+                alias: username,
+                pub: pub,
+              };
+              resolve(userData);
+            })
+            .catch((error) => {
+              reject({
+                code: GunErrorCode.SYNC_ERROR,
+                message: 'Authentication succeeded but user state not set',
+                details: error,
+              } as GunError);
+            });
+          return;
+        }
+
+        // If ack.ok is 0, check once more with polling
+        // This handles the edge case where GunDB returns ok: 0 but auth actually works
+        // (which happens on session recall after page refresh)
+        if (ack.ok === 0) {
+          this.waitForUserState()
+            .then(({ pub }) => {
+              // Authentication actually succeeded despite ok: 0
+              const userData: SEAUser = {
+                alias: username,
+                pub: pub,
+              };
+              resolve(userData);
+            })
+            .catch(() => {
+              // Authentication really failed - wrong password
+              reject({
+                code: GunErrorCode.SYNC_ERROR,
+                message: 'Invalid username or password',
+                details: 'Authentication failed',
+              } as GunError);
+            });
+          return;
+        }
+
+        // Unexpected response - fail with user-friendly message
+        reject({
+          code: GunErrorCode.SYNC_ERROR,
+          message: 'Invalid username or password',
+          details: ack,
+        } as GunError);
+      });
+    });
+  }
+
+  /**
+   * Wait for user state to be set (for authentication)
+   * @returns Promise resolving to user pub key
+   */
+  private waitForUserState(): Promise<{ pub: string }> {
+    return new Promise((resolve, reject) => {
+      if (!this.gun) {
+        reject(new Error('GunDB not initialized'));
+        return;
+      }
+
+      const user = this.gun.user();
+      const maxAttempts = 20;
+      let attempts = 0;
+
+      const checkUserState = () => {
+        attempts++;
+        const userIs = user.is as any;
+
+        if (userIs && userIs.pub) {
+          resolve({ pub: userIs.pub as string });
+          return;
+        }
+
+        if (attempts >= maxAttempts) {
+          reject(new Error('User state not set after authentication'));
+          return;
+        }
+
+        setTimeout(checkUserState, 100);
+      };
+
+      checkUserState();
+    });
   }
 }
 

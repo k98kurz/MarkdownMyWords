@@ -1,17 +1,15 @@
 /**
  * Encryption Service
  *
- * Service layer for encryption operations using GunDB's SEA (Security, Encryption, Authorization)
- * as the primary method, with manual AES-256-GCM as a fallback for document-specific keys.
+ * Service layer for document encryption and key sharing.
  *
- * IMPORTANT SECURITY FIXES (TICKET-004):
- * - Fixed encryptWithSEA() to use recipient's ephemeral key (epub) instead of persistent key (pub)
- * - Fixed decryptWithSEA() to use sender's ephemeral key (epub) for ECDH key derivation
- * - Fixed encryptWithSEA() to use user's persistent ephemeral key pair from user.is, NOT generate new pair
- * - Fixed decryptWithSEA() to use user's persistent ephemeral key pair from user.is, NOT generate new pair
- * - Removed insecure self-encryption using public key as passphrase (now throws error)
- * - Updated return types: encryptWithSEA now returns { encrypted, senderEpub }
- * - Updated parameters: encryptWithSEA(recipientEpub), decryptWithSEA(senderEpub)
+ * - Document encryption: Manual AES-256-GCM with document-specific symmetric keys
+ * - Key sharing: SEA's ECDH for encrypting/decrypting document keys between users
+ * - Key serialization: Export/import keys for URL-based sharing
+ *
+ * NOTE: User authentication (createSEAUser, authenticateUser) is handled by gunService.
+ * NOTE: Documents are NOT encrypted with SEA - they use manual AES-256-GCM.
+ *       Only document keys are shared via SEA's ECDH.
  */
 
 import Gun from 'gun';
@@ -43,16 +41,6 @@ export interface EncryptionError {
 }
 
 /**
- * User with SEA authentication
- */
-export interface SEAUser {
-  alias: string;
-  pub: string; // Public key
-  epub?: string; // Ephemeral public key
-  priv?: string; // Private key (only available after auth)
-}
-
-/**
  * Encryption Service Class
  *
  * Provides encryption/decryption using:
@@ -63,7 +51,6 @@ class EncryptionService {
   private sea: SEA | null = null;
   private gun: IGunInstance | null = null;
   private isInitialized = false;
-  private currentUser: SEAUser | null = null;
 
   /**
    * Initialize SEA with GunDB instance
@@ -114,403 +101,13 @@ class EncryptionService {
   }
 
   /**
-   * Wait for user state to be available after authentication
-   * Polls user.is with exponential backoff until pub key is available or timeout
-   * @param timeoutMs - Maximum time to wait in milliseconds (default: 2000)
-   * @returns Promise resolving to user pub key
+   * NOTE: User creation and authentication have been moved to gunService.
+   * Use gunService.createSEAUser() and gunService.authenticateSEAUser() instead.
+   *
+   * NOTE: encryptWithSEA() and decryptWithSEA() have been removed.
+   * Documents are encrypted with manual AES-256-GCM, not with SEA.
+   * Only document keys are shared via SEA's ECDH (see encryptDocumentKeyWithSEA).
    */
-  private async waitForUserState(timeoutMs = 2000): Promise<{ pub: string }> {
-    if (!this.gun) {
-      throw {
-        code: 'SEA_NOT_INITIALIZED',
-        message: 'GunDB not initialized',
-      } as EncryptionError
-    }
-
-    const startTime = Date.now()
-    const pollInterval = 50 // Poll every 50ms
-
-    while (Date.now() - startTime < timeoutMs) {
-      const user = this.gun.user()
-      const userIs = user.is as any
-      if (userIs?.pub) {
-        return { pub: userIs.pub as string }
-      }
-      await new Promise(resolve => setTimeout(resolve, pollInterval))
-    }
-
-    throw {
-      code: 'USER_STATE_TIMEOUT',
-      message: 'Timeout waiting for user state to be set',
-    } as EncryptionError
-  }
-
-  /**
-   * Create user with SEA
-   * @param username - Username/alias
-   * @param password - User password
-   * @returns Promise resolving to SEAUser
-   */
-  async createUser(username: string, password: string): Promise<SEAUser> {
-    this.checkInitialized();
-
-    if (!this.gun || !this.sea) {
-      throw {
-        code: 'SEA_NOT_INITIALIZED',
-        message: 'SEA not initialized',
-      } as EncryptionError;
-    }
-
-    const gun = this.gun;
-
-    return new Promise<SEAUser>((resolve, reject) => {
-      // Create user with SEA
-      gun.user().create(username, password, (ack: any) => {
-        if (ack.err) {
-          reject({
-            code: 'USER_CREATION_FAILED',
-            message: 'Failed to create user',
-            details: ack.err,
-          } as EncryptionError);
-          return;
-        }
-
-        // In GunDB, ack.ok === 0 might mean user already exists
-        // But if there's a pub key, the user was created or exists
-        // Check if user is authenticated by checking gun.user().is
-        const user = gun.user();
-        const userIs = user.is as any;
-
-        // Get public key from user.is or ack.pub
-        const pub = (userIs?.pub as string) || ack.pub || '';
-
-        // If we have a pub key, user was created or exists
-        // If ack.ok is 0 and no pub, it's a real failure
-        if (!pub) {
-          reject({
-            code: 'USER_CREATION_FAILED',
-            message:
-              ack.ok === 0
-                ? 'User creation failed or user already exists'
-                : 'User created but no public key found',
-            details: ack,
-          } as EncryptionError);
-          return;
-        }
-
-        // If user.is is not set but we have a pub, authenticate the user
-        // This handles the case where user was created but not automatically authenticated
-        if (!userIs && pub) {
-          // User was created but not authenticated, authenticate now
-          gun.user().auth(username, password, (authAck: any) => {
-            if (authAck.err) {
-              reject({
-                code: 'USER_CREATION_FAILED',
-                message: 'User created but authentication failed',
-                details: authAck.err,
-              } as EncryptionError);
-              return;
-            }
-
-            // Get authenticated user data
-            const authUser = gun.user();
-            const authUserIs = authUser.is as any;
-            const userData: SEAUser = {
-              alias: username,
-              pub: (authUserIs?.pub as string) || pub,
-            };
-
-            this.currentUser = userData;
-            resolve(userData);
-          });
-          return;
-        }
-
-        // User is authenticated, return user data
-        const userData: SEAUser = {
-          alias: username,
-          pub: pub,
-        };
-
-        this.currentUser = userData;
-        resolve(userData);
-      });
-    });
-  }
-
-  /**
-   * Authenticate user with SEA
-   * @param username - Username/alias
-   * @param password - User password
-   * @returns Promise resolving to SEAUser
-   */
-  async authenticateUser(username: string, password: string): Promise<SEAUser> {
-    this.checkInitialized();
-
-    return new Promise<SEAUser>((resolve, reject) => {
-      if (!this.gun || !this.sea) {
-        reject({
-          code: 'SEA_NOT_INITIALIZED',
-          message: 'SEA not initialized',
-        } as EncryptionError);
-        return;
-      }
-
-      // Authenticate user with SEA
-      this.gun.user().auth(username, password, (ack: any) => {
-        // Check for explicit error from GunDB
-        if (ack.err) {
-          reject({
-            code: 'AUTHENTICATION_FAILED',
-            message: 'Invalid username or password',
-            details: ack.err,
-          } as EncryptionError);
-          return;
-        }
-
-        // Check if user is already authenticated
-        const user = this.gun!.user();
-        const userIs = user.is as any;
-
-        // If user.is is set with a pub key, authentication succeeded
-        if (userIs && userIs.pub) {
-          const userData: SEAUser = {
-            alias: username,
-            pub: userIs.pub as string,
-          };
-
-          this.currentUser = userData;
-          resolve(userData);
-          return;
-        }
-
-        // If ack.ok is 1, authentication succeeded but user.is might not be set yet
-        // Wait for user state using proper async polling
-        if (ack.ok === 1) {
-          this.waitForUserState()
-            .then(({ pub }) => {
-              const userData: SEAUser = {
-                alias: username,
-                pub: pub,
-              }
-              this.currentUser = userData
-              resolve(userData)
-            })
-            .catch(error => {
-              reject({
-                code: 'AUTHENTICATION_FAILED',
-                message: 'Authentication succeeded but user state not set',
-                details: error,
-              } as EncryptionError)
-            })
-          return
-        }
-
-        // If ack.ok is 0, check once more with polling
-        // This handles the edge case where GunDB returns ok: 0 but auth actually works
-        // (which happens on session recall after page refresh)
-        if (ack.ok === 0) {
-          this.waitForUserState()
-            .then(({ pub }) => {
-              // Authentication actually succeeded despite ok: 0
-              const userData: SEAUser = {
-                alias: username,
-                pub: pub,
-              }
-              this.currentUser = userData
-              resolve(userData)
-            })
-            .catch(() => {
-              // Authentication really failed - wrong password
-              reject({
-                code: 'AUTHENTICATION_FAILED',
-                message: 'Invalid username or password',
-                details: 'Authentication failed',
-              } as EncryptionError)
-            })
-          return
-        }
-
-        // Unexpected response - fail with user-friendly message
-        reject({
-          code: 'AUTHENTICATION_FAILED',
-          message: 'Invalid username or password',
-          details: ack,
-        } as EncryptionError);
-      });
-    });
-  }
-
-  /**
-   * Get current authenticated user
-   * @returns Current SEAUser or null if not authenticated
-   */
-  getCurrentUser(): SEAUser | null {
-    return this.currentUser;
-  }
-
-  /**
-   * Encrypt data with SEA
-   * @param data - Data to encrypt (any serializable type)
-   * @param recipientEpub - Recipient's ephemeral public key for ECDH key exchange
-   * @returns Promise resolving to encrypted string and sender's ephemeral public key
-   */
-  async encryptWithSEA(
-    data: any,
-    recipientEpub?: string
-  ): Promise<{ encrypted: string; senderEpub: string }> {
-    this.checkInitialized()
-
-    if (!this.sea) {
-      throw {
-        code: 'SEA_NOT_INITIALIZED',
-        message: 'SEA not initialized',
-      } as EncryptionError;
-    }
-
-    try {
-      if (recipientEpub) {
-        // Encrypt for specific recipient using ECDH
-        // SECURITY: Use sender's persistent ephemeral key pair from user.is, NOT generate new ephemeral pair
-        // SEA ECDH pattern: SEA.secret({ epub: recipientEpub }, senderPair)
-
-        if (!this.gun) {
-          throw {
-            code: 'SEA_NOT_INITIALIZED',
-            message: 'GunDB not initialized',
-          } as EncryptionError
-        }
-
-        const user = this.gun.user()
-        const userIs = user.is as any
-
-        if (!userIs || !userIs.epriv || !userIs.epub) {
-          throw {
-            code: 'NO_USER_PAIR',
-            message:
-              'No authenticated user with ephemeral key pair. User must be authenticated with SEA.',
-          } as EncryptionError
-        }
-
-        const senderPair = {
-          epriv: userIs.epriv as string,
-          epub: userIs.epub as string,
-        }
-
-        // Derive shared secret using ECDH
-        const sharedSecret = await this.sea.secret({ epub: recipientEpub }, senderPair)
-
-        if (!sharedSecret) {
-          throw new Error('Failed to derive shared secret')
-        }
-
-        // Encrypt using the shared secret as passphrase
-        const encrypted = await this.sea.encrypt(data, sharedSecret)
-
-        // Return encrypted data + sender's ephemeral public key (so recipient can decrypt)
-        return { encrypted, senderEpub: senderPair.epub }
-      } else {
-        // Encrypt for current user (self-encryption)
-        // SECURITY: Self-encryption without recipient is not supported via manual encryption.
-        // For self-encryption, use GunDB's automatic encryption via gun.user().get().put()
-        // which handles encryption automatically with the user's private key.
-        // This manual encryption method should only be used for sharing with recipients.
-
-        throw {
-          code: 'SELF_ENCRYPTION_NOT_SUPPORTED',
-          message:
-            "Self-encryption without recipient is not supported. Use GunDB's automatic encryption via gun.user().get().put() for user's own data, which handles encryption automatically with the user's private key.",
-        } as EncryptionError
-      }
-    } catch (error) {
-      throw {
-        code: 'ENCRYPTION_FAILED',
-        message: 'Failed to encrypt data with SEA',
-        details: error,
-      } as EncryptionError
-    }
-  }
-
-  /**
-   * Decrypt data with SEA
-   * @param encrypted - Encrypted string
-   * @param senderEpub - Sender's ephemeral public key (from encryptWithSEA)
-   * @returns Promise resolving to decrypted data
-   */
-  async decryptWithSEA(encrypted: string, senderEpub?: string): Promise<any> {
-    this.checkInitialized()
-
-    if (!this.sea) {
-      throw {
-        code: 'SEA_NOT_INITIALIZED',
-        message: 'SEA not initialized',
-      } as EncryptionError
-    }
-
-    try {
-      if (senderEpub) {
-        // Decrypt data encrypted with ECDH
-        // SECURITY: Use recipient's persistent ephemeral key pair from user.is, NOT generate new ephemeral pair
-        // SEA ECDH pattern: SEA.secret({ epub: senderEpub }, recipientPair)
-
-        if (!this.gun) {
-          throw {
-            code: 'SEA_NOT_INITIALIZED',
-            message: 'GunDB not initialized',
-          } as EncryptionError
-        }
-
-        const user = this.gun.user()
-        const userIs = user.is as any
-
-        if (!userIs || !userIs.epriv || !userIs.epub) {
-          throw {
-            code: 'NO_USER_PAIR',
-            message:
-              'No authenticated user with ephemeral key pair. User must be authenticated with SEA.',
-          } as EncryptionError
-        }
-
-        const recipientPair = {
-          epriv: userIs.epriv as string,
-          epub: userIs.epub as string,
-        }
-
-        // Derive shared secret using ECDH
-        const sharedSecret = await this.sea.secret({ epub: senderEpub }, recipientPair)
-
-        if (!sharedSecret) {
-          throw new Error('Failed to derive shared secret')
-        }
-
-        // Decrypt using the shared secret as passphrase
-        const decrypted = await this.sea.decrypt(encrypted, sharedSecret)
-        return decrypted
-      } else {
-        // Decrypt data encrypted for current user (self-encryption)
-        // SECURITY: Self-decryption without sender info is not supported.
-        // Use GunDB's automatic decryption when reading from gun.user().get().
-        if (!this.currentUser) {
-          throw {
-            code: 'NO_USER',
-            message: 'No authenticated user. Cannot decrypt without sender info or current user.',
-          } as EncryptionError
-        }
-
-        throw {
-          code: 'SELF_DECRYPTION_NOT_SUPPORTED',
-          message:
-            "Self-decryption without sender info is not supported. Use GunDB's automatic decryption when reading from gun.user().get(), which handles decryption automatically.",
-        } as EncryptionError
-      }
-    } catch (error) {
-      throw {
-        code: 'DECRYPTION_FAILED',
-        message: 'Failed to decrypt data with SEA',
-        details: error,
-      } as EncryptionError;
-    }
-  }
 
   /**
    * Convert ArrayBuffer to base64 string (handles large buffers)
@@ -842,23 +439,30 @@ class EncryptionService {
   }
 
   /**
-   * Get user's public key
-   * @param username - Username (optional, defaults to current user)
+   * Get current user's public key from GunDB
    * @returns Promise resolving to public key string
    */
-  async getUserPublicKey(username?: string): Promise<string> {
+  async getCurrentUserPublicKey(): Promise<string> {
     this.checkInitialized();
 
-    if (username && username === this.currentUser?.alias) {
-      return this.currentUser.pub;
+    if (!this.gun) {
+      throw {
+        code: 'SEA_NOT_INITIALIZED',
+        message: 'GunDB not initialized',
+      } as EncryptionError;
     }
 
-    // For other users, we'd need to look them up in GunDB
-    // This is a simplified version - in practice, you'd query GunDB for the user's pub
-    throw {
-      code: 'PUBLIC_KEY_NOT_FOUND',
-      message: 'Public key lookup not implemented for other users yet',
-    } as EncryptionError;
+    const user = this.gun.user();
+    const userIs = user.is as any;
+
+    if (!userIs || !userIs.pub) {
+      throw {
+        code: 'NO_USER',
+        message: 'No authenticated user',
+      } as EncryptionError;
+    }
+
+    return userIs.pub as string;
   }
 
   /**
@@ -997,14 +601,10 @@ class EncryptionService {
   async retrieveDocumentKey(docId: string): Promise<CryptoKey> {
     this.checkInitialized();
 
-    if (!this.currentUser) {
-      throw {
-        code: 'NO_USER',
-        message: 'No authenticated user',
-      } as EncryptionError;
-    }
-
     try {
+      // Get current user's public key
+      const userPub = await this.getCurrentUserPublicKey();
+
       // Get document
       const document = await gunService.getDocument(docId);
       if (!document) {
@@ -1015,7 +615,7 @@ class EncryptionService {
       }
 
       // Get encrypted key for current user
-      const encryptedKeyData = document.sharing.documentKey?.[this.currentUser.pub];
+      const encryptedKeyData = document.sharing.documentKey?.[userPub];
       if (!encryptedKeyData) {
         throw {
           code: 'KEY_NOT_FOUND',
