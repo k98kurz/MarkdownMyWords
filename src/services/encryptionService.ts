@@ -44,8 +44,9 @@ export interface EncryptionError {
  * Encryption Service Class
  *
  * Provides encryption/decryption using:
- * - Primary: GunDB SEA for automatic encryption
- * - Fallback: Manual AES-256-GCM for document-specific keys
+ * - Document encryption: Manual AES-256-GCM with per-document symmetric keys
+ * - Key sharing: SEA's ECDH for encrypting/decrypting document keys between users
+ * - Other: use GunDB/SEA automatic encryption for user data storage
  */
 class EncryptionService {
   private sea: SEA | null = null;
