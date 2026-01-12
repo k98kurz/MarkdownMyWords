@@ -304,6 +304,44 @@ class EncryptionService {
   }
 
   /**
+   * Retrieve a user's ephemeral public key from GunDB
+   * @param userId - User ID (public key)
+   * @returns Promise resolving to ephemeral public key or null if not found
+   */
+  async getUserEphemeralPublicKey(userId: string): Promise<string | null> {
+    this.checkInitialized();
+
+    if (!this.gun) {
+      throw {
+        code: 'SEA_NOT_INITIALIZED',
+        message: 'GunDB not initialized',
+      } as EncryptionError;
+    }
+
+    return new Promise<string | null>((resolve) => {
+      let resolved = false;
+
+      const timeout = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          resolve(null);
+        }
+      }, 200);
+
+      // Get user's ephemeral public key from app namespace path
+      // Path: markdownmywords~user~{userId}/ephemeralPub (stored as property of user node)
+      const userNode = this.gun!.get(`markdownmywords~user~${userId}`);
+      userNode.get('ephemeralPub').once((value: any) => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timeout);
+          resolve(value || null);
+        }
+      });
+    });
+  }
+
+  /**
    * Encrypt document key with SEA's ECDH for a specific recipient
    * @param docKey - Document CryptoKey
    * @param recipientEpub - Recipient's ephemeral public key for ECDHE key exchange
@@ -334,19 +372,25 @@ class EncryptionService {
       }
 
       const user = this.gun.user()
-      const userIs = user.is as any
+      const userIs = user.is
 
-      if (!userIs || !userIs.epriv || !userIs.epub) {
+      if (!userIs) {
         throw {
           code: 'NO_USER_PAIR',
           message:
-            'No authenticated user with ephemeral key pair. User must be authenticated with SEA.',
+            'No authenticated user. User must be authenticated with SEA.',
         } as EncryptionError
       }
 
-      const currentUserEphemeralPair = {
-        epriv: userIs.epriv as string,
-        epub: userIs.epub as string,
+      // Retrieve stored ephemeral keys (generated once per user)
+      const currentUserEphemeralPair = await this.getStoredEphemeralKeys(user);
+
+      if (!currentUserEphemeralPair || !currentUserEphemeralPair.epriv || !currentUserEphemeralPair.epub) {
+        throw {
+          code: 'NO_USER_PAIR',
+          message:
+            'Ephemeral keys not available. User must be authenticated and ephemeral keys must be generated.',
+        } as EncryptionError
       }
 
       // Derive shared secret using ECDH
@@ -390,9 +434,7 @@ class EncryptionService {
     }
 
     try {
-      // Get current user's persistent key pair for ECDH
-      // SECURITY: Must use user's persistent key pair from user.is, not generate new ephemeral pair
-      // The sender uses an ephemeral pair, but recipient must use their own persistent pair
+      // Get current user - must be authenticated
       const user = this.gun.user()
       if (!user.is) {
         throw {
@@ -401,18 +443,15 @@ class EncryptionService {
         } as EncryptionError
       }
 
-      const userIs = user.is as any
-      if (!userIs.epriv || !userIs.epub) {
+      // Retrieve stored ephemeral keys (generated once per user)
+      const userPair = await this.getStoredEphemeralKeys(user);
+
+      if (!userPair || !userPair.epriv || !userPair.epub) {
         throw {
           code: 'NO_KEY_PAIR',
-          message: 'User persistent key pair not available. User must be authenticated with SEA.',
+          message:
+            'Ephemeral keys not available. User must be authenticated and ephemeral keys must be generated.',
         } as EncryptionError
-      }
-
-      // Use user's persistent key pair for ECDH
-      const userPair = {
-        epriv: userIs.epriv as string,
-        epub: userIs.epub as string,
       }
 
       // Derive shared secret using ECDH
@@ -440,6 +479,46 @@ class EncryptionService {
   }
 
   /**
+   * Retrieve stored ephemeral keys for the authenticated user
+   * These keys are generated once per user and stored in GunDB
+   */
+  private async getStoredEphemeralKeys(user: any): Promise<{ epriv: string; epub: string } | null> {
+    const userPub = (user.is)?.pub;
+    if (!userPub || !this.gun) {
+      return null;
+    }
+
+    // Get epub from app namespace path (publicly accessible)
+    const epub = await new Promise<string | null>((resolve) => {
+      const timeout = setTimeout(() => resolve(null), 200);
+      const userNode = this.gun!.get(`markdownmywords~user~${userPub}`);
+      userNode.get('ephemeralPub').once((value: any) => {
+        clearTimeout(timeout);
+        resolve(value || null);
+      });
+    });
+
+    if (!epub) {
+      return null;
+    }
+
+    // Get epriv from user's encrypted storage (stored via user.get())
+    const epriv = await new Promise<string | null>((resolve) => {
+      const timeout = setTimeout(() => resolve(null), 200);
+      user.get('ephemeralKeys').get('epriv').once((value: any) => {
+        clearTimeout(timeout);
+        resolve(value || null);
+      });
+    });
+
+    if (!epriv) {
+      return null;
+    }
+
+    return { epriv, epub };
+  }
+
+  /**
    * Get current user's public key from GunDB
    * @returns Promise resolving to public key string
    */
@@ -454,7 +533,7 @@ class EncryptionService {
     }
 
     const user = this.gun.user();
-    const userIs = user.is as any;
+    const userIs = user.is;
 
     if (!userIs || !userIs.pub) {
       throw {
@@ -483,7 +562,7 @@ class EncryptionService {
 
     try {
       const user = this.gun.user();
-      const userIs = user.is as any; // GunDB user.is type is complex
+      const userIs = user.is; // GunDB user.is type is complex
       if (!userIs || !userIs.pub || !userIs.priv) {
         throw {
           code: 'NO_USER',

@@ -180,6 +180,31 @@ class GunService {
   }
 
   /**
+   * Helper to read a value with one retry (500ms delay)
+   * Returns the value or null if not found after retry
+   */
+  private readWithRetry<T>(
+    node: any,
+    callback: (value: T | null) => void,
+    retryDelay = 500
+  ): void {
+    let retried = false;
+    const readOnce = () => {
+      node.once((value: T | null) => {
+        if (value !== null && value !== undefined) {
+          callback(value);
+        } else if (!retried) {
+          retried = true;
+          setTimeout(readOnce, retryDelay);
+        } else {
+          callback(null);
+        }
+      });
+    };
+    readOnce();
+  }
+
+  /**
    * Get user by ID
    * @param userId - User ID
    * @returns Promise resolving to User or null if not found
@@ -187,47 +212,90 @@ class GunService {
   async getUser(userId: string): Promise<User | null> {
     try {
       const gun = this.getGun();
+      const userNode = gun.get(this.getNodePath('user', userId));
 
-      // If offline, still try to get from local storage
-      const isOffline = this.isOffline();
+      return new Promise<User | null>((resolve) => {
+        // First check if user exists (with retry)
+        this.readWithRetry<string>(
+          userNode.get('profile').get('username'),
+          (username) => {
+            if (!username) {
+              resolve(null);
+              return;
+            }
 
-      return new Promise<User | null>((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          if (isOffline) {
-            // In offline mode, return null but don't reject
-            // Data might be in local storage but not synced yet
-            resolve(null);
-            return;
+            // User exists, read all fields
+            const user: Partial<User> = { profile: { username: '' } };
+            user.profile!.username = username;
+            let pendingReads = 4; // publicKey, encryptedProfile, theme, apiKey (username already read)
+
+          const checkDone = () => {
+            pendingReads--;
+            if (pendingReads <= 0) {
+              const reconstructed: User = {
+                profile: user.profile || { username: '' },
+                settings: user.settings,
+                documents: user.documents,
+              };
+              resolve(reconstructed);
+            }
+          };
+
+          // Read profile.publicKey
+          this.readWithRetry<string>(
+            userNode.get('profile').get('publicKey'),
+            (publicKey) => {
+              if (publicKey) {
+                if (!user.profile) user.profile = { username: '' };
+                user.profile.publicKey = publicKey;
+              }
+              checkDone();
+            }
+          );
+
+          // Read profile.encryptedProfile (optional)
+          this.readWithRetry<string>(
+            userNode.get('profile').get('encryptedProfile'),
+            (encryptedProfile) => {
+              if (encryptedProfile) {
+                if (!user.profile) user.profile = { username: '' };
+                user.profile.encryptedProfile = encryptedProfile;
+              }
+              checkDone();
+            }
+          );
+
+          // Read settings.theme
+          this.readWithRetry<string>(
+            userNode.get('settings').get('theme'),
+            (theme) => {
+              if (theme) {
+                if (!user.settings) user.settings = { theme: 'light' };
+                user.settings.theme = theme as 'light' | 'dark';
+              }
+              checkDone();
+            }
+          );
+
+          // Read settings.openRouterApiKey (optional)
+          this.readWithRetry<string>(
+            userNode.get('settings').get('openRouterApiKey'),
+            (apiKey) => {
+              if (apiKey) {
+                if (!user.settings) user.settings = { theme: 'light' };
+                user.settings.openRouterApiKey = apiKey;
+              }
+              checkDone();
+            }
+          );
           }
-          reject({
-            code: GunErrorCode.SYNC_ERROR,
-            message: 'Timeout waiting for user data',
-          } as GunError);
-        }, isOffline ? 5000 : 10000); // Shorter timeout when offline
-
-        gun.get(this.getNodePath('user', userId)).once((data: User | null) => {
-          clearTimeout(timeout);
-
-          if (!data || Object.keys(data).length === 0) {
-            resolve(null);
-            return;
-          }
-
-          // Validate user structure
-          if (!data.profile) {
-            resolve(null);
-            return;
-          }
-
-          resolve(data);
-        });
+        );
       });
     } catch (error) {
       if ((error as GunError).code) {
         throw error;
       }
 
-      // If offline, return null instead of throwing
       if (this.isOffline()) {
         return null;
       }
@@ -365,45 +433,129 @@ class GunService {
   async getDocument(docId: string): Promise<Document | null> {
     try {
       const gun = this.getGun();
-      const isOffline = this.isOffline();
+      const docNode = gun.get(this.getNodePath('doc', docId));
 
-      return new Promise<Document | null>((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          if (isOffline) {
-            // In offline mode, return null but don't reject
-            // Data might be in local storage but not synced yet
-            resolve(null);
-            return;
+      return new Promise<Document | null>((resolve) => {
+        // First check if document exists (with retry)
+        this.readWithRetry<string>(
+          docNode.get('metadata').get('title'),
+          (title) => {
+            if (!title) {
+              resolve(null);
+              return;
+            }
+
+            // Document exists, read all fields
+            const doc: Partial<Document> = {
+              metadata: { title: '', createdAt: 0, updatedAt: 0, lastModifiedBy: '' },
+            };
+            doc.metadata!.title = title;
+            let pendingReads = 7; // createdAt, updatedAt, lastModifiedBy, encryptedContent, contentIV, owner, isPublic (title already read)
+
+          const checkDone = () => {
+            pendingReads--;
+            if (pendingReads <= 0) {
+              if (!doc.sharing) doc.sharing = { owner: '', isPublic: false, readAccess: [], writeAccess: [] };
+              const reconstructed: Document = {
+                metadata: doc.metadata!,
+                encryptedContent: doc.encryptedContent || '',
+                contentIV: doc.contentIV || '',
+                sharing: doc.sharing,
+                branches: doc.branches,
+              };
+              resolve(reconstructed);
+            }
+          };
+
+          // Read metadata.createdAt
+          this.readWithRetry<number>(
+            docNode.get('metadata').get('createdAt'),
+            (createdAt) => {
+              if (createdAt !== null && createdAt !== undefined) {
+                if (!doc.metadata) doc.metadata = { title: '', createdAt: 0, updatedAt: 0, lastModifiedBy: '' };
+                doc.metadata.createdAt = createdAt;
+              }
+              checkDone();
+            }
+          );
+
+          // Read metadata.updatedAt
+          this.readWithRetry<number>(
+            docNode.get('metadata').get('updatedAt'),
+            (updatedAt) => {
+              if (updatedAt !== null && updatedAt !== undefined) {
+                if (!doc.metadata) doc.metadata = { title: '', createdAt: 0, updatedAt: 0, lastModifiedBy: '' };
+                doc.metadata.updatedAt = updatedAt;
+              }
+              checkDone();
+            }
+          );
+
+          // Read metadata.lastModifiedBy
+          this.readWithRetry<string>(
+            docNode.get('metadata').get('lastModifiedBy'),
+            (lastModifiedBy) => {
+              if (lastModifiedBy) {
+                if (!doc.metadata) doc.metadata = { title: '', createdAt: 0, updatedAt: 0, lastModifiedBy: '' };
+                doc.metadata.lastModifiedBy = lastModifiedBy;
+              }
+              checkDone();
+            }
+          );
+
+          // Read encryptedContent
+          this.readWithRetry<string>(
+            docNode.get('encryptedContent'),
+            (content) => {
+              if (content) {
+                doc.encryptedContent = content;
+              }
+              checkDone();
+            }
+          );
+
+          // Read contentIV
+          this.readWithRetry<string>(
+            docNode.get('contentIV'),
+            (iv) => {
+              if (iv) {
+                doc.contentIV = iv;
+              }
+              checkDone();
+            }
+          );
+
+          // Read sharing.owner
+          this.readWithRetry<string>(
+            docNode.get('sharing').get('owner'),
+            (owner) => {
+              if (owner) {
+                if (!doc.sharing) doc.sharing = { owner: '', isPublic: false, readAccess: [], writeAccess: [] };
+                doc.sharing.owner = owner;
+              }
+              checkDone();
+            }
+          );
+
+          // Read sharing.isPublic
+          this.readWithRetry<boolean>(
+            docNode.get('sharing').get('isPublic'),
+            (isPublic) => {
+              if (isPublic !== null && isPublic !== undefined) {
+                if (!doc.sharing) doc.sharing = { owner: '', isPublic: false, readAccess: [], writeAccess: [] };
+                doc.sharing.isPublic = isPublic;
+              }
+              checkDone();
+            }
+          );
           }
-          reject({
-            code: GunErrorCode.SYNC_ERROR,
-            message: 'Timeout waiting for document data',
-          } as GunError);
-        }, isOffline ? 5000 : 10000);
-
-        gun.get(this.getNodePath('doc', docId)).once((data: Document | null) => {
-          clearTimeout(timeout);
-
-          if (!data || Object.keys(data).length === 0) {
-            resolve(null);
-            return;
-          }
-
-          // Validate document structure
-          if (!data.metadata || !data.sharing) {
-            resolve(null);
-            return;
-          }
-
-          resolve(data);
-        });
+        );
       });
     } catch (error) {
       if ((error as GunError).code) {
         throw error;
       }
 
-      // If offline, return null instead of throwing
       if (this.isOffline()) {
         return null;
       }
@@ -440,26 +592,126 @@ class GunService {
         }, isOffline ? 5000 : 10000);
 
         const docNode = gun.get(this.getNodePath('doc', docId));
-        docNode.put(document, (ack: any) => {
-          clearTimeout(timeout);
 
-          if (ack.err) {
-            // In offline mode, GunDB may still store locally
+        // GunDB works better with flat puts on each nested path
+        // rather than one big nested object put (especially with arrays)
+        let pendingPuts = 0;
+        let hasError = false;
+        let errorDetails: any = null;
+
+        const checkDone = () => {
+          pendingPuts--;
+          if (pendingPuts <= 0) {
+            clearTimeout(timeout);
+            if (hasError && !isOffline) {
+              reject({
+                code: GunErrorCode.SYNC_ERROR,
+                message: 'Failed to create document',
+                details: errorDetails,
+              } as GunError);
+            } else {
+              resolve();
+            }
+          }
+        };
+
+        const handleAck = (ack: any) => {
+          if (ack.err && !hasError) {
+            hasError = true;
+            errorDetails = ack.err;
             if (isOffline) {
               console.warn('Document creation error (offline mode):', ack.err);
-              resolve(); // Resolve anyway - data may be in local storage
-              return;
             }
-
-            reject({
-              code: GunErrorCode.SYNC_ERROR,
-              message: 'Failed to create document',
-              details: ack.err,
-            } as GunError);
-          } else {
-            resolve();
           }
-        });
+          checkDone();
+        };
+
+        // Store metadata (flat properties)
+        if (document.metadata) {
+          const metadata = document.metadata;
+          if (metadata.title) {
+            pendingPuts++;
+            docNode.get('metadata').get('title').put(metadata.title, handleAck);
+          }
+          if (metadata.createdAt !== undefined) {
+            pendingPuts++;
+            docNode.get('metadata').get('createdAt').put(metadata.createdAt, handleAck);
+          }
+          if (metadata.updatedAt !== undefined) {
+            pendingPuts++;
+            docNode.get('metadata').get('updatedAt').put(metadata.updatedAt, handleAck);
+          }
+          if (metadata.lastModifiedBy) {
+            pendingPuts++;
+            docNode.get('metadata').get('lastModifiedBy').put(metadata.lastModifiedBy, handleAck);
+          }
+          if (metadata.tags && metadata.tags.length > 0) {
+            // Store tags array as individual elements (GunDB doesn't accept arrays directly)
+            metadata.tags.forEach((tag, index) => {
+              pendingPuts++;
+              docNode.get('metadata').get('tags').get(index.toString()).put(tag, handleAck);
+            });
+          }
+        }
+
+        // Store encrypted content
+        if (document.encryptedContent) {
+          pendingPuts++;
+          docNode.get('encryptedContent').put(document.encryptedContent, handleAck);
+        }
+
+        // Store content IV
+        if (document.contentIV) {
+          pendingPuts++;
+          docNode.get('contentIV').put(document.contentIV, handleAck);
+        }
+
+        // Store sharing configuration (flat properties)
+        if (document.sharing) {
+          const sharing = document.sharing;
+          if (sharing.owner) {
+            pendingPuts++;
+            docNode.get('sharing').get('owner').put(sharing.owner, handleAck);
+          }
+          if (sharing.isPublic !== undefined) {
+            pendingPuts++;
+            docNode.get('sharing').get('isPublic').put(sharing.isPublic, handleAck);
+          }
+          // Store arrays as individual elements (GunDB doesn't accept arrays directly)
+          if (sharing.readAccess && sharing.readAccess.length > 0) {
+            sharing.readAccess.forEach((userId, index) => {
+              pendingPuts++;
+              docNode.get('sharing').get('readAccess').get(index.toString()).put(userId, handleAck);
+            });
+          }
+          if (sharing.writeAccess && sharing.writeAccess.length > 0) {
+            sharing.writeAccess.forEach((userId, index) => {
+              pendingPuts++;
+              docNode.get('sharing').get('writeAccess').get(index.toString()).put(userId, handleAck);
+            });
+          }
+          if (sharing.shareToken) {
+            pendingPuts++;
+            docNode.get('sharing').get('shareToken').put(sharing.shareToken, handleAck);
+          }
+          if (sharing.documentKey) {
+            // Store documentKey object
+            pendingPuts++;
+            docNode.get('sharing').get('documentKey').put(sharing.documentKey, handleAck);
+          }
+        }
+
+        // Store branches if provided
+        if (document.branches) {
+          pendingPuts++;
+          docNode.get('branches').put(document.branches, handleAck);
+        }
+
+        // If no properties to store, resolve immediately
+        if (pendingPuts === 0) {
+          clearTimeout(timeout);
+          resolve();
+        }
       });
     } catch (error) {
       if ((error as GunError).code) {
@@ -556,34 +808,84 @@ class GunService {
   async deleteDocument(docId: string): Promise<void> {
     try {
       const gun = this.getGun();
+      const isOffline = this.isOffline();
 
       return new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(() => {
+          if (isOffline) {
+            resolve();
+            return;
+          }
           reject({
             code: GunErrorCode.SYNC_ERROR,
             message: 'Timeout deleting document',
           } as GunError);
-        }, 10000);
+        }, isOffline ? 5000 : 10000);
 
         const docNode = gun.get(this.getNodePath('doc', docId));
-        docNode.put(null, (ack: any) => {
-          clearTimeout(timeout);
 
-          if (ack.err) {
-            reject({
-              code: GunErrorCode.SYNC_ERROR,
-              message: 'Failed to delete document',
-              details: ack.err,
-            } as GunError);
-          } else {
-            resolve();
+        // GunDB doesn't allow putting null to root node
+        // Delete by setting each property to null
+        let pendingDeletes = 0;
+        let hasError = false;
+        let errorDetails: any = null;
+
+        const checkDone = () => {
+          pendingDeletes--;
+          if (pendingDeletes <= 0) {
+            clearTimeout(timeout);
+            if (hasError && !isOffline) {
+              reject({
+                code: GunErrorCode.SYNC_ERROR,
+                message: 'Failed to delete document',
+                details: errorDetails,
+              } as GunError);
+            } else {
+              resolve();
+            }
           }
-        });
+        };
+
+        const handleAck = (ack: any) => {
+          if (ack.err && !hasError) {
+            hasError = true;
+            errorDetails = ack.err;
+            if (isOffline) {
+              console.warn('Document deletion error (offline mode):', ack.err);
+            }
+          }
+          checkDone();
+        };
+
+        // Delete all document properties
+        pendingDeletes++;
+        docNode.get('metadata').put(null, handleAck);
+        pendingDeletes++;
+        docNode.get('encryptedContent').put(null, handleAck);
+        pendingDeletes++;
+        docNode.get('contentIV').put(null, handleAck);
+        pendingDeletes++;
+        docNode.get('sharing').put(null, handleAck);
+        pendingDeletes++;
+        docNode.get('branches').put(null, handleAck);
+
+        // If no properties to delete, resolve immediately
+        if (pendingDeletes === 0) {
+          clearTimeout(timeout);
+          resolve();
+        }
       });
     } catch (error) {
       if ((error as GunError).code) {
         throw error;
       }
+
+      // If offline, still resolve - deletion may be queued locally
+      if (this.isOffline()) {
+        console.warn('Document deletion error (offline mode):', error);
+        return;
+      }
+
       throw {
         code: GunErrorCode.SYNC_ERROR,
         message: 'Failed to delete document',
@@ -854,10 +1156,9 @@ class GunService {
 
         // Check if user is authenticated by checking gun.user().is
         const user = gun.user();
-        const userIs = user.is as any;
 
         // Get public key from user.is or ack.pub
-        const pub = (userIs?.pub as string) || ack.pub || '';
+        const pub = (user.is?.pub as string) || ack.pub || '';
 
         // If we have a pub key, user was created or exists
         // If ack.ok is 0 and no pub, it's a real failure
@@ -875,9 +1176,9 @@ class GunService {
 
         // If user.is is not set but we have a pub, authenticate the user
         // This handles the case where user was created but not automatically authenticated
-        if (!userIs && pub) {
+        if (!user.is && pub) {
           // User was created but not authenticated, authenticate now
-          gun.user().auth(username, password, (authAck: any) => {
+          gun.user().auth(username, password, async (authAck: any) => {
             if (authAck.err) {
               reject({
                 code: GunErrorCode.SYNC_ERROR,
@@ -889,25 +1190,151 @@ class GunService {
 
             // Get authenticated user data
             const authUser = gun.user();
-            const authUserIs = authUser.is as any;
             const userData: SEAUser = {
               alias: username,
-              pub: (authUserIs?.pub as string) || pub,
+              pub: (authUser.is?.pub as string) || pub,
             };
+
+            // Generate and store ephemeral keys for ECDH
+            await this.generateAndStoreEphemeralKeys(gun);
 
             resolve(userData);
           });
           return;
         }
 
-        // User is authenticated, return user data
-        const userData: SEAUser = {
-          alias: username,
-          pub: pub,
-        };
-
-        resolve(userData);
+        // User is authenticated, generate and store ephemeral keys if not already stored
+        this.generateAndStoreEphemeralKeys(gun).then(() => {
+          const userData: SEAUser = {
+            alias: username,
+            pub: pub,
+          };
+          resolve(userData);
+        }).catch((err) => {
+          // Log error but don't fail user creation if ephemeral key generation fails
+          console.warn('Failed to generate ephemeral keys:', err);
+          const userData: SEAUser = {
+            alias: username,
+            pub: pub,
+          };
+          resolve(userData);
+        });
       });
+    });
+  }
+
+  /**
+   * Generate ephemeral key pair and store it for the authenticated user
+   * This is called once per user to enable ECDH key sharing
+   */
+  private generateAndStoreEphemeralKeys(gun: GunInstance, timeout = 500): Promise<void> {
+    const user = gun.user();
+
+    if (!user.is || !user.is.pub) {
+      throw new Error('User must be authenticated to generate ephemeral keys');
+    }
+
+    // Check if ephemeral keys already exist (with timeout)
+    return new Promise<void>((resolve, reject) => {
+      let checked = false;
+      const checkTimeout = setTimeout(() => {
+        if (!checked) {
+          checked = true;
+          // Timeout checking, proceed to generate
+          generateKeys();
+        }
+      }, timeout);
+
+      gun.get('ephemeralKeys').get(`~@${user.is?.alias}~epub`).once((existingEpub: any) => {
+        clearTimeout(checkTimeout);
+        if (checked) return;
+        checked = true;
+
+        if (existingEpub) {
+          // Ephemeral keys already exist, no need to regenerate
+          resolve();
+          return;
+        }
+
+        generateKeys();
+      });
+
+      const generateKeys = () => {
+        // Generate new ephemeral key pair
+        const SEA = (Gun).SEA;
+        if (!SEA) {
+          reject(new Error('SEA not available'));
+          return;
+        }
+
+        SEA.pair().then((pair: { epriv: string; epub: string }) => {
+          if (!pair || !pair.epriv || !pair.epub) {
+            reject(new Error('Failed to generate ephemeral key pair'));
+            return;
+          }
+
+          // Store only epub (public key) - this is what others need for ECDH
+          // Store in app namespace path for public access (not encrypted, publicly accessible)
+          const userId = user.is?.pub as string;
+          if (!userId) {
+            reject(new Error('User pub key not available'));
+            return;
+          }
+
+          let resolved = false;
+          const storeTimeout = setTimeout(() => {
+            if (!resolved) {
+              resolved = true;
+              reject(new Error('Timeout storing ephemeral keys'));
+            }
+          }, timeout);
+
+          // Store epub in app namespace path - publicly accessible without signature issues
+          // Path: {appNamespace}~user~{userId}~ephemeralPub
+          // This is publicly readable by anyone who knows the userId
+          let pendingPuts = 2;
+          let publicPathFailed = false;
+          let privateKeyFailed = false;
+
+          const checkDone = () => {
+            pendingPuts--;
+            if (pendingPuts <= 0 && !resolved) {
+              clearTimeout(storeTimeout);
+              resolved = true;
+              if (publicPathFailed) {
+                reject(new Error('Failed to store ephemeral public key - required for key sharing'));
+              } else if (privateKeyFailed) {
+                reject(new Error('Failed to store ephemeral private key'));
+              } else {
+                resolve();
+              }
+            }
+          };
+
+          // Store epub in app namespace path (publicly accessible)
+          // Store as a property of the user node, not as a root-level node
+          const userNode = gun.get(this.getNodePath('user', userId));
+          userNode.get('ephemeralPub').put(pair.epub, (ack: any) => {
+            if (ack.err) {
+              publicPathFailed = true;
+              console.error('Failed to store ephemeral public key in public path:', ack.err);
+            }
+            checkDone();
+          });
+
+          // Store epriv in user's encrypted storage (required for decryption)
+          // SEA automatically signs/encrypts data stored via user.get()
+          user.get('ephemeralKeys').get('epriv').put(pair.epriv, (ack: any) => {
+            if (ack.err) {
+              privateKeyFailed = true;
+              console.error('Failed to store ephemeral private key:', ack.err);
+            }
+            checkDone();
+          });
+        }).catch((err: any) => {
+          reject(err);
+        });
+      };
     });
   }
 
@@ -940,16 +1367,22 @@ class GunService {
 
         // Check if user is already authenticated
         const user = this.gun!.user();
-        const userIs = user.is as any;
 
         // If user.is is set with a pub key, authentication succeeded
-        if (userIs && userIs.pub) {
+        if (user.is && user.is.pub) {
           const userData: SEAUser = {
             alias: username,
-            pub: userIs.pub as string,
+            pub: user.is.pub as string,
           };
 
-          resolve(userData);
+          // Generate and store ephemeral keys if not already stored
+          this.generateAndStoreEphemeralKeys(this.gun!).then(() => {
+            resolve(userData);
+          }).catch((err) => {
+            // Log error but don't fail authentication if ephemeral key generation fails
+            console.warn('Failed to generate ephemeral keys:', err);
+            resolve(userData);
+          });
           return;
         }
 
@@ -962,7 +1395,14 @@ class GunService {
                 alias: username,
                 pub: pub,
               };
-              resolve(userData);
+              // Generate and store ephemeral keys if not already stored
+              this.generateAndStoreEphemeralKeys(this.gun!).then(() => {
+                resolve(userData);
+              }).catch((err) => {
+                // Log error but don't fail authentication if ephemeral key generation fails
+                console.warn('Failed to generate ephemeral keys:', err);
+                resolve(userData);
+              });
             })
             .catch((error) => {
               reject({
@@ -985,7 +1425,14 @@ class GunService {
                 alias: username,
                 pub: pub,
               };
-              resolve(userData);
+              // Generate and store ephemeral keys if not already stored
+              this.generateAndStoreEphemeralKeys(this.gun!).then(() => {
+                resolve(userData);
+              }).catch((err) => {
+                // Log error but don't fail authentication if ephemeral key generation fails
+                console.warn('Failed to generate ephemeral keys:', err);
+                resolve(userData);
+              });
             })
             .catch(() => {
               // Authentication really failed - wrong password
@@ -1025,10 +1472,9 @@ class GunService {
 
       const checkUserState = () => {
         attempts++;
-        const userIs = user.is as any;
 
-        if (userIs && userIs.pub) {
-          resolve({ pub: userIs.pub as string });
+        if (user.is && user.is.pub) {
+          resolve({ pub: user.is.pub as string });
           return;
         }
 
