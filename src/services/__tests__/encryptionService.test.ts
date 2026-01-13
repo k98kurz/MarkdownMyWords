@@ -88,6 +88,25 @@ async function testKeySharing(): Promise<TestSuiteResult> {
   }
 
   await runner.run(
+    'SEA ECDH sanity check: it should work without persistent key pairs',
+    async () => {
+      const pair1 = await encryptionService.sea?.pair()
+      const pair2 = await encryptionService.sea?.pair()
+      const sharedKey1 = await encryptionService.sea?.secret(pair2!.epub, pair1!)
+      const sharedKey2 = await encryptionService.sea?.secret(pair1!.epub, pair2!)
+      assert(sharedKey1 == sharedKey2,
+        `shared key derivation failed: ${sharedKey1} != ${sharedKey2}`
+      )
+      const plaintext = 'test 1234'
+      const encrypted = await encryptionService.sea?.encrypt(plaintext, sharedKey1!)
+      const decrypted = await encryptionService.sea?.decrypt(encrypted!, sharedKey2!)
+      assert(decrypted == plaintext,
+        `decryption failed: "${decrypted}" != "${plaintext}"`
+      )
+    }
+  )
+
+  await runner.run(
     'should encrypt and decrypt document key with SEA ECDH between two users',
     async () => {
       const timestamp = Date.now()

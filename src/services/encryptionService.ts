@@ -35,7 +35,7 @@ export interface EncryptionError {
  * - Other: use GunDB/SEA automatic encryption for user data storage
  */
 class EncryptionService {
-  private sea: SEA | null = null;
+  public sea: SEA | null = null;
   private gun: IGunInstance | null = null;
   private isInitialized = false;
 
