@@ -4,7 +4,7 @@
  * Tests for GunDB service operations that can be run from the browser console.
  */
 
-import { gunService, GunService } from '../gunService'
+import { gunService, GunService, SEAUser } from '../gunService'
 import type { User, Document, GunError } from '../../types/gun'
 import { GunErrorCode } from '../../types/gun'
 import { TestRunner, printTestSummary, type TestSuiteResult } from '../../utils/testRunner'
@@ -57,7 +57,7 @@ async function testUserOperations(): Promise<TestSuiteResult> {
   const timestamp = Date.now()
   const testUsername = `testuser_${timestamp}`
   const testPassword = 'testpassword123'
-  let seaUser: any = null
+  let seaUser: SEAUser|null = null
 
   await runner.run('Create SEA user', async () => {
     const user = await gunService.createSEAUser(testUsername, testPassword)

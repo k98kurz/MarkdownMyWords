@@ -109,8 +109,8 @@ class GunService {
    * @param id - Node ID(s)
    * @returns Namespaced path
    */
-  private getNodePath(nodeType: string, ...id: string[]): string {
-    return `${this.appNamespace}~${nodeType}~${id.join('~')}`
+  private getNodePath(...parts: string[]): string {
+    return `${this.appNamespace}~${parts.join('~')}`
   }
 
   /**
@@ -1118,7 +1118,7 @@ class GunService {
    * @param password - User password
    * @returns Promise resolving to SEAUser
    */
-  async createSEAUser(username: string, password: string): Promise<SEAUser> {
+  createSEAUser(username: string, password: string): Promise<SEAUser> {
     if (!this.gun) {
       throw {
         code: GunErrorCode.CONNECTION_FAILED,
@@ -1170,7 +1170,7 @@ class GunService {
         // User is authenticated, generate and store ephemeral keys if not already stored
         retryWithBackoff(
           async _ => {
-            await this.generateAndStoreEphemeralKeys(gun)
+            await this.generateAndStoreEphemeralKeys()
           },
           {
             maxAttempts: 4,
@@ -1204,18 +1204,19 @@ class GunService {
    * Generate ephemeral key pair and store it for the authenticated user
    * This is called once per user to enable ECDH key sharing
    */
-  private generateAndStoreEphemeralKeys(gun: GunInstance): Promise<void> {
+  public generateAndStoreEphemeralKeys(): Promise<void> {
+    const gun = this.getGun()
     const user = gun.user()
 
     if (!user.is || !user.is.pub) {
       throw new Error('User must be authenticated to generate ephemeral keys')
     }
+    const userPub = user.is.pub
 
     // Check if ephemeral keys already exist
     return new Promise<void>((resolve, reject) => {
-      gun
-        .get('ephemeralKeys')
-        .get(`~@${user.is?.alias}~epub`)
+      const userNode = gun.get(this.getNodePath('user', userPub))
+      userNode.get('epub')
         .once((existingEpub: any) => {
           if (existingEpub) {
             // Ephemeral keys already exist, no need to regenerate
@@ -1240,14 +1241,7 @@ class GunService {
               return
             }
 
-            const userId = user.is?.pub as string
-            if (!userId) {
-              reject(new Error('User pub key not available'))
-              return
-            }
-
-            const userNode = gun.get(this.getNodePath('user', userId))
-            userNode.get('ephemeralPub').put(pair.epub, (ack: any) => {
+            userNode.get('epub').put(pair.epub, (ack: any) => {
               if (ack.err) {
                 console.error('Failed to store ephemeral public key in public path:', ack.err)
                 reject(new Error('Failed to store ephemeral public key - required for key sharing'))
@@ -1293,9 +1287,9 @@ class GunService {
       }, 200);
 
       // Get user's ephemeral public key from app namespace path
-      // Path: markdownmywords~user~{userPub}/ephemeralPub (stored as property of user node)
-      const userNode = gun!.get(`markdownmywords~user~${userPub}`);
-      userNode.get('ephemeralPub').once((value: any) => {
+      // Path: markdownmywords~user~{userPub}/epub (stored as property of user node)
+      const userNode = gun!.get(this.getNodePath('user', userPub));
+      userNode.get('epub').once((value: any) => {
         if (!resolved) {
           resolved = true;
           clearTimeout(timeout);
@@ -1346,7 +1340,7 @@ class GunService {
           // Generate and store ephemeral keys if not already stored
           retryWithBackoff(
             async _ => {
-              await this.generateAndStoreEphemeralKeys(this.gun!)
+              await this.generateAndStoreEphemeralKeys()
             },
             {
               maxAttempts: 4,
@@ -1377,7 +1371,7 @@ class GunService {
               // Generate and store ephemeral keys if not already stored
               retryWithBackoff(
                 async _ => {
-                  await this.generateAndStoreEphemeralKeys(this.gun!)
+                  await this.generateAndStoreEphemeralKeys()
                 },
                 {
                   maxAttempts: 4,
