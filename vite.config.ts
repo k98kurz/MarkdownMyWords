@@ -23,5 +23,13 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
+    exclude: [
+      'node_modules/**',
+      'dist/**',
+      // Exclude test files that export browser console functions
+      // These contain 'describe/it' for Vitest AND exported functions for browser console
+      'src/services/__tests__/encryptionService.test.ts',
+      'src/services/__tests__/gunService.test.ts',
+    ],
   },
 })
