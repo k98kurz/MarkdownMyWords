@@ -102,37 +102,10 @@ class EncryptionService {
   }
 
   /**
-   * NOTE: User creation and authentication have been moved to gunService.
-   * Use gunService.createSEAUser() and gunService.authenticateSEAUser() instead.
-   *
-   * NOTE: encryptWithSEA() and decryptWithSEA() have been removed.
-   * Documents are encrypted with manual AES-256-GCM, not with SEA.
-   * Only document keys are shared via SEA's ECDH (see encryptDocumentKeyWithSEA).
-   */
-
-  /**
-   * Convert ArrayBuffer to base64 string (handles large buffers)
-   * @param buffer - ArrayBuffer to convert
-   * @returns Base64 string
-   */
-  private arrayBufferToBase64(buffer: ArrayBuffer): string {
-    const bytes = new Uint8Array(buffer);
-    let binary = '';
-    const chunkSize = 8192; // Process in chunks to avoid stack overflow
-
-    for (let i = 0; i < bytes.length; i += chunkSize) {
-      const chunk = bytes.slice(i, i + chunkSize);
-      binary += String.fromCharCode(...chunk);
-    }
-
-    return btoa(binary);
-  }
-
-  /**
    * Generate a random document-specific key (256-bit)
-   * @returns Promise resolving to CryptoKey
+   * @returns Promise resolving to string
    */
-  async generateDocumentKey(): Promise<CryptoKey> {
+  async generateDocumentKey(): Promise<string> {
     try {
       const key = await crypto.subtle.generateKey(
         {
@@ -142,7 +115,7 @@ class EncryptionService {
         true, // extractable
         ['encrypt', 'decrypt']
       );
-      return key;
+      return this.exportKey(key);
     } catch (error) {
       throw {
         code: 'KEY_GENERATION_FAILED',
@@ -173,76 +146,14 @@ class EncryptionService {
   }
 
   /**
-   * Import base64 string to CryptoKey
-   * @param keyBase64 - Base64 encoded key
-   * @returns Promise resolving to CryptoKey
-   */
-  async importKey(keyBase64: string): Promise<CryptoKey> {
-    try {
-      const keyArray = Uint8Array.from(atob(keyBase64), (c) => c.charCodeAt(0));
-      const key = await crypto.subtle.importKey(
-        'raw',
-        keyArray,
-        {
-          name: 'AES-GCM',
-          length: 256,
-        },
-        true, // extractable
-        ['encrypt', 'decrypt']
-      );
-      return key;
-    } catch (error) {
-      throw {
-        code: 'KEY_IMPORT_FAILED',
-        message: 'Failed to import key',
-        details: error,
-      } as EncryptionError;
-    }
-  }
-
-  /**
    * Encrypt document content with manual AES-256-GCM
    * @param content - Plain text content to encrypt
-   * @param key - CryptoKey for encryption
+   * @param key - string for encryption
    * @returns Promise resolving to EncryptedDocument
    */
-  async encryptDocument(content: string, key: CryptoKey): Promise<EncryptedDocument> {
+  async encryptDocument(content: string, key: string): Promise<string|undefined> {
     try {
-      // Generate random IV (96 bits for GCM)
-      const iv = crypto.getRandomValues(new Uint8Array(12));
-
-      // Convert content to ArrayBuffer
-      const encoder = new TextEncoder();
-      const contentBuffer = encoder.encode(content);
-
-      // Encrypt with AES-256-GCM
-      const encrypted = await crypto.subtle.encrypt(
-        {
-          name: 'AES-GCM',
-          iv: iv,
-          tagLength: 128, // 128-bit authentication tag
-        },
-        key,
-        contentBuffer
-      );
-
-      // Extract tag from encrypted data (last 16 bytes)
-      const encryptedArray = new Uint8Array(encrypted);
-      const tagLength = 16;
-      const ciphertextLength = encryptedArray.length - tagLength;
-      const ciphertext = encryptedArray.slice(0, ciphertextLength);
-      const tag = encryptedArray.slice(ciphertextLength);
-
-      // Convert to base64 for storage (handle large arrays by chunking)
-      const encryptedBase64 = this.arrayBufferToBase64(ciphertext.buffer);
-      const ivBase64 = this.arrayBufferToBase64(iv.buffer);
-      const tagBase64 = this.arrayBufferToBase64(tag.buffer);
-
-      return {
-        encryptedContent: encryptedBase64,
-        iv: ivBase64,
-        tag: tagBase64,
-      };
+      return await this.sea?.encrypt(content, key)
     } catch (error) {
       throw {
         code: 'DOCUMENT_ENCRYPTION_FAILED',
@@ -255,45 +166,12 @@ class EncryptionService {
   /**
    * Decrypt document content with manual AES-256-GCM
    * @param encrypted - EncryptedDocument
-   * @param key - CryptoKey for decryption
+   * @param key - string for decryption
    * @returns Promise resolving to decrypted string
    */
-  async decryptDocument(encrypted: EncryptedDocument, key: CryptoKey): Promise<string> {
+  async decryptDocument(encrypted: string, key: string): Promise<string|undefined> {
     try {
-      // Decode base64 strings
-      const iv = Uint8Array.from(atob(encrypted.iv), (c) => c.charCodeAt(0));
-      const ciphertext = Uint8Array.from(atob(encrypted.encryptedContent), (c) => c.charCodeAt(0));
-      const tag = encrypted.tag
-        ? Uint8Array.from(atob(encrypted.tag), (c) => c.charCodeAt(0))
-        : undefined;
-
-      // Combine ciphertext and tag for GCM
-      let encryptedBuffer: ArrayBuffer;
-      if (tag) {
-        // Combine ciphertext + tag
-        const combined = new Uint8Array(ciphertext.length + tag.length);
-        combined.set(ciphertext);
-        combined.set(tag, ciphertext.length);
-        encryptedBuffer = combined.buffer;
-      } else {
-        // If no tag provided, assume it's already combined
-        encryptedBuffer = ciphertext.buffer;
-      }
-
-      // Decrypt with AES-256-GCM
-      const decrypted = await crypto.subtle.decrypt(
-        {
-          name: 'AES-GCM',
-          iv: iv,
-          tagLength: 128,
-        },
-        key,
-        encryptedBuffer
-      );
-
-      // Convert to string
-      const decoder = new TextDecoder();
-      return decoder.decode(decrypted);
+       return this.sea?.decrypt(encrypted, key)
     } catch (error) {
       throw {
         code: 'DOCUMENT_DECRYPTION_FAILED',
@@ -305,12 +183,12 @@ class EncryptionService {
 
   /**
    * Encrypt document key with SEA's ECDH for a specific recipient
-   * @param docKey - Document CryptoKey
+   * @param docKey - Document string
    * @param recipientEpub - Recipient's ephemeral public key for ECDHE key exchange
    * @returns Promise resolving to encrypted key string and sender's ephemeral public key
    */
   async encryptDocumentKeyWithSEA(
-    docKey: CryptoKey,
+    docKey: string,
     recipientEpub: string
   ): Promise<{ encryptedKey: string; ephemeralPub: string }> {
     this.checkInitialized()
@@ -323,9 +201,6 @@ class EncryptionService {
     }
 
     try {
-      // Export key to base64
-      const keyBase64 = await this.exportKey(docKey)
-
       if (!this.gun) {
         throw {
           code: 'SEA_NOT_INITIALIZED',
@@ -363,7 +238,7 @@ class EncryptionService {
       }
 
       // Encrypt key with shared secret
-      const encryptedKey = await this.sea.encrypt(keyBase64, sharedSecret)
+      const encryptedKey = await this.sea.encrypt(docKey, sharedSecret)
 
       // Return encrypted key + sender's ephemeral public key (NOT pub!)
       return {
@@ -383,9 +258,9 @@ class EncryptionService {
    * Decrypt document key with SEA's ECDH
    * @param encryptedKey - Encrypted key string
    * @param senderEpub - Sender's ephemeral public key (from encryptDocumentKeyWithSEA)
-   * @returns Promise resolving to CryptoKey
+   * @returns Promise resolving to string
    */
-  async decryptDocumentKeyWithSEA(encryptedKey: string, senderEpub: string): Promise<CryptoKey> {
+  async decryptDocumentKeyWithSEA(encryptedKey: string, senderEpub: string): Promise<string|undefined> {
     this.checkInitialized()
 
     if (!this.sea || !this.gun) {
@@ -426,11 +301,7 @@ class EncryptionService {
       }
 
       // Decrypt key with shared secret
-      const keyBase64 = await this.sea.decrypt(encryptedKey, sharedSecret);
-
-      // Import key from base64
-      const key = await this.importKey(keyBase64);
-      return key;
+      return await this.sea.decrypt(encryptedKey, sharedSecret);
     } catch (error) {
       throw {
         code: 'KEY_DECRYPTION_FAILED',
@@ -510,9 +381,9 @@ class EncryptionService {
   /**
    * Retrieve and decrypt document key for current user
    * @param docId - Document ID
-   * @returns Promise resolving to decrypted CryptoKey
+   * @returns Promise resolving to decrypted string
    */
-  async retrieveDocumentKey(docId: string): Promise<CryptoKey> {
+  async retrieveDocumentKey(docId: string): Promise<string|undefined> {
     this.checkInitialized();
 
     try {

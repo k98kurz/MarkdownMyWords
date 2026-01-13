@@ -7,6 +7,12 @@ import { gunService } from '../gunService'
 import { TestRunner, printTestSummary, type TestSuiteResult } from '../../utils/testRunner'
 import { retryWithBackoff } from '../../utils/retryHelper'
 
+const assert = (condition: any, message: string) => {
+  if (!condition) {
+    throw new Error(message)
+  }
+}
+
 const logoutAndWait = async (gun: any) => {
   gun.user().leave()
   await retryWithBackoff(async _ => {
@@ -27,28 +33,24 @@ async function testDocumentEncryption(): Promise<TestSuiteResult> {
 
   await runner.run('should generate document-specific keys', async () => {
     const key = await encryptionService.generateDocumentKey()
-    if (!(key instanceof CryptoKey)) {
-      throw new Error('Key is not a CryptoKey instance')
-    }
+    assert(key, 'key not generated')
   })
 
   await runner.run('should encrypt document with AES-256-GCM', async () => {
     const key = await encryptionService.generateDocumentKey()
     const content = 'test document content'
     const encrypted = await encryptionService.encryptDocument(content, key)
-    if (!encrypted.encryptedContent || !encrypted.iv || !encrypted.tag) {
-      throw new Error('Encrypted document missing required fields')
-    }
+    assert(encrypted, 'document encryption failed')
   })
 
   await runner.run('should decrypt document with AES-256-GCM', async () => {
     const key = await encryptionService.generateDocumentKey()
     const content = 'test document content'
     const encrypted = await encryptionService.encryptDocument(content, key)
-    const decrypted = await encryptionService.decryptDocument(encrypted, key)
-    if (decrypted !== content) {
-      throw new Error(`Decrypted content mismatch. Expected "${content}", got "${decrypted}"`)
-    }
+    assert(typeof encrypted === 'string', 'encryption failed')
+    const decrypted = await encryptionService.decryptDocument(encrypted!, key)
+    assert(decrypted == content,
+      `Decrypted content mismatch. Expected "${content}", got "${decrypted}"`)
   })
 
   await runner.run('should encrypt and decrypt different content correctly', async () => {
@@ -59,68 +61,15 @@ async function testDocumentEncryption(): Promise<TestSuiteResult> {
     const encrypted1 = await encryptionService.encryptDocument(content1, key)
     const encrypted2 = await encryptionService.encryptDocument(content2, key)
 
-    if (encrypted1.encryptedContent === encrypted2.encryptedContent) {
+    if (encrypted1 === encrypted2) {
       throw new Error('Different content should encrypt to different ciphertexts')
     }
 
-    const decrypted1 = await encryptionService.decryptDocument(encrypted1, key)
-    const decrypted2 = await encryptionService.decryptDocument(encrypted2, key)
+    const decrypted1 = await encryptionService.decryptDocument(encrypted1!, key)
+    const decrypted2 = await encryptionService.decryptDocument(encrypted2!, key)
 
     if (decrypted1 !== content1 || decrypted2 !== content2) {
       throw new Error('Decrypted content mismatch')
-    }
-  })
-
-  runner.printResults()
-  return runner.getResults()
-}
-
-async function testKeySerialization(): Promise<TestSuiteResult> {
-  console.log('🧪 Testing Key Serialization...\n')
-
-  const runner = new TestRunner('Key Serialization')
-
-  await runner.run('should export key to base64 string', async () => {
-    const key = await encryptionService.generateDocumentKey()
-    const exported = await encryptionService.exportKey(key)
-    if (!exported || typeof exported !== 'string' || exported.length === 0) {
-      throw new Error('Key export failed or returned invalid result')
-    }
-  })
-
-  await runner.run('should import key from base64 string', async () => {
-    const originalKey = await encryptionService.generateDocumentKey()
-    const exported = await encryptionService.exportKey(originalKey)
-    const importedKey = await encryptionService.importKey(exported)
-
-    if (!(importedKey instanceof CryptoKey)) {
-      throw new Error('Imported key is not a CryptoKey instance')
-    }
-  })
-
-  await runner.run('should round-trip key export/import', async () => {
-    const originalKey = await encryptionService.generateDocumentKey()
-    const content = 'test content for round-trip'
-
-    const encrypted = await encryptionService.encryptDocument(content, originalKey)
-    const exported = await encryptionService.exportKey(originalKey)
-    const importedKey = await encryptionService.importKey(exported)
-    const decrypted = await encryptionService.decryptDocument(encrypted, importedKey)
-
-    if (decrypted !== content) {
-      throw new Error('Round-trip failed: decrypted content mismatch')
-    }
-  })
-
-  await runner.run('should throw error when importing invalid key string', async () => {
-    try {
-      await encryptionService.importKey('invalid-base64!!!')
-      throw new Error('Should have thrown an error for invalid base64')
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error)
-      if (errorMessage === 'Should have thrown an error for invalid base64') {
-        throw error
-      }
     }
   })
 
@@ -197,13 +146,9 @@ async function testKeySharing(): Promise<TestSuiteResult> {
         ephemeralPub
       )
 
-      if (!(decryptedKey instanceof CryptoKey)) {
-        throw new Error('Decrypted key is not a CryptoKey')
-      }
-
       const content = 'test document for ECDH key sharing'
       const encrypted = await encryptionService.encryptDocument(content, docKey)
-      const decrypted = await encryptionService.decryptDocument(encrypted, decryptedKey)
+      const decrypted = await encryptionService.decryptDocument(encrypted!, decryptedKey!)
 
       if (decrypted !== content) {
         throw new Error('ECDH key sharing failed - decrypted document mismatch')
@@ -268,7 +213,7 @@ async function testErrorHandling(): Promise<TestSuiteResult> {
     const encrypted = await encryptionService.encryptDocument(content, key1)
 
     try {
-      await encryptionService.decryptDocument(encrypted, key2)
+      await encryptionService.decryptDocument(encrypted!, key2)
       throw new Error('Should have thrown an error for wrong key')
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
@@ -298,12 +243,12 @@ async function testErrorHandling(): Promise<TestSuiteResult> {
   })
 
   await runner.run('should throw error when encrypting without valid key', async () => {
-    const invalidKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, [
-      'decrypt',
-    ])
+    const invalidKey = await encryptionService.exportKey(
+      await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['decrypt'])
+    )
 
     try {
-      await encryptionService.encryptDocument('test', invalidKey as CryptoKey)
+      await encryptionService.encryptDocument('test', invalidKey)
       throw new Error('Should have thrown an error for invalid key')
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
@@ -374,10 +319,6 @@ export async function testEncryptionService(): Promise<void> {
 
   const docEncResult = await testDocumentEncryption()
   suiteResults.push(docEncResult)
-  console.log('\n' + '='.repeat(60) + '\n')
-
-  const keySerResult = await testKeySerialization()
-  suiteResults.push(keySerResult)
   console.log('\n' + '='.repeat(60) + '\n')
 
   const keyShareResult = await testKeySharing()
