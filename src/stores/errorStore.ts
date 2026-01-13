@@ -54,7 +54,11 @@ export const useErrorStore = create<ErrorState>((set) => ({
       message = error;
     } else if (error && typeof error === 'object') {
       // Try to extract message from error object
-      message = JSON.stringify(error);
+      try {
+        message = JSON.stringify(error);
+      } catch {
+        message = (error as any).message ?? String(error)
+      }
     }
 
     set({

@@ -54,10 +54,9 @@ const encrypted = await encryptionService.encryptDocument(content, docKey);
 
 // CORRECT: Use SEA's ECDH for sharing document keys (not documents themselves)
 const user = gun.user();
-const userIs = user.is; // Get user's ephemeral key pair
 const sharedSecret = await SEA.secret({ epub: recipientEpub }, {
-  epriv: userIs.epriv,
-  epub: userIs.epub
+  epriv: user.is.epriv,
+  epub: user.is.epub
 });
 const encryptedKey = await SEA.encrypt(keyBase64, sharedSecret);
 
@@ -176,3 +175,10 @@ When reviewing code or AI agent output, ask:
 - DO NOT PERSIST IN ERROR
 - DO NOT COVER UP ERRORS
 - **FIX ERRORS** and write **ACCURATE CODE**
+
+### Tool Usage Restrictions
+
+- **NEVER** run `npm run dev` or any development server commands
+- **NEVER** run build commands like `npm run build` unless explicitly requested
+- **NEVER** run test commands like `npm run test` unless explicitly requested
+- All development and testing should be done through proper code review and static analysis

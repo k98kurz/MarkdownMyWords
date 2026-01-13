@@ -29,7 +29,12 @@ export class TestRunner {
       console.log(`  ✅ ${testName} (${Math.round(duration)}ms)`)
     } catch (error) {
       const duration = performance.now() - startTime
-      const errorMessage = error instanceof Error ? error.message : JSON.stringify(error)
+      let errorMessage = ''
+      try {
+        errorMessage = error instanceof Error ? error.message : JSON.stringify(error)
+      } catch {
+        errorMessage = String(error)
+      }
       this.tests.push({ name: testName, passed: false, error: errorMessage, duration })
       console.log(
         `  ❌ ${testName}${errorMessage ? ` - ${errorMessage}` : ''} (${Math.round(duration)}ms)`

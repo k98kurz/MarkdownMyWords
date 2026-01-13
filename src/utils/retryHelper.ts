@@ -5,6 +5,10 @@ export interface RetryOptions {
   retryableErrors?: string[]
 }
 
+/**
+ * Retries an operation with exponential backoff.
+ * The retryableErrors option is optional; excluding it is best practice during development.
+ */
 export async function retryWithBackoff<T>(
   operation: (attempt: number) => Promise<T>,
   options: RetryOptions = { maxAttempts: 4, baseDelay: 100, backoffMultiplier: 2 }

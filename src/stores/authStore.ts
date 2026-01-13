@@ -66,10 +66,9 @@ export const useAuthStore = create<AuthState>((set) => ({
 
       // Get the authenticated user object from GunDB
       const gunUser = gun.user();
-      const userIs = gunUser.is as any;
 
       // Create user profile in GunDB
-      const userId = userIs?.pub || seaUser.pub;
+      const userId = gunUser.is?.pub || seaUser.pub;
       if (userId) {
         await gunService.putUserProfile(userId, {
           profile: {
@@ -224,9 +223,8 @@ export const useAuthStore = create<AuthState>((set) => ({
           // Give it a moment for the session to restore
           setTimeout(() => {
             const gunUser = gun.user();
-            const userIs = gunUser.is as any;
 
-            if (userIs && userIs.pub) {
+            if (gunUser.is && gunUser.is.pub) {
               // User is authenticated
               set({
                 user: gunUser,
@@ -249,9 +247,8 @@ export const useAuthStore = create<AuthState>((set) => ({
         // Timeout fallback - check user state directly after a delay
         setTimeout(() => {
           const gunUser = gun.user();
-          const userIs = gunUser.is as any;
 
-          if (userIs && userIs.pub) {
+          if (gunUser.is && gunUser.is.pub) {
             set({
               user: gunUser,
               isAuthenticated: true,

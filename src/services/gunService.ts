@@ -5,7 +5,7 @@
  * user management, document CRUD, and real-time subscriptions.
  */
 
-import Gun from 'gun'
+import Gun, { ISEAPair } from 'gun'
 import 'gun/sea' // GunDB SEA for encryption
 import 'gun/lib/radix' // Radix for storage
 import 'gun/lib/radisk' // Radisk for IndexedDB
@@ -1197,7 +1197,6 @@ class GunService {
                 maxAttempts: 4,
                 baseDelay: 100,
                 backoffMultiplier: 2,
-                retryableErrors: ['Unverified data', 'Timeout storing ephemeral keys'],
               }
             )
 
@@ -1215,7 +1214,6 @@ class GunService {
             maxAttempts: 4,
             baseDelay: 100,
             backoffMultiplier: 2,
-            retryableErrors: ['Unverified data', 'Timeout storing ephemeral keys'],
           }
         )
           .then(() => {
@@ -1274,7 +1272,7 @@ class GunService {
         }
 
         SEA.pair()
-          .then((pair: { epriv: string; epub: string }) => {
+          .then((pair: ISEAPair) => {
             if (!pair || !pair.epriv || !pair.epub) {
               reject(new Error('Failed to generate ephemeral key pair'))
               return
@@ -1346,6 +1344,7 @@ class GunService {
         const user = this.gun!.user()
 
         // If user.is is set with a pub key, authentication succeeded
+        // no idea why it needs two different success cases, but it breaks without them both
         if (user.is && user.is.pub) {
           const userData: SEAUser = {
             alias: username,
@@ -1361,7 +1360,6 @@ class GunService {
               maxAttempts: 4,
               baseDelay: 100,
               backoffMultiplier: 2,
-              retryableErrors: ['Unverified data', 'Timeout storing ephemeral keys'],
             }
           )
             .then(() => {
@@ -1393,16 +1391,14 @@ class GunService {
                   maxAttempts: 4,
                   baseDelay: 100,
                   backoffMultiplier: 2,
-                  retryableErrors: ['Unverified data', 'Timeout storing ephemeral keys'],
                 }
               )
                 .then(() => {
                   resolve(userData)
                 })
                 .catch(err => {
-                  // Log error but don't fail authentication if ephemeral key generation fails
                   console.warn('Failed to generate ephemeral keys:', err)
-                  resolve(userData)
+                  reject(err)
                 })
             })
             .catch(data => {
