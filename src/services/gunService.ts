@@ -44,7 +44,6 @@ class GunService {
   private isInitialized = false
   private connectionState: 'connected' | 'disconnected' | 'connecting' = 'disconnected'
   private appNamespace: string = 'markdownmywords'
-  private static readonly SEA_INIT_DELAY_MS = 1000 // Delay for SEA to fully initialize before storing ephemeral keys
 
   /**
    * Initialize GunDB client
@@ -1155,12 +1154,12 @@ class GunService {
         const pub = (user.is?.pub as string) || ack.pub || ''
 
         // If we have a pub key, user was created or exists
-        // If ack.ok is 0 and no pub, it's a real failure
+        // If ack.ok is undefined and no pub, it's a real failure
         if (!pub) {
           reject({
             code: GunErrorCode.SYNC_ERROR,
             message:
-              ack.ok === 0
+              ack.ok === undefined
                 ? 'User creation failed or user already exists'
                 : 'User created but no public key found',
             details: ack,
@@ -1198,6 +1197,7 @@ class GunService {
                 maxAttempts: 4,
                 baseDelay: 100,
                 backoffMultiplier: 2,
+                retryableErrors: ['Unverified data', 'Timeout storing ephemeral keys'],
               }
             )
 
@@ -1207,7 +1207,17 @@ class GunService {
         }
 
         // User is authenticated, generate and store ephemeral keys if not already stored
-        this.generateAndStoreEphemeralKeys(gun)
+        retryWithBackoff(
+          async _ => {
+            await this.generateAndStoreEphemeralKeys(gun)
+          },
+          {
+            maxAttempts: 4,
+            baseDelay: 100,
+            backoffMultiplier: 2,
+            retryableErrors: ['Unverified data', 'Timeout storing ephemeral keys'],
+          }
+        )
           .then(() => {
             const userData: SEAUser = {
               alias: username,
@@ -1234,32 +1244,19 @@ class GunService {
    * Generate ephemeral key pair and store it for the authenticated user
    * This is called once per user to enable ECDH key sharing
    */
-  private generateAndStoreEphemeralKeys(gun: GunInstance, timeout = 1000): Promise<void> {
+  private generateAndStoreEphemeralKeys(gun: GunInstance): Promise<void> {
     const user = gun.user()
 
     if (!user.is || !user.is.pub) {
       throw new Error('User must be authenticated to generate ephemeral keys')
     }
 
-    // Check if ephemeral keys already exist (with timeout)
+    // Check if ephemeral keys already exist
     return new Promise<void>((resolve, reject) => {
-      let checked = false
-      const checkTimeout = setTimeout(() => {
-        if (!checked) {
-          checked = true
-          // Timeout checking, proceed to generate
-          generateKeys()
-        }
-      }, timeout)
-
       gun
         .get('ephemeralKeys')
         .get(`~@${user.is?.alias}~epub`)
         .once((existingEpub: any) => {
-          clearTimeout(checkTimeout)
-          if (checked) return
-          checked = true
-
           if (existingEpub) {
             // Ephemeral keys already exist, no need to regenerate
             resolve()
@@ -1270,7 +1267,6 @@ class GunService {
         })
 
       const generateKeys = () => {
-        // Generate new ephemeral key pair
         const SEA = Gun.SEA
         if (!SEA) {
           reject(new Error('SEA not available'))
@@ -1284,85 +1280,35 @@ class GunService {
               return
             }
 
-            // Store only epub (public key) - this is what others need for ECDH
-            // Store in app namespace path for public access (not encrypted, publicly accessible)
             const userId = user.is?.pub as string
             if (!userId) {
               reject(new Error('User pub key not available'))
               return
             }
 
-            let resolved = false
-            const storeTimeout = setTimeout(() => {
-              if (!resolved) {
-                resolved = true
-                reject(new Error('Timeout storing ephemeral keys'))
-              }
-            }, timeout)
-
-            // Store epub in app namespace path - publicly accessible without signature issues
-            // Path: {appNamespace}~user~{userId}~ephemeralPub
-            // This is publicly readable by anyone who knows the userId
-            let pendingPuts = 2
-            let publicPathFailed = false
-            let privateKeyFailed = false
-
-            const checkDone = () => {
-              pendingPuts--
-              if (pendingPuts <= 0 && !resolved) {
-                clearTimeout(storeTimeout)
-                resolved = true
-                if (publicPathFailed) {
-                  reject(
-                    new Error('Failed to store ephemeral public key - required for key sharing')
-                  )
-                } else if (privateKeyFailed) {
-                  reject(new Error('Failed to store ephemeral private key'))
-                } else {
-                  resolve()
-                }
-              }
-            }
-
-            // Store epub in app namespace path (publicly accessible)
-            // Store as a property of the user node, not as a root-level node
             const userNode = gun.get(this.getNodePath('user', userId))
             userNode.get('ephemeralPub').put(pair.epub, (ack: any) => {
               if (ack.err) {
-                publicPathFailed = true
                 console.error('Failed to store ephemeral public key in public path:', ack.err)
+                reject(new Error('Failed to store ephemeral public key - required for key sharing'))
+                return
               }
-              checkDone()
-            })
 
-            // Store epriv in user's encrypted storage (required for decryption)
-            // SEA automatically signs/encrypts data stored via user.get()
-            const storeEpriv = (attempt = 1) => {
               user
                 .get('ephemeralKeys')
                 .get('epriv')
                 .put(pair.epriv, (ack: any) => {
                   if (ack.err) {
-                    const errorMessage = ack.err as string
-                    // Retry exactly once on "Unverified data" errors
-                    if (attempt <= 1 && errorMessage.includes('Unverified data')) {
-                      console.warn(
-                        `Ephemeral key storage attempt ${attempt} failed (Unverified data), retrying with ${GunService.SEA_INIT_DELAY_MS}ms delay...`
-                      )
-                      setTimeout(() => storeEpriv(attempt + 1), GunService.SEA_INIT_DELAY_MS)
-                      return
-                    }
-                    // Final attempt failed or different error
-                    privateKeyFailed = true
-                    console.error('Failed to store ephemeral private key after retry:', ack.err)
+                    console.error('Failed to store ephemeral private key:', ack.err)
+                    reject(new Error(`Failed to store ephemeral private key: ${ack.err}`))
+                    return
                   }
-                  checkDone()
-                })
-            }
 
-            storeEpriv()
+                  resolve()
+                })
+            })
           })
-          .catch((err: any) => {
+          .catch((err: Error) => {
             reject(err)
           })
       }
@@ -1407,7 +1353,17 @@ class GunService {
           }
 
           // Generate and store ephemeral keys if not already stored
-          this.generateAndStoreEphemeralKeys(this.gun!)
+          retryWithBackoff(
+            async _ => {
+              await this.generateAndStoreEphemeralKeys(this.gun!)
+            },
+            {
+              maxAttempts: 4,
+              baseDelay: 100,
+              backoffMultiplier: 2,
+              retryableErrors: ['Unverified data', 'Timeout storing ephemeral keys'],
+            }
+          )
             .then(() => {
               resolve(userData)
             })
@@ -1419,40 +1375,8 @@ class GunService {
           return
         }
 
-        // If ack.ok is 1, authentication succeeded but user.is might not be set yet
-        // Wait for user state using proper async polling
-        if (ack.ok === 1) {
-          this.waitForUserState()
-            .then(({ pub }) => {
-              const userData: SEAUser = {
-                alias: username,
-                pub: pub,
-              }
-              // Generate and store ephemeral keys if not already stored
-              this.generateAndStoreEphemeralKeys(this.gun!)
-                .then(() => {
-                  resolve(userData)
-                })
-                .catch(err => {
-                  // Log error but don't fail authentication if ephemeral key generation fails
-                  console.warn('Failed to generate ephemeral keys:', err)
-                  resolve(userData)
-                })
-            })
-            .catch(error => {
-              reject({
-                code: GunErrorCode.SYNC_ERROR,
-                message: 'Authentication succeeded but user state not set',
-                details: error,
-              } as GunError)
-            })
-          return
-        }
-
-        // If ack.ok is 0, check once more with polling
-        // This handles the edge case where GunDB returns ok: 0 but auth actually works
-        // (which happens on session recall after page refresh)
-        if (ack.ok === 0) {
+        // If ack.ok !== undefined, login succeeded
+        if (ack.ok !== undefined) {
           this.waitForUserState()
             .then(({ pub }) => {
               // Authentication actually succeeded despite ok: 0
@@ -1461,7 +1385,17 @@ class GunService {
                 pub: pub,
               }
               // Generate and store ephemeral keys if not already stored
-              this.generateAndStoreEphemeralKeys(this.gun!)
+              retryWithBackoff(
+                async _ => {
+                  await this.generateAndStoreEphemeralKeys(this.gun!)
+                },
+                {
+                  maxAttempts: 4,
+                  baseDelay: 100,
+                  backoffMultiplier: 2,
+                  retryableErrors: ['Unverified data', 'Timeout storing ephemeral keys'],
+                }
+              )
                 .then(() => {
                   resolve(userData)
                 })
@@ -1471,12 +1405,13 @@ class GunService {
                   resolve(userData)
                 })
             })
-            .catch(() => {
+            .catch(data => {
               // Authentication really failed - wrong password
               reject({
                 code: GunErrorCode.SYNC_ERROR,
                 message: 'Invalid username or password',
                 details: 'Authentication failed',
+                data: data
               } as GunError)
             })
           return

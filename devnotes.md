@@ -93,3 +93,12 @@ await retryWithBackoff(
 - First identified: January 12, 2026
 - Fix implemented: Exponential backoff retry logic with progressive delays
 - Related tests: `src/services/__tests__/gunService.test.ts`, `src/services/__tests__/encryptionService.test.ts`
+
+## GunDB user().auth() Return Value Format
+
+The result of `gun.user().auth()` callback has the following form:
+
+- **On success:** `{ok: int, pub: string}` where `ok` can be 0 on success
+- **On failure:** `{err: string, ok: undefined}`
+
+**Important:** The `ok` value can be `0` on success, so code should check for `ack.ok !== undefined` rather than `ack.ok === 1` or truthy checks.

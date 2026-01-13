@@ -2,6 +2,7 @@ export interface RetryOptions {
   maxAttempts: number
   baseDelay: number
   backoffMultiplier: number
+  retryableErrors?: string[]
 }
 
 export async function retryWithBackoff<T>(
@@ -14,7 +15,15 @@ export async function retryWithBackoff<T>(
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
 
-      if (attempt < options.maxAttempts && shouldRetry(errorMessage)) {
+      if (attempt < options.maxAttempts) {
+        if (options.retryableErrors && options.retryableErrors.length > 0) {
+          const shouldRetryError = options.retryableErrors.some(retryableErr =>
+            errorMessage.includes(retryableErr)
+          )
+          if (!shouldRetryError) {
+            throw error
+          }
+        }
         const delay = options.baseDelay * Math.pow(options.backoffMultiplier, attempt - 1)
         console.warn(`Attempt ${attempt} failed, retrying in ${delay}ms...`)
         await new Promise(resolve => setTimeout(resolve, delay))
@@ -28,9 +37,4 @@ export async function retryWithBackoff<T>(
   // This should never be reached - operation either returns successfully in the try block
   // or throws an error after exhausting retries
   throw new Error('retryWithBackoff: Unexpected state - function should have returned or thrown')
-}
-
-function shouldRetry(errorMessage: string): boolean {
-  const retryableErrors = ['Unverified data', 'Timeout storing ephemeral keys']
-  return retryableErrors.some(err => errorMessage.includes(err))
 }
