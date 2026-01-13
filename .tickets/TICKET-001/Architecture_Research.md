@@ -118,38 +118,30 @@
 
 ## Encryption Architecture
 
-### Primary: GunDB SEA
+### GunDB SEA (Security, Encryption, Authorization)
 
 1. **User Authentication**: SEA handles user creation and authentication
    - Automatic ECDSA key pair generation
    - Password-based authentication
    - Integrated with GunDB
 
-2. **Document Encryption**: SEA automatically encrypts/decrypts data
-   - Automatic encryption when storing in GunDB
-   - Automatic decryption when reading from GunDB
-   - No manual encryption code needed for standard documents
+2. **Document Encryption**: SEA symmetric encryption with document-specific keys
+   - Documents encrypted using `SEA.encrypt()` with per-document symmetric keys
+   - Documents decrypted using `SEA.decrypt()` with the same document key
+   - Document keys are generated using Web Crypto API (AES-GCM 256-bit) and exported as base64 strings
+   - Enables branching model (all branches use the same document key)
 
-3. **Sharing**: SEA's ECDH for key exchange
-   - Derives shared secret using ECDH
-   - Encrypts data with recipient's public key
-   - Efficient and secure
-
-### Fallback: Manual Encryption (for Branching Model)
-
-1. **Document-Specific Keys**: Generate random keys for shared documents
-   - Needed for branching model (document-specific keys)
-   - Manual AES-256-GCM encryption for document content
-
-2. **Key Sharing**: Encrypt document keys with SEA's ECDH
-   - Use SEA to encrypt document key for each collaborator
-   - Combines document-specific keys with SEA's efficient sharing
+3. **Key Sharing**: SEA's ECDH for secure key exchange
+   - Derives shared secret using `SEA.secret()` via ECDH (Elliptic Curve Diffie-Hellman)
+   - Encrypts document keys with `SEA.encrypt()` using the shared secret
+   - Each collaborator receives the encrypted document key along with the sender's ephemeral public key
+   - Recipient derives the same shared secret using their ephemeral key pair and the sender's ephemeral public key
 
 ### Key Management
 
 - **User Keys**: Derived on login, stored in memory only
-- **Document Keys**: Encrypted and stored in GunDB
-- **Sharing Keys**: Encrypted with recipient's public key
+- **Document Keys**: Generated per document, encrypted with user.epriv and shared secrets (via ECDH) and stored in GunDB
+- **Ephemeral Keys**: Generated once per user, stored in GunDB (public key publicly accessible, private key in user's encrypted storage)
 - **Never**: Store plaintext keys or passwords
 
 ## Sharing & Permissions Model
@@ -268,9 +260,9 @@ App
 - **Rationale**: Lighter than Monaco, better markdown support, more customizable
 - **Alternative**: Monaco Editor (if VS Code features needed)
 
-### Encryption: Web Crypto API (recommended)
-- **Rationale**: Native browser API, smaller bundle, better performance
-- **Alternative**: crypto-js (if compatibility needed)
+### Encryption: GunDB SEA
+- **Rationale**: Integrated with GunDB, provides ECDH key exchange, symmetric encryption via `SEA.encrypt()`/`SEA.decrypt()`
+- **Key Generation**: Web Crypto API for generating document keys (AES-GCM 256-bit), then exported as base64 for use with SEA
 
 ### Markdown Rendering: react-markdown
 - **Rationale**: Popular, secure (no XSS), extensible
@@ -278,8 +270,7 @@ App
 ## Performance Considerations
 
 1. **Large Documents**:
-   - Chunk encryption for very large files
-   - Use Web Workers for encryption operations
+   - SEA handles encryption efficiently
    - Lazy load document content
 
 2. **Many Documents**:
@@ -301,8 +292,9 @@ App
 
 1. **Encryption**:
    - Never store plaintext keys
-   - Use strong PBKDF2 parameters
-   - Use authenticated encryption (AES-GCM)
+   - Use SEA's built-in encryption (`SEA.encrypt()`/`SEA.decrypt()`)
+   - Use ECDH via `SEA.secret()` for secure key sharing
+   - Document keys generated with Web Crypto API (AES-GCM 256-bit)
 
 2. **Authentication**:
    - Keys derived from password never leave client

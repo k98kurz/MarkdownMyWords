@@ -8,7 +8,10 @@ GunDB provides true decentralization - users host their own data. This aligns wi
 
 ### Why GunDB's SEA?
 
-GunDB's SEA (Security, Encryption, Authorization) provides built-in end-to-end encryption with ECDH key exchange for sharing. We use SEA as the primary encryption method for all operations. Manual PBKDF2/AES-256-GCM is only used as a fallback where SEA cannot support specific features (e.g., document-specific keys for the branching model).
+GunDB's SEA (Security, Encryption, Authorization) provides built-in end-to-end encryption with ECDH key exchange for sharing. We use SEA as the primary encryption method for all operations:
+- Document encryption via `SEA.encrypt()`/`SEA.decrypt()` with per-document symmetric keys
+- Key sharing via `SEA.secret()` (ECDH) to derive shared secrets, then `SEA.encrypt()` to encrypt document keys
+- User authentication and automatic encryption for non-document user data
 
 ### Why OpenRouter instead of direct API calls?
 
@@ -40,14 +43,15 @@ Cloudflare Workers free tier is generous (100k requests/day), and it's simple to
      - No provider boilerplate needed
    - **Reference**: See Technology_Choices.md and State_Management.md
 
-3. **Encryption Library**: ✅ **RESOLVED** - Web Crypto API
-   - **Decision**: Native Web Crypto API for encryption
+3. **Encryption Library**: ✅ **RESOLVED** - GunDB SEA
+   - **Decision**: GunDB SEA for all encryption operations
    - **Rationale**:
-     - Zero bundle size (native browser API)
-     - Better performance (native, hardware-accelerated)
-     - Better security (modern defaults)
-     - Aligns with bundle size optimization goals
-   - **Note**: Manual PBKDF2/AES-256-GCM via Web Crypto API used as fallback where GunDB SEA cannot support specific features
+     - Integrated with GunDB (no additional dependencies)
+     - Provides ECDH key exchange via `SEA.secret()` for secure sharing
+     - Symmetric encryption via `SEA.encrypt()`/`SEA.decrypt()` for documents
+     - Automatic encryption for user data via `gun.user().get().put()`
+     - Battle-tested implementation
+   - **Note**: Web Crypto API used only for generating document keys (AES-GCM 256-bit), which are then exported as base64 strings for use with SEA
    - **Reference**: See Technology_Choices.md and Encryption_Architecture.md
 
 4. **Sharing Model**: How granular should permissions be?

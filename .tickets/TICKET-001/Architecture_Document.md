@@ -137,7 +137,6 @@ MarkdownMyWords is a decentralized, peer-to-peer markdown editor with offline-fi
    - Sharing operations
 
 2. **encryptionService**
-   - PBKDF2 key derivation
    - Document encryption/decryption
    - Key management
    - Shared document key handling
@@ -226,15 +225,12 @@ If merged: update main document
 ### Sharing Flow
 
 ```
-Owner shares document
-  ↓
-Generate document-specific key (if first share)
-  ↓
-Encrypt document with document key
+Owner shares document (already encrypted with document key)
   ↓
 For each collaborator:
-  - Get collaborator's public key
-  - Encrypt document key with public key
+  - Get collaborator's ephemeral public key
+  - Derive shared secret with collaborator epub and owner epriv
+  - Encrypt document key with shared secret
   - Store encrypted key
   - Add to access list
   ↓
@@ -248,18 +244,14 @@ Notify collaborator (optional)
 ### Authentication
 
 1. **User Registration**
-   - Generate random salt
-   - Store salt in GunDB (can be public)
+   - Create user with GunDB+SEA
    - Create user profile
 
 2. **User Login**
-   - Retrieve salt from GunDB
-   - Derive key from username + password
-   - Store key in memory (never persisted)
    - Authenticate with GunDB
 
 3. **Session Management**
-   - Key stored in memory only
+   - Client-side only session memory
    - Session persists until logout or page close
    - No server-side session
 
@@ -267,20 +259,16 @@ Notify collaborator (optional)
 
 1. **Key Derivation**
    - GunDB SEA (automatic key management)
-   - SHA-256 hash
-   - 256-bit key output
-   - Per-user salt
 
 2. **Document Encryption**
-   - AES-256-GCM
-   - Random IV per encryption
-   - Authentication tag included
-   - Encrypted content stored in GunDB
+   - Generate document key
+   - Encrypt document with docKey
+   - Encrypt docKey with user.epriv
+   - Store encrypted document and encrypted docKey
 
 3. **Shared Document Encryption**
    - Document-specific key
-   - Key encrypted with each collaborator's public key
-   - RSA-OAEP for key encryption
+   - docKey encrypted with ECDH
 
 ### Access Control
 
@@ -341,14 +329,7 @@ Deploy to CDN
    - GunDB local storage
 
 3. **Large Documents**
-   - Chunk encryption
-   - Web Workers for encryption
    - Virtual scrolling for long documents
-
-4. **Network**
-   - Optimistic updates
-   - Offline queue
-   - Batch operations
 
 ## Scalability Considerations
 
@@ -383,7 +364,7 @@ Deploy to CDN
 - **Editor**: CodeMirror 6
 - **Rendering**: react-markdown
 - **Database**: GunDB
-- **Encryption**: Web Crypto API
+- **Encryption**: SEA
 - **Build**: Vite
 - **Hosting**: Cloudflare Pages
 - **Relay**: Cloudflare Workers

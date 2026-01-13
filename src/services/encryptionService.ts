@@ -1,17 +1,3 @@
-/**
- * Encryption Service
- *
- * Service layer for document encryption and key sharing.
- *
- * - Document encryption: Manual AES-256-GCM with document-specific symmetric keys
- * - Key sharing: SEA's ECDH for encrypting/decrypting document keys between users
- * - Key serialization: Export/import keys for URL-based sharing
- *
- * NOTE: User authentication (createSEAUser, authenticateUser) is handled by gunService.
- * NOTE: Documents are NOT encrypted with SEA - they use manual AES-256-GCM.
- *       Only document keys are shared via SEA's ECDH.
- */
-
 import Gun from 'gun';
 import 'gun/sea';
 import type { IGunInstance } from 'gun/types';
@@ -208,19 +194,7 @@ class EncryptionService {
         } as EncryptionError
       }
 
-      const user = this.gun.user()
-      const userIs = user.is
-
-      if (!userIs) {
-        throw {
-          code: 'NO_USER_PAIR',
-          message:
-            'No authenticated user. User must be authenticated with SEA.',
-        } as EncryptionError
-      }
-
-      // Retrieve stored ephemeral keys (generated once per user)
-      const userPair = await this.getStoredEphemeralKeys(user);
+      const userPair = await this.getStoredEphemeralKeys();
 
       if (!userPair || !userPair.epriv || !userPair.epub) {
         throw {
@@ -271,17 +245,8 @@ class EncryptionService {
     }
 
     try {
-      // Get current user - must be authenticated
-      const user = this.gun.user()
-      if (!user.is) {
-        throw {
-          code: 'NO_USER',
-          message: 'No authenticated user',
-        } as EncryptionError
-      }
-
       // Retrieve stored ephemeral keys (generated once per user)
-      const userPair = await this.getStoredEphemeralKeys(user);
+      const userPair = await this.getStoredEphemeralKeys();
 
       if (!userPair || !userPair.epriv || !userPair.epub) {
         throw {
@@ -315,8 +280,9 @@ class EncryptionService {
    * Retrieve stored ephemeral keys for the authenticated user
    * These keys are generated once per user and stored in GunDB
    */
-  private async getStoredEphemeralKeys(user: any): Promise<{ epriv: string; epub: string } | null> {
-    const userPub = (user.is)?.pub;
+  private async getStoredEphemeralKeys(): Promise<{ epriv: string; epub: string } | null> {
+    const user = this.gun!.user()
+    const userPub = user.is?.pub;
     if (!userPub || !this.gun) {
       return null;
     }
@@ -352,33 +318,6 @@ class EncryptionService {
   }
 
   /**
-   * Get current user's public key from GunDB
-   * @returns Promise resolving to public key string
-   */
-  async getCurrentUserPublicKey(): Promise<string> {
-    this.checkInitialized();
-
-    if (!this.gun) {
-      throw {
-        code: 'SEA_NOT_INITIALIZED',
-        message: 'GunDB not initialized',
-      } as EncryptionError;
-    }
-
-    const user = this.gun.user();
-    const userIs = user.is;
-
-    if (!userIs || !userIs.pub) {
-      throw {
-        code: 'NO_USER',
-        message: 'No authenticated user',
-      } as EncryptionError;
-    }
-
-    return userIs.pub as string;
-  }
-
-  /**
    * Retrieve and decrypt document key for current user
    * @param docId - Document ID
    * @returns Promise resolving to decrypted string
@@ -388,7 +327,7 @@ class EncryptionService {
 
     try {
       // Get current user's public key
-      const userPub = await this.getCurrentUserPublicKey();
+      const userPub = await this.gun!.user().is!.pub;
 
       // Get document
       const document = await gunService.getDocument(docId);

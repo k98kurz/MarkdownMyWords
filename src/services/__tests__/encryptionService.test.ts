@@ -145,6 +145,8 @@ async function testKeySharing(): Promise<TestSuiteResult> {
         encryptedKey,
         ephemeralPub
       )
+      console.log(' decryptDocumentKeyWithSEA completed')
+      assert(docKey == decryptedKey, `key decrytion failed: ${docKey} != ${decryptedKey}`)
 
       const content = 'test document for ECDH key sharing'
       const encrypted = await encryptionService.encryptDocument(content, docKey)

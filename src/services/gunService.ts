@@ -1277,10 +1277,10 @@ class GunService {
 
   /**
    * Retrieve a user's ephemeral public key from GunDB
-   * @param userId - User ID (public key)
+   * @param userPub - User ID (public key)
    * @returns Promise resolving to ephemeral public key or null if not found
    */
-  async getUserEphemeralPublicKey(userId: string): Promise<string | null> {
+  async getUserEphemeralPublicKey(userPub: string): Promise<string | null> {
     const gun = this.getGun()
     return new Promise<string | null>((resolve) => {
       let resolved = false;
@@ -1293,8 +1293,8 @@ class GunService {
       }, 200);
 
       // Get user's ephemeral public key from app namespace path
-      // Path: markdownmywords~user~{userId}/ephemeralPub (stored as property of user node)
-      const userNode = gun!.get(`markdownmywords~user~${userId}`);
+      // Path: markdownmywords~user~{userPub}/ephemeralPub (stored as property of user node)
+      const userNode = gun!.get(`markdownmywords~user~${userPub}`);
       userNode.get('ephemeralPub').once((value: any) => {
         if (!resolved) {
           resolved = true;

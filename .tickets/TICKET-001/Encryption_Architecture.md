@@ -2,10 +2,10 @@
 
 ## Overview
 
-MarkdownMyWords uses a hybrid encryption approach:
-- **Document encryption**: Manual AES-256-GCM with per-document symmetric keys (256-bit random keys)
-- **Key sharing**: GunDB's SEA (Security, Encryption, Authorization) for sharing document keys between users via ECDH
-- **User data storage**: GunDB's/SEA's automatic encryption for non-document user data (settings, profile, etc.)
+MarkdownMyWords uses GunDB SEA (Security, Encryption, Authorization) for all encryption operations:
+- **Document encryption**: SEA symmetric encryption via `SEA.encrypt()`/`SEA.decrypt()` with per-document symmetric keys (256-bit keys generated via Web Crypto API, exported as base64)
+- **Key sharing**: SEA's ECDH via `SEA.secret()` to derive shared secrets, then `SEA.encrypt()` to encrypt document keys for sharing
+- **User data storage**: GunDB's/SEA's automatic encryption for non-document user data (settings, profile, etc.) via `gun.user().get().put()`
 - **Authentication**: SEA for user authentication and key management
 
 All documents are encrypted with per-document symmetric keys to enable:
@@ -21,8 +21,9 @@ Non-document user data (settings, profile, preferences) uses GunDB's automatic e
 
 SEA (Security, Encryption, Authorization) is GunDB's built-in encryption module that provides:
 - **ECDSA key pairs** for user identity
-- **ECDH key exchange** for secure sharing (derives shared secrets)
-- **Automatic encryption/decryption** of data stored in GunDB
+- **ECDH key exchange** for secure sharing (derives shared secrets via `SEA.secret()`)
+- **Symmetric encryption** via `SEA.encrypt()`/`SEA.decrypt()` for document encryption
+- **Automatic encryption/decryption** of user data stored via `gun.user().get().put()`
 - **Integrated authentication** with GunDB user system
 - **Certificate-based access control** for permissions
 
@@ -61,22 +62,20 @@ gun.user().get('settings').get('openRouterApiKey').once((apiKey) => {
 - Integrated with GunDB
 - No manual encryption code needed
 
-#### Document Encryption (Manual AES-256-GCM)
+#### Document Encryption (SEA Symmetric Encryption)
 ```typescript
-// All documents use per-document symmetric keys (NOT SEA)
-const docKey = await encryptionService.generateDocumentKey(); // 256-bit random key
-const encrypted = await encryptionService.encryptDocument(content, docKey);
+// All documents use per-document symmetric keys with SEA
+const docKey = await encryptionService.generateDocumentKey(); // 256-bit random key, exported as base64 string
+const encrypted = await encryptionService.encryptDocument(content, docKey); // Uses SEA.encrypt()
 
 // Store encrypted document in GunDB
 gun.get(`documents/${docId}`).put({
-  encryptedContent: encrypted.encryptedContent,
-  iv: encrypted.iv,
-  tag: encrypted.tag
+  encryptedContent: encrypted // SEA-encrypted string
 });
 
 // Decrypt when reading
 const encrypted = await gun.get(`documents/${docId}`).once();
-const decrypted = await encryptionService.decryptDocument(encrypted, docKey);
+const decrypted = await encryptionService.decryptDocument(encrypted.encryptedContent, docKey); // Uses SEA.decrypt()
 ```
 
 #### Sharing Document Keys with SEA (ECDH)
@@ -113,52 +112,47 @@ gun.get(`documents/${docId}/sharing/documentKey/${recipientUserId}`).put({
 
 ### SEA Advantages
 
-- ✅ **Automatic encryption/decryption** - No manual encryption code needed
-- ✅ **ECDH key exchange** - Efficient, secure sharing
+- ✅ **Symmetric encryption** - `SEA.encrypt()`/`SEA.decrypt()` for document encryption
+- ✅ **ECDH key exchange** - Efficient, secure sharing via `SEA.secret()`
+- ✅ **Automatic encryption/decryption** - For user data via `gun.user().get().put()`
 - ✅ **Integrated with GunDB** - Works seamlessly with graph database
 - ✅ **Built-in authentication** - User identity management
 - ✅ **Certificate system** - Access control built-in
 - ✅ **Less code** - Reduced implementation complexity
 - ✅ **Well-tested** - Battle-tested encryption implementation
 
-## Fallback: Manual Encryption
+## Document Encryption with SEA
 
-Manual PBKDF2/AES-256-GCM is used only where SEA cannot support specific features:
+All documents use SEA symmetric encryption with per-document keys:
 
-### Use Case 1: Document-Specific Keys for Branching
+### Document-Specific Keys for Branching
 
-**Problem**: SEA encrypts per-user, but we need document-specific keys that can be shared with multiple collaborators for the branching model.
+**Problem**: Need document-specific keys that can be shared with multiple collaborators for the branching model.
 
-**Solution**: Generate document-specific keys and encrypt them using SEA's ECDH for each collaborator.
+**Solution**: Generate document-specific keys and encrypt documents using `SEA.encrypt()`, then share keys using SEA's ECDH.
 
 ```typescript
 // Generate document-specific key (for branching model)
-const docKey = generateRandomKey(); // 256-bit random key
+const docKey = await encryptionService.generateDocumentKey(); // 256-bit random key, exported as base64 string
 
-// Encrypt document with document key (manual AES-256-GCM)
-const encrypted = await encryptDocument(content, docKey);
+// Encrypt document with document key using SEA
+const encrypted = await encryptionService.encryptDocument(content, docKey); // Uses SEA.encrypt()
 
 // Encrypt document key for each collaborator using SEA's ECDH
 const user = gun.user();
-const userIs = user.is; // Get sender's ephemeral key pair
+const userPair = await encryptionService.getStoredEphemeralKeys(); // Get sender's ephemeral key pair
 
 for (const collaborator of collaborators) {
   // Derive shared secret using ECDH (NOT direct encryption with public key!)
-  const sharedSecret = await SEA.secret({ epub: collaborator.epub }, {
-    epriv: userIs.epriv,
-    epub: userIs.epub
-  });
-
-  // Export document key to base64
-  const keyBase64 = await encryptionService.exportKey(docKey);
+  const sharedSecret = await SEA.secret({ epub: collaborator.epub }, userPair);
 
   // Encrypt document key with shared secret
-  const encryptedKey = await SEA.encrypt(keyBase64, sharedSecret);
+  const encryptedKey = await SEA.encrypt(docKey, sharedSecret);
 
   // Store encrypted key with sender's ephemeral public key
   store(`${appNamespace}~doc~{docId}/sharing/documentKey/${collaborator.userId}`, {
     encryptedKey: encryptedKey,
-    ephemeralPub: userIs.epub
+    ephemeralPub: userPair.epub
   });
 }
 ```
@@ -181,45 +175,42 @@ gun.user().get('settings').get('openRouterApiKey').put(encryptedApiKey);
 
 ## Encryption Approach
 
-**All documents use the same encryption approach**: Manual AES-256-GCM with per-document symmetric keys. This enables URL-based sharing and multi-branch collaboration.
+**All documents use the same encryption approach**: SEA symmetric encryption (`SEA.encrypt()`/`SEA.decrypt()`) with per-document symmetric keys. This enables URL-based sharing and multi-branch collaboration.
 
 ### Document Encryption (All Documents)
 
 ```typescript
 // Generate document-specific key for branching model
-const docKey = generateRandomKey();
+const docKey = await encryptionService.generateDocumentKey(); // 256-bit key, exported as base64 string
 
-// Encrypt document with document key (manual AES-256-GCM)
-const encrypted = await encryptDocument(content, docKey);
+// Encrypt document with document key using SEA
+const encrypted = await encryptionService.encryptDocument(content, docKey); // Uses SEA.encrypt()
 
 // Encrypt document key for each collaborator using SEA's ECDH
 const user = gun.user();
-const userIs = user.is; // Get sender's ephemeral key pair
+const userPair = await encryptionService.getStoredEphemeralKeys(); // Get sender's ephemeral key pair
 
 for (const collaborator of collaborators) {
   // Derive shared secret using ECDH
-  const sharedSecret = await SEA.secret({ epub: collaborator.epub }, {
-    epriv: userIs.epriv,
-    epub: userIs.epub
-  });
+  const sharedSecret = await SEA.secret({ epub: collaborator.epub }, userPair);
 
-  // Export and encrypt document key
-  const keyBase64 = await encryptionService.exportKey(docKey);
-  const encryptedKey = await SEA.encrypt(keyBase64, sharedSecret);
+  // Encrypt document key with shared secret
+  const encryptedKey = await SEA.encrypt(docKey, sharedSecret);
 
   // Store encrypted key with sender's ephemeral public key
   store(`${appNamespace}~doc~{docId}/sharing/documentKey/${collaborator.userId}`, {
     encryptedKey: encryptedKey,
-    ephemeralPub: userIs.epub
+    ephemeralPub: userPair.epub
   });
 }
 ```
 
 **Characteristics**:
 - Document-specific key (enables branching model)
-- Key encrypted with SEA's ECDH for each collaborator
+- Documents encrypted with `SEA.encrypt()` using document key
+- Document keys encrypted with SEA's ECDH for each collaborator
 - Owner can revoke access by removing encrypted key
-- Combines SEA's sharing with custom document keys
+- Uses SEA for both document encryption and key sharing
 
 ## Key Management
 
@@ -237,14 +228,15 @@ for (const collaborator of collaborators) {
 ### Document Keys (All Documents)
 
 **Lifecycle**:
-1. Generate random 256-bit key when creating document
-2. Encrypt document with document key (manual AES-256-GCM)
-3. For sharing: Encrypt document key with each collaborator using SEA's ECDH
+1. Generate random 256-bit key when creating document (via Web Crypto API)
+2. Export key as base64 string for use with SEA
+3. Encrypt document with document key using `SEA.encrypt()`
+4. For sharing: Encrypt document key with each collaborator using SEA's ECDH
    - Derive shared secret: `SEA.secret({ epub: recipientEpub }, senderPair)`
    - Encrypt key: `SEA.encrypt(keyBase64, sharedSecret)`
-4. Store encrypted keys in `sharing.documentKey[userId]` with sender's ephemeral public key
-5. Collaborator derives shared secret and decrypts their copy of document key
-6. Use document key to decrypt document
+5. Store encrypted keys in `sharing.documentKey[userId]` with sender's ephemeral public key
+6. Collaborator derives shared secret and decrypts their copy of document key using `SEA.decrypt()`
+7. Use document key to decrypt document using `SEA.decrypt()`
 
 **Storage**: Encrypted in GunDB using SEA's ECDH (for shared documents) or exported to base64 (for URL sharing)
 
@@ -254,41 +246,43 @@ for (const collaborator of collaborators) {
 
 ```typescript
 interface EncryptionService {
-  // SEA initialization (for key sharing)
+  // SEA initialization (for encryption and key sharing)
   initializeSEA(): Promise<void>;
 
-  // Document encryption (manual AES-256-GCM with per-document keys)
-  generateDocumentKey(): Promise<CryptoKey>;
-  encryptDocument(content: string, key: CryptoKey): Promise<EncryptedDocument>;
-  decryptDocument(encrypted: EncryptedDocument, key: CryptoKey): Promise<string>;
+  // Document encryption (SEA symmetric encryption with per-document keys)
+  generateDocumentKey(): Promise<string>; // Returns base64 string
+  encryptDocument(content: string, key: string): Promise<string | undefined>; // Uses SEA.encrypt()
+  decryptDocument(encrypted: string, key: string): Promise<string | undefined>; // Uses SEA.decrypt()
 
   // Key sharing (SEA's ECDH)
-  encryptDocumentKeyWithSEA(docKey: CryptoKey, recipientEpub: string): Promise<{ encryptedKey: string; ephemeralPub: string }>;
-  decryptDocumentKeyWithSEA(encryptedKey: string, senderEpub: string): Promise<CryptoKey>;
+  encryptDocumentKeyWithSEA(docKey: string, recipientEpub: string): Promise<{ encryptedKey: string; ephemeralPub: string }>;
+  decryptDocumentKeyWithSEA(encryptedKey: string, senderEpub: string): Promise<string | undefined>;
 
   // Key serialization (for URL parameters)
-  exportKey(key: CryptoKey): Promise<string>;
-  importKey(keyString: string): Promise<CryptoKey>;
+  exportKey(key: CryptoKey): Promise<string>; // Internal: converts CryptoKey to base64
+  retrieveDocumentKey(docId: string): Promise<string | undefined>; // Retrieves and decrypts document key
 }
 
 // NOTE: User authentication (createSEAUser, authenticateSEAUser) is in gunService, not encryptionService
 ```
 
-## Why Manual AES-256-GCM for Documents
+## Why SEA Encryption for Documents
 
-All documents use manual AES-256-GCM encryption with per-document symmetric keys because:
+All documents use SEA symmetric encryption (`SEA.encrypt()`/`SEA.decrypt()`) with per-document symmetric keys because:
 
 1. **Document-specific keys**: Enables all branches of a document to use the same key (required for multi-branch collaboration)
 2. **URL-based sharing**: Keys can be exported to base64 and included in URL parameters
 3. **Key sharing flexibility**: Same key can be shared via ECDH (authenticated users) or URL (unauthenticated sharing)
 4. **Consistent approach**: All documents use the same encryption method, whether shared or not
+5. **SEA integration**: Uses the same encryption library for documents and key sharing, reducing complexity
 
 **SEA is used for**:
+- Document encryption via `SEA.encrypt()`/`SEA.decrypt()` with per-document keys
 - User authentication
-- Sharing document keys between authenticated users via ECDH
+- Sharing document keys between authenticated users via ECDH (`SEA.secret()` + `SEA.encrypt()`)
 - Automatic encryption of non-document user data (settings, profile, preferences) via `gun.user().get().put()`
 
-**Documents are NOT encrypted with SEA** - they use manual AES-256-GCM with per-document keys to enable URL sharing and multi-branch collaboration.
+**Documents are encrypted with SEA** - using `SEA.encrypt()`/`SEA.decrypt()` with per-document keys to enable URL sharing and multi-branch collaboration.
 
 ## Security Best Practices
 
@@ -299,11 +293,11 @@ All documents use manual AES-256-GCM encryption with per-document symmetric keys
 - Leverage SEA's built-in security features
 - Trust SEA's battle-tested implementation
 
-### 2. Document Encryption (Always Manual AES-256-GCM)
-- All documents use manual AES-256-GCM with per-document symmetric keys
+### 2. Document Encryption (SEA Symmetric Encryption)
+- All documents use SEA symmetric encryption (`SEA.encrypt()`/`SEA.decrypt()`) with per-document symmetric keys
 - Use strong random 256-bit keys (via `crypto.subtle.generateKey()`)
-- Use random IVs for each encryption operation
-- Never reuse keys or IVs
+- Export keys as base64 strings for use with SEA
+- Never reuse keys
 
 ### 3. Key Management
 - Let SEA manage user keys (authentication, ephemeral key pairs)
@@ -319,14 +313,14 @@ All documents use manual AES-256-GCM encryption with per-document symmetric keys
 
 ## Implementation Checklist
 
-- [ ] SEA integration and initialization
-- [ ] User creation with SEA (in gunService)
-- [ ] User authentication with SEA (in gunService)
-- [ ] Document-specific key generation (256-bit random keys)
-- [ ] Manual AES-256-GCM encryption for documents
-- [ ] Manual AES-256-GCM decryption for documents
-- [ ] Document key encryption with SEA's ECDH (for authenticated sharing)
-- [ ] Document key decryption with SEA's ECDH (for authenticated sharing)
-- [ ] Key export/import for URL-based sharing
-- [ ] Error handling for all encryption operations
-- [ ] Integration with GunDB storage for encrypted documents and keys
+- [x] SEA integration and initialization
+- [x] User creation with SEA (in gunService)
+- [x] User authentication with SEA (in gunService)
+- [x] Document-specific key generation (256-bit random keys via Web Crypto API, exported as base64)
+- [x] SEA symmetric encryption for documents (`SEA.encrypt()`)
+- [x] SEA symmetric decryption for documents (`SEA.decrypt()`)
+- [x] Document key encryption with SEA's ECDH (for authenticated sharing)
+- [x] Document key decryption with SEA's ECDH (for authenticated sharing)
+- [x] Key export for URL-based sharing
+- [x] Error handling for all encryption operations
+- [x] Integration with GunDB storage for encrypted documents and keys
