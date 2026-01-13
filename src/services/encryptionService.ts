@@ -345,9 +345,9 @@ class EncryptionService {
       }
 
       // Retrieve stored ephemeral keys (generated once per user)
-      const currentUserEphemeralPair = await this.getStoredEphemeralKeys(user);
+      const userPair = await this.getStoredEphemeralKeys(user);
 
-      if (!currentUserEphemeralPair || !currentUserEphemeralPair.epriv || !currentUserEphemeralPair.epub) {
+      if (!userPair || !userPair.epriv || !userPair.epub) {
         throw {
           code: 'NO_USER_PAIR',
           message:
@@ -356,7 +356,7 @@ class EncryptionService {
       }
 
       // Derive shared secret using ECDH
-      const sharedSecret = await this.sea.secret(recipientEpub, currentUserEphemeralPair)
+      const sharedSecret = await this.sea.secret({ epub: recipientEpub }, userPair)
 
       if (!sharedSecret) {
         throw new Error('Failed to derive shared secret')
@@ -368,7 +368,7 @@ class EncryptionService {
       // Return encrypted key + sender's ephemeral public key (NOT pub!)
       return {
         encryptedKey,
-        ephemeralPub: currentUserEphemeralPair.epub,
+        ephemeralPub: userPair.epub,
       }
     } catch (error) {
       throw {
