@@ -10,6 +10,7 @@ import { testEncryptionService } from './services/__tests__/encryptionService.te
 import { testNonEphemeralECDH } from './services/__tests__/testNonEphemeralECDH'
 import { listUsers, listUsersDetailed, getUserById, listSEAUsers } from './utils/listUsers'
 import { clearGunDBLocalStorage, clearAllGunDBData } from './utils/clearGunDB'
+import { useConnectionStore } from './stores/connectionStore'
 
 // Initialize services
 async function initializeServices() {
@@ -21,6 +22,18 @@ async function initializeServices() {
     // Initialize SEA
     await encryptionService.initializeSEA()
     console.log('✅ SEA initialized')
+
+    // Set up connection status polling
+    const updateConnectionStatus = () => {
+      const connectionStore = useConnectionStore.getState()
+      connectionStore.updateConnectionStatus()
+    }
+
+    // Initial update
+    updateConnectionStatus()
+
+    // Set up polling interval
+    setInterval(updateConnectionStatus, 5000)
   } catch (error) {
     console.error('❌ Failed to initialize services:', error)
   }

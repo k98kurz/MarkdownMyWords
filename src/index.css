@@ -205,7 +205,9 @@ h1 {
   background-color: rgba(255, 255, 255, 0.05);
   color: rgba(255, 255, 255, 0.87);
   font-size: 1rem;
-  transition: border-color 0.2s, background-color 0.2s;
+  transition:
+    border-color 0.2s,
+    background-color 0.2s;
 }
 
 .form-group input:focus {
@@ -478,6 +480,77 @@ h1 {
 .error-modal-button.primary:hover {
   background-color: #535bf2;
   border-color: #535bf2;
+}
+
+/* Status Bar Styles */
+.status-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 32px;
+  background-color: #1a1a1a;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.87);
+  z-index: 1000;
+}
+
+.status-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.status-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status-indicator.status-green {
+  background-color: #00ff00;
+}
+
+.status-indicator.status-yellow {
+  background-color: #ffff00;
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.status-indicator.status-red {
+  background-color: #ff0000;
+}
+
+.status-indicator.status-gray {
+  background-color: #808080;
+}
+
+.status-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (prefers-color-scheme: light) {
+  .status-bar {
+    background-color: #ffffff;
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+    color: rgba(0, 0, 0, 0.87);
+  }
 }
 
 @media (prefers-color-scheme: light) {

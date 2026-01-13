@@ -1,69 +1,70 @@
-import { useEffect, useState } from 'react';
-import { useAuthStore } from './stores/authStore';
-import { AuthModal } from './components/AuthModal';
-import { ErrorModal } from './components/ErrorModal';
-import { useErrorStore } from './stores/errorStore';
+import { useEffect, useState } from 'react'
+import { useAuthStore } from './stores/authStore'
+import { AuthModal } from './components/AuthModal'
+import { ErrorModal } from './components/ErrorModal'
+import { useErrorStore } from './stores/errorStore'
+import { StatusBar } from './components/StatusBar'
 
 function App() {
-  const { isAuthenticated, isLoading, checkSession, logout, user } = useAuthStore();
-  const { setError } = useErrorStore();
-  const [showAuthModal, setShowAuthModal] = useState(false);
+  const { isAuthenticated, isLoading, checkSession, logout, user } = useAuthStore()
+  const { setError } = useErrorStore()
+  const [showAuthModal, setShowAuthModal] = useState(false)
 
   // Set up global error handlers
   useEffect(() => {
     // Handle unhandled errors
     const handleError = (event: ErrorEvent) => {
-      setError(event.error || event.message);
-    };
+      setError(event.error || event.message)
+    }
 
     // Handle unhandled promise rejections
     const handleRejection = (event: PromiseRejectionEvent) => {
-      setError(event.reason);
-    };
+      setError(event.reason)
+    }
 
-    window.addEventListener('error', handleError);
-    window.addEventListener('unhandledrejection', handleRejection);
+    window.addEventListener('error', handleError)
+    window.addEventListener('unhandledrejection', handleRejection)
 
     return () => {
-      window.removeEventListener('error', handleError);
-      window.removeEventListener('unhandledrejection', handleRejection);
-    };
-  }, [setError]);
+      window.removeEventListener('error', handleError)
+      window.removeEventListener('unhandledrejection', handleRejection)
+    }
+  }, [setError])
 
   // Check for existing session on mount
   useEffect(() => {
-    checkSession().catch((error) => {
-      setError(error);
-    });
-  }, [checkSession, setError]);
+    checkSession().catch(error => {
+      setError(error)
+    })
+  }, [checkSession, setError])
 
   // Show auth modal if not authenticated and not loading
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
-      setShowAuthModal(true);
+      setShowAuthModal(true)
     } else {
-      setShowAuthModal(false);
+      setShowAuthModal(false)
     }
-  }, [isAuthenticated, isLoading]);
+  }, [isAuthenticated, isLoading])
 
   // Get username from user object
   const getUsername = () => {
-    if (!user) return null;
-    const userIs = (user as any).is;
+    if (!user) return null
+    const userIs = (user as any).is
     if (userIs) {
       // Prefer alias if it exists and is not a public key
       if (userIs.alias && !userIs.alias.includes('.')) {
-        return userIs.alias;
+        return userIs.alias
       }
       // Fallback to pub key (truncated) if no alias
       if (userIs.pub) {
-        return userIs.pub.substring(0, 20) + '...';
+        return userIs.pub.substring(0, 20) + '...'
       }
     }
-    return null;
-  };
+    return null
+  }
 
-  const username = getUsername();
+  const username = getUsername()
 
   return (
     <div className="app">
@@ -100,8 +101,10 @@ function App() {
       />
 
       <ErrorModal />
+
+      <StatusBar />
     </div>
-  );
+  )
 }
 
-export default App;
+export default App
