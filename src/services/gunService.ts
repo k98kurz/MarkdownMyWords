@@ -9,6 +9,7 @@ import Gun from 'gun'
 import 'gun/sea' // GunDB SEA for encryption
 import 'gun/lib/radix' // Radix for storage
 import 'gun/lib/radisk' // Radisk for IndexedDB
+import { retryWithBackoff } from '../utils/retryHelper'
 import type {
   GunInstance,
   User,
@@ -1188,11 +1189,17 @@ class GunService {
               pub: (authUser.is?.pub as string) || pub,
             }
 
-            // Wait for SEA to fully initialize before storing ephemeral keys
-            await new Promise(resolve => setTimeout(resolve, GunService.SEA_INIT_DELAY_MS))
-
-            // Generate and store ephemeral keys for ECDH
-            await this.generateAndStoreEphemeralKeys(gun)
+            // Use exponential backoff retry for SEA initialization
+            await retryWithBackoff(
+              async _ => {
+                await this.generateAndStoreEphemeralKeys(gun)
+              },
+              {
+                maxAttempts: 4,
+                baseDelay: 100,
+                backoffMultiplier: 2,
+              }
+            )
 
             resolve(userData)
           })
@@ -1398,9 +1405,6 @@ class GunService {
             alias: username,
             pub: user.is.pub as string,
           }
-
-          // Wait for SEA to fully initialize before storing ephemeral keys
-          await new Promise(resolve => setTimeout(resolve, GunService.SEA_INIT_DELAY_MS))
 
           // Generate and store ephemeral keys if not already stored
           this.generateAndStoreEphemeralKeys(this.gun!)

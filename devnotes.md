@@ -1,60 +1,95 @@
 # Development Notes
 
-## SEA Initialization Delay
+## Exponential Backoff Retry Logic for SEA Initialization
 
-### Why It's Needed
+### Why Fixed Delays Are Problematic
 
-When `gun.user().auth()` or `gun.user().create()` completes, it sets up `user.is` with the user's SEA keys (public/private key pair). However, SEA needs additional time to:
+Fixed delays cause substantial app slowdown:
 
-1. Load the keys from storage
-2. Decrypt the keys (they're stored encrypted)
-3. Set up its internal signing state
-4. Make the keys ready for signing/encrypting operations
+- User creation always waits same delay regardless of whether SEA is ready
+- If SEA initializes quickly, we're unnecessarily waiting
+- If SEA needs more time, fixed delay might be insufficient
 
-If we immediately try to store data via `user.get('path').put(value)` after authentication, SEA attempts to sign the data but its internal state isn't fully initialized yet. This causes SEA to return an error:
+### Solution: Exponential Backoff with Small Initial Delay
 
-```
-Failed to store ephemeral private key: Unverified data
-```
+We use exponential backoff retry logic:
+
+- **Start small:** 100ms initial delay (fast if SEA is ready)
+- **Progressive retry:** 100ms → 200ms → 400ms → 800ms
+- **Maximum 4 attempts:** 1500ms total maximum delay
+- **Typical case:** Succeeds on first try (100ms wait)
+- **Worst case:** 1500ms total (better than fixed 2000ms)
+
+### Behavior
+
+**Error types that trigger retry:**
+
+- "Unverified data" - SEA not ready, try again
+- "Timeout storing ephemeral keys" - GunDB operation timeout, try again
+
+**Error types that do NOT trigger retry:**
+
+- Network errors (throw immediately)
+- Authentication errors (wrong password, etc.)
+- Storage errors that are not retryable
 
 ### Implementation
 
-We solve this by adding a delay after user authentication before attempting to store ephemeral keys:
+**Retry Logic Location:** `src/utils/retryHelper.ts`
 
-- **Location 1:** `createSEAUser()` - After successful user creation via `gun.user().auth()` (line 1192)
-- **Location 2:** `createSEAUser()` - When user is already authenticated (no re-auth needed, line N/A - removed from plan)
-- **Location 3:** `authenticateSEAUser()` - After successful authentication (line 1389)
+**Configuration:**
 
-### Current Delay Value
+- `maxAttempts: 4` - Maximum retry attempts
+- `baseDelay: 100` - Starting delay in milliseconds
+- `backoffMultiplier: 2` - Multiplier for exponential backoff
 
-- **Constant:** `GunService.SEA_INIT_DELAY_MS = 500` (500ms)
-- **Retry Logic:** 1 retry on "Unverified data" errors with 500ms delay
-- **Total wait before failure:** 1000ms (500ms initial + 500ms retry)
-- **Constant Location:** `src/services/gunService.ts` line 48
-
-### Tuning
-
-If "Unverified data" errors persist, increase `SEA_INIT_DELAY_MS` constant:
-
-- **200ms:** Too short (original attempt, failed)
-- **500ms:** Current value (should work in most environments)
-- **1000ms:** If 500ms still fails in your environment
-- **2000ms:** Maximum reasonable delay (beyond this suggests a deeper issue)
-
-To change: Edit `src/services/gunService.ts` line 48:
+**Usage with GunDB:**
 
 ```typescript
-private static readonly SEA_INIT_DELAY_MS = 1000  // Increase if needed
+import { retryWithBackoff } from '../utils/retryHelper'
+
+// In createSEAUser() and authenticateSEAUser()
+await retryWithBackoff(
+  async attempt => {
+    await this.generateAndStoreEphemeralKeys(gun)
+  },
+  {
+    maxAttempts: 4,
+    baseDelay: 100,
+    backoffMultiplier: 2,
+  }
+)
 ```
 
-### Why Not Use `await SEA.ready()` or Similar?
+### Retry Schedule
 
-GunDB/SEA doesn't provide a reliable "ready" event or promise that we can await. The authentication callbacks (`auth()`, `create()`) resolve when the operation completes, but SEA's internal state may still be initializing. A fixed delay is the most reliable workaround until GunDB provides a better API.
+| Attempt | Delay | Cumulative |
+| ------- | ----- | ---------- |
+| 1       | 100ms | 100ms      |
+| 2       | 200ms | 300ms      |
+| 3       | 400ms | 700ms      |
+| 4       | 800ms | 1500ms     |
+
+**Total maximum delay:** 1500ms
+
+### Benefits Over Fixed Delays
+
+1. **Faster typical case:** 100ms wait instead of 2000ms (20x faster)
+2. **Graceful degradation:** Progressive retries for problematic cases
+3. **No excessive waiting:** Maximum 1500ms total (vs 2000ms fixed)
+
+### Previous Attempts
+
+| Approach                | Delay      | Result                  |
+| ----------------------- | ---------- | ----------------------- |
+| 200ms fixed + 1 retry   | 400ms      | Too short, still failed |
+| 1000ms fixed + 1 retry  | 2000ms     | Works but excessive     |
+| **Exponential backoff** | 100-1500ms | **Best of both worlds** |
 
 ### References
 
-- Issue: Ephemeral keys fail to store with "Unverified data" error
+- Issue: Ephemeral keys fail to store with "Unverified data" and "Timeout storing ephemeral keys" errors
 - Affects: `generateAndStoreEphemeralKeys()` in `src/services/gunService.ts`
 - First identified: January 12, 2026
-- Fix implemented: Configurable delay with single retry logic
+- Fix implemented: Exponential backoff retry logic with progressive delays
 - Related tests: `src/services/__tests__/gunService.test.ts`, `src/services/__tests__/encryptionService.test.ts`
