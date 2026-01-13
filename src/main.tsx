@@ -8,7 +8,7 @@ import { testVariousDocumentSizes } from './services/__tests__/testDocumentSizes
 import { testGunService } from './services/__tests__/gunService.test'
 import { testEncryptionService } from './services/__tests__/encryptionService.test'
 import { testNonEphemeralECDH } from './services/__tests__/testNonEphemeralECDH'
-import { listUsers, listUsersDetailed, getUserById, listSEAUsers } from './utils/listUsers'
+import { listUsers, listUsersDetailed, getUserById } from './utils/listUsers'
 import { clearGunDBLocalStorage, clearAllGunDBData } from './utils/clearGunDB'
 import { useConnectionStore } from './stores/connectionStore'
 
@@ -74,17 +74,16 @@ async function runAllTests(): Promise<void> {
 
 // Expose functions to window for browser console access
 if (typeof window !== 'undefined') {
-  ;(window as any).testDocumentSizes = testVariousDocumentSizes
-  ;(window as any).testGunService = testGunService
-  ;(window as any).testEncryptionService = testEncryptionService
-  ;(window as any).testNonEphemeralECDH = testNonEphemeralECDH
-  ;(window as any).runAllTests = runAllTests
-  ;(window as any).listUsers = listUsers
-  ;(window as any).listUsersDetailed = listUsersDetailed
-  ;(window as any).getUserById = getUserById
-  ;(window as any).listSEAUsers = listSEAUsers
-  ;(window as any).clearGunDB = clearGunDBLocalStorage
-  ;(window as any).clearAllGunDBData = clearAllGunDBData
+  (window as any).testDocumentSizes = testVariousDocumentSizes;
+  (window as any).testGunService = testGunService;
+  (window as any).testEncryptionService = testEncryptionService;
+  (window as any).testNonEphemeralECDH = testNonEphemeralECDH;
+  (window as any).runAllTests = runAllTests;
+  (window as any).listUsers = listUsers;
+  (window as any).listUsersDetailed = listUsersDetailed;
+  (window as any).getUserById = getUserById;
+  (window as any).clearGunDB = clearGunDBLocalStorage;
+  (window as any).clearAllGunDBData = clearAllGunDBData;
   console.log('🧪 Dev console functions available:')
   console.log('   - window.testDocumentSizes() - Test encryption with various document sizes')
   console.log('   - window.testGunService() - Test GunDB service operations')
@@ -94,7 +93,6 @@ if (typeof window !== 'undefined') {
   console.log('   - window.listUsers() - Returns array of all users (profiles + SEA)')
   console.log('   - window.listUsersDetailed() - Prints formatted user list')
   console.log('   - window.getUserById(userId) - Get specific user by ID')
-  console.log('   - window.listSEAUsers() - List SEA-authenticated users only')
   console.log('   - window.clearGunDB(options) - Clear local GunDB storage')
   console.log('   - window.clearAllGunDBData() - Clear all GunDB data (alias)')
   console.log('\n📋 Copy-paste examples:')
@@ -105,7 +103,6 @@ if (typeof window !== 'undefined') {
   console.log('   window.testNonEphemeralECDH() - Test non-ephemeral ECDH')
   console.log('   window.listUsers().then(users => console.log(users));')
   console.log('   window.listUsersDetailed().then(() => console.log("Done"));')
-  console.log('   window.listSEAUsers().then(users => console.log(users));')
   console.log('   window.getUserById("user-id").then(user => console.log(user));')
   console.log('   window.clearGunDB().then(() => console.log("Cleared!"));')
   console.log('   window.clearAllGunDBData().then(() => console.log("All cleared!"));')

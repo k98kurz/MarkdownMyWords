@@ -66,17 +66,15 @@ describe('AuthStore', () => {
 
         // Verify user.is is actually set in GunDB
         const gunUser = gun.user();
-        const userIs = gunUser.is as any;
-        expect(userIs).toBeDefined();
-        expect(userIs.pub).toBeTruthy();
+        expect(gunUser.is).toBeDefined();
+        expect(gunUser.is?.pub).toBeTruthy();
       } catch (error: any) {
         // If error occurs, check that it's not the regression we're testing for
         if (error.code === 'AUTHENTICATION_FAILED' &&
             error.message === 'Authentication returned not ok') {
           // Check if user is actually authenticated despite the error
           const gunUser = gun.user();
-          const userIs = gunUser.is as any;
-          if (userIs && userIs.pub) {
+          if (gunUser.is && gunUser.is.pub) {
             // This is the regression - user is authenticated but we rejected
             throw new Error(
               'REGRESSION: Service rejected authentication even though user.is is set. ' +

@@ -223,7 +223,7 @@ async function testDocumentOperations(): Promise<TestSuiteResult> {
     if (!gun || !gun.user().is) {
       throw new Error('Not authenticated')
     }
-    const userId = (gun.user().is as any).pub
+    const userId = gun.user().is!.pub
     const docList = await gunService.listDocuments(userId)
     console.log(`  Documents listed: ${docList.length} found`)
   })
@@ -295,7 +295,7 @@ async function testSubscriptions(): Promise<TestSuiteResult> {
       throw new Error('Not authenticated')
     }
 
-    const userId = (gun.user().is as any).pub
+    const userId = gun.user().is!.pub
     let userSubscriptionTriggered = false
 
     const unsubscribeUser = gunService.subscribeToUser(userId, user => {

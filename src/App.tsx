@@ -50,15 +50,14 @@ function App() {
   // Get username from user object
   const getUsername = () => {
     if (!user) return null
-    const userIs = (user as any).is
-    if (userIs) {
+    if (user.is) {
       // Prefer alias if it exists and is not a public key
-      if (userIs.alias && !userIs.alias.includes('.')) {
-        return userIs.alias
+      if (user.alias && !user.alias.includes('.')) {
+        return user.alias
       }
       // Fallback to pub key (truncated) if no alias
-      if (userIs.pub) {
-        return userIs.pub.substring(0, 20) + '...'
+      if (user.pub) {
+        return user.pub.substring(0, 20) + '...'
       }
     }
     return null

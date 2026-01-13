@@ -54,14 +54,7 @@ export const useErrorStore = create<ErrorState>((set) => ({
       message = error;
     } else if (error && typeof error === 'object') {
       // Try to extract message from error object
-      const errorObj = error as any;
-      if (errorObj.message) {
-        message = String(errorObj.message);
-      } else if (errorObj.error) {
-        message = String(errorObj.error);
-      } else {
-        message = 'Error occurred (see details)';
-      }
+      message = JSON.stringify(error);
     }
 
     set({
