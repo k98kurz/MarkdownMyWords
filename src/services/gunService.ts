@@ -1151,7 +1151,7 @@ class GunService {
         }
 
         // Get public key from user.is or ack.pub
-        const pub = (user.is?.pub as string) || ack.pub || ''
+        const pub = (user.is?.pub as string) || ''
 
         // If we have a pub key, user was created or exists
         // If ack.ok is undefined and no pub, it's a real failure
@@ -1164,44 +1164,6 @@ class GunService {
                 : 'User created but no public key found',
             details: ack,
           } as GunError)
-          return
-        }
-
-        // If user.is is not set but we have a pub, authenticate the user
-        // This handles the case where user was created but not automatically authenticated
-        if (!user.is && pub) {
-          // User was created but not authenticated, authenticate now
-          gun.user().auth(username, password, async (authAck: any) => {
-            if (authAck.err) {
-              reject({
-                code: GunErrorCode.SYNC_ERROR,
-                message: 'User created but authentication failed',
-                details: authAck.err,
-              } as GunError)
-              return
-            }
-
-            // Get authenticated user data
-            const authUser = gun.user()
-            const userData: SEAUser = {
-              alias: username,
-              pub: (authUser.is?.pub as string) || pub,
-            }
-
-            // Use exponential backoff retry for SEA initialization
-            await retryWithBackoff(
-              async _ => {
-                await this.generateAndStoreEphemeralKeys(gun)
-              },
-              {
-                maxAttempts: 4,
-                baseDelay: 100,
-                backoffMultiplier: 2,
-              }
-            )
-
-            resolve(userData)
-          })
           return
         }
 
@@ -1311,6 +1273,36 @@ class GunService {
           })
       }
     })
+  }
+
+  /**
+   * Retrieve a user's ephemeral public key from GunDB
+   * @param userId - User ID (public key)
+   * @returns Promise resolving to ephemeral public key or null if not found
+   */
+  async getUserEphemeralPublicKey(userId: string): Promise<string | null> {
+    const gun = this.getGun()
+    return new Promise<string | null>((resolve) => {
+      let resolved = false;
+
+      const timeout = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          resolve(null);
+        }
+      }, 200);
+
+      // Get user's ephemeral public key from app namespace path
+      // Path: markdownmywords~user~{userId}/ephemeralPub (stored as property of user node)
+      const userNode = gun!.get(`markdownmywords~user~${userId}`);
+      userNode.get('ephemeralPub').once((value: any) => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timeout);
+          resolve(value || null);
+        }
+      });
+    });
   }
 
   /**

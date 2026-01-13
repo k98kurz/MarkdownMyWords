@@ -66,6 +66,12 @@ async function testUserOperations(): Promise<TestSuiteResult> {
     }
     seaUser = user
     console.log(`  User created: ${user.alias} (${user.pub.substring(0, 20)}...)`)
+    const epub = await gunService.getUserEphemeralPublicKey(user.pub)
+    if (epub) {
+      console.log(`  Ephemeral pubkey retrieved: ${epub.substring(0, 20)}...`)
+    } else {
+      throw new Error('  Ephemeral pubkey retrieval failed')
+    }
   })
 
   await runner.run('Put user profile', async () => {

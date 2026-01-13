@@ -304,44 +304,6 @@ class EncryptionService {
   }
 
   /**
-   * Retrieve a user's ephemeral public key from GunDB
-   * @param userId - User ID (public key)
-   * @returns Promise resolving to ephemeral public key or null if not found
-   */
-  async getUserEphemeralPublicKey(userId: string): Promise<string | null> {
-    this.checkInitialized();
-
-    if (!this.gun) {
-      throw {
-        code: 'SEA_NOT_INITIALIZED',
-        message: 'GunDB not initialized',
-      } as EncryptionError;
-    }
-
-    return new Promise<string | null>((resolve) => {
-      let resolved = false;
-
-      const timeout = setTimeout(() => {
-        if (!resolved) {
-          resolved = true;
-          resolve(null);
-        }
-      }, 200);
-
-      // Get user's ephemeral public key from app namespace path
-      // Path: markdownmywords~user~{userId}/ephemeralPub (stored as property of user node)
-      const userNode = this.gun!.get(`markdownmywords~user~${userId}`);
-      userNode.get('ephemeralPub').once((value: any) => {
-        if (!resolved) {
-          resolved = true;
-          clearTimeout(timeout);
-          resolve(value || null);
-        }
-      });
-    });
-  }
-
-  /**
    * Encrypt document key with SEA's ECDH for a specific recipient
    * @param docKey - Document CryptoKey
    * @param recipientEpub - Recipient's ephemeral public key for ECDHE key exchange
