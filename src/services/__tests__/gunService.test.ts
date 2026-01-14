@@ -57,7 +57,7 @@ async function testUserOperations(): Promise<TestSuiteResult> {
   const timestamp = Date.now()
   const testUsername = `testuser_${timestamp}`
   const testPassword = 'testpassword123'
-  let seaUser: SEAUser|null = null
+  let seaUser: SEAUser | null = null
 
   await runner.run('Create SEA user', async () => {
     const user = await gunService.createSEAUser(testUsername, testPassword)
@@ -66,7 +66,7 @@ async function testUserOperations(): Promise<TestSuiteResult> {
     }
     seaUser = user
     console.log(`  User created: ${user.alias} (${user.pub.substring(0, 20)}...)`)
-    const epub = await gunService.getUserEphemeralPublicKey(user.pub)
+    const epub = await gunService.getUserEpub(user.alias)
     if (epub) {
       console.log(`  Ephemeral pubkey retrieved: ${epub.substring(0, 20)}...`)
     } else {

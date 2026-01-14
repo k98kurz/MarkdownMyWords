@@ -5,7 +5,7 @@
  * user management, document CRUD, and real-time subscriptions.
  */
 
-import Gun, { ISEAPair } from 'gun'
+import Gun from 'gun'
 import 'gun/sea' // GunDB SEA for encryption
 import 'gun/lib/radix' // Radix for storage
 import 'gun/lib/radisk' // Radisk for IndexedDB
@@ -24,15 +24,9 @@ import type {
 } from '../types/gun'
 import { GunErrorCode } from '../types/gun'
 
-
 export interface SEAUser {
   alias: string
   pub: string // Public key
-}
-
-export interface EPair {
-  epriv: string
-  epub: string
 }
 
 /**
@@ -1170,147 +1164,77 @@ class GunService {
           return
         }
 
-        // User is authenticated, generate and store ephemeral keys if not already stored
         const userData: SEAUser = {
           alias: username,
           pub: pub,
         }
-        resolve(userData)
-        // retryWithBackoff(
-        //   async _ => {
-        //     await this.generateAndStoreEphemeralKeys()
-        //   },
-        //   {
-        //     maxAttempts: 4,
-        //     baseDelay: 100,
-        //     backoffMultiplier: 2,
-        //   }
-        // )
-        //   .then(() => {
-        //     const userData: SEAUser = {
-        //       alias: username,
-        //       pub: pub,
-        //     }
-        //     resolve(userData)
-        //   })
-        //   .catch(err => {
-        //     // Reject if ephemeral key storage fails - this reveals real test failures
-        //     const error = err as { err?: string; message?: string }
-        //     const errorMessage = error.err || error.message || String(err)
-
-        //     reject({
-        //       code: GunErrorCode.STORAGE_ERROR,
-        //       message: `Failed to generate ephemeral keys: ${errorMessage}`,
-        //       details: err,
-        //     } as GunError)
-        //   })
+        this.storeUserProfile(username)
+          .then(() => {
+            resolve(userData)
+          })
+          .catch(err => {
+            console.warn('Failed to store user profile:', err)
+            resolve(userData)
+          })
       })
     })
   }
 
   /**
-   * Generate ephemeral key pair and store it for the authenticated user
-   * This is called once per user to enable ECDH key sharing
+   * Store user profile in GunDB profiles directory
+   * Stores the user's pub and epub for discovery by other users
+   * @param username - Username/alias
+   * @returns Promise resolving to void
    */
-  async generateAndStoreEphemeralKeys(): Promise<EPair> {
+  async storeUserProfile(username: string): Promise<void> {
     const gun = this.getGun()
-    const user = gun.user()
+    const pair = gun.user()._?.sea
 
-    if (!user.is || !user.is.pub) {
-      throw new Error('User must be authenticated to generate ephemeral keys')
-    }
-    const userPub = user.is.pub
-
-    const SEA = Gun.SEA
-    if (!SEA) {
-      throw new Error('SEA not available')
+    if (!pair || !pair.pub || !pair.epub) {
+      throw new Error('User must be authenticated to store profile')
     }
 
-    // Check if ephemeral keys already exist
-    const userNode = gun.get(this.getNodePath('user', userPub))
-    return new Promise<EPair>((resolve, reject) => {
-      userNode.get('epub').once((existingEpub: any) => {
-        if (existingEpub) {
-          // Ephemeral keys already exist, retrieve both keys and return
-          user.get('ephemeralKeys').get('epriv').once((existingEpriv: any) => {
-            if (existingEpriv) {
-              resolve({
-                epub: existingEpub,
-                epriv: existingEpriv,
-              })
+    return new Promise<void>((resolve, reject) => {
+      gun
+        .get('profiles')
+        .get(username)
+        .put(
+          {
+            pub: pair.pub,
+            epub: pair.epub,
+          },
+          (ack: unknown) => {
+            const ackObj = ack as { err?: unknown }
+            if (ackObj.err) {
+              reject(new Error(`Failed to store profile for ${username}: ${String(ackObj.err)}`))
             } else {
-              reject(new Error('Ephemeral public key exists but priv key not found'))
+              resolve()
             }
-          })
-          return
-        }
-
-        // Generate new ephemeral key pair
-        SEA.pair().then((pair: ISEAPair) => {
-          if (!pair || !pair.epriv || !pair.epub) {
-            reject(new Error('Failed to generate ephemeral key pair'))
-            return
           }
-
-          // Store public key in public path
-          userNode.get('epub').put(pair.epub, (ack: any) => {
-            if (ack.err) {
-              console.error('Failed to store ephemeral public key in public path:', ack.err)
-              reject(new Error('Failed to store ephemeral public key - required for key sharing'))
-              return
-            }
-
-            // Store privkey in user's privpath
-            user
-              .get('ephemeralKeys')
-              .get('epriv')
-              .put(pair.epriv, (ack: any) => {
-                if (ack.err) {
-                  console.error('Failed to store ephemeral privkey:', ack.err)
-                  reject(new Error(`Failed to store ephemeral privkey: ${ack.err}`))
-                  return
-                }
-                resolve({
-                  epub: pair.epub,
-                  epriv: pair.epriv,
-                })
-              })
-          })
-        }).catch((err: Error) => {
-          reject(err)
-        })
-      })
+        )
     })
   }
 
   /**
-   * Retrieve a user's ephemeral public key from GunDB
-   * @param userPub - User ID (public key)
-   * @returns Promise resolving to ephemeral public key or null if not found
+   * Get user epub from GunDB profiles directory
+   * @param username - Username/alias
+   * @returns Promise resolving to epub string
    */
-  async getUserEphemeralPublicKey(userPub: string): Promise<string | null> {
+  async getUserEpub(username: string): Promise<string> {
     const gun = this.getGun()
-    return new Promise<string | null>((resolve) => {
-      let resolved = false;
-
-      const timeout = setTimeout(() => {
-        if (!resolved) {
-          resolved = true;
-          resolve(null);
-        }
-      }, 200);
-
-      // Get user's ephemeral public key from app namespace path
-      // Path: markdownmywords~user~{userPub}/epub (stored as property of user node)
-      const userNode = gun!.get(this.getNodePath('user', userPub));
-      userNode.get('epub').once((value: any) => {
-        if (!resolved) {
-          resolved = true;
-          clearTimeout(timeout);
-          resolve(value || null);
-        }
-      });
-    });
+    return new Promise<string>((resolve, reject) => {
+      gun
+        .get('profiles')
+        .get(username)
+        .get('epub')
+        .once((data: unknown) => {
+          if (data && typeof data === 'string') {
+            resolve(data)
+          } else {
+            reject(new Error(`Failed to read ${username}'s epub from profiles`))
+          }
+        })
+    })
   }
 
   /**
@@ -1351,27 +1275,6 @@ class GunService {
             pub: user.is.pub as string,
           }
           resolve(userData)
-
-          // Generate and store ephemeral keys if not already stored
-          // retryWithBackoff(
-          //   async _ => {
-          //     await this.generateAndStoreEphemeralKeys()
-          //   },
-          //   {
-          //     maxAttempts: 4,
-          //     baseDelay: 100,
-          //     backoffMultiplier: 2,
-          //   }
-          // )
-          //   .then(() => {
-          //     resolve(userData)
-          //   })
-          //   .catch(err => {
-          //     // Log error but don't fail authentication if ephemeral key generation fails
-          //     console.warn('Failed to generate ephemeral keys:', err)
-          //     resolve(userData)
-          //   })
-          // return
         }
 
         // If ack.ok !== undefined, login succeeded
@@ -1384,24 +1287,6 @@ class GunService {
                 pub: pub,
               }
               resolve(userData)
-              // Generate and store ephemeral keys if not already stored
-              // retryWithBackoff(
-              //   async _ => {
-              //     await this.generateAndStoreEphemeralKeys()
-              //   },
-              //   {
-              //     maxAttempts: 4,
-              //     baseDelay: 100,
-              //     backoffMultiplier: 2,
-              //   }
-              // )
-              //   .then(() => {
-              //     resolve(userData)
-              //   })
-              //   .catch(err => {
-              //     console.warn('Failed to generate ephemeral keys:', err)
-              //     reject(err)
-              //   })
             })
             .catch(data => {
               // Authentication really failed - wrong password
@@ -1409,7 +1294,7 @@ class GunService {
                 code: GunErrorCode.SYNC_ERROR,
                 message: 'Invalid username or password',
                 details: 'Authentication failed',
-                data: data
+                data: data,
               } as GunError)
             })
           return
@@ -1428,15 +1313,18 @@ class GunService {
   async logoutAndWait() {
     const gun = this.getGun()
     gun.user().leave()
-    await retryWithBackoff(async _ => {
-      if (gun.user().is) {
-        throw new Error('user is not logging out')
+    await retryWithBackoff(
+      async _ => {
+        if (gun.user().is) {
+          throw new Error('user is not logging out')
+        }
+      },
+      {
+        maxAttempts: 6,
+        baseDelay: 100,
+        backoffMultiplier: 1.5,
       }
-    }, {
-      maxAttempts: 6,
-      baseDelay: 100,
-      backoffMultiplier: 1.5,
-    })
+    )
   }
 
   /**

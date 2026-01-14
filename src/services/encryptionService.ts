@@ -1,7 +1,7 @@
 import Gun from 'gun';
 import 'gun/sea';
 import type { IGunInstance } from 'gun/types';
-import { gunService, EPair } from './gunService';
+import { gunService } from './gunService';
 
 /**
  * SEA instance type (from GunDB)
@@ -51,7 +51,7 @@ class EncryptionService {
 
     try {
       // Get GunDB instance from gunService
-      const gunInstance = gunService.getInstance();
+      const gunInstance = gunService.getGun();
       if (!gunInstance) {
         throw new Error('GunDB not initialized. Call gunService.initialize() first.');
       }
@@ -132,7 +132,7 @@ class EncryptionService {
   }
 
   /**
-   * Encrypt document content with manual AES-256-GCM
+   * Encrypt document
    * @param content - Plain text content to encrypt
    * @param key - string for encryption
    * @returns Promise resolving to EncryptedDocument
@@ -150,14 +150,14 @@ class EncryptionService {
   }
 
   /**
-   * Decrypt document content with manual AES-256-GCM
+   * Decrypt document
    * @param encrypted - EncryptedDocument
    * @param key - string for decryption
    * @returns Promise resolving to decrypted string
    */
   async decryptDocument(encrypted: string, key: string): Promise<string|undefined> {
     try {
-       return this.sea?.decrypt(encrypted, key)
+      return this.sea?.decrypt(encrypted, key)
     } catch (error) {
       throw {
         code: 'DOCUMENT_DECRYPTION_FAILED',
@@ -170,95 +170,81 @@ class EncryptionService {
   /**
    * Encrypt data with SEA's ECDH for a specific recipient
    * @param data - string plaintext data
-   * @param recipientEpub - Recipient's ephemeral public key for ECDHE key exchange
+   * @param recipientEpub - Recipient's epub
    * @param senderPair - Sender's ephemeral key pair
    * @returns Promise resolving to encrypted key string
    */
-  async encryptWithSEA(
-    data: string,
-    recipientEpub: string,
-    senderPair: EPair
-  ): Promise<string> {
-    this.checkInitialized()
+  async encryptWithSEA(data: string, recipientEpub: string): Promise<string> {
+    this.checkInitialized();
 
     if (!this.sea) {
       throw {
         code: 'SEA_NOT_INITIALIZED',
         message: 'SEA not initialized',
-      } as EncryptionError
+      } as EncryptionError;
     }
 
     try {
-      if (!this.gun) {
-        throw {
-          code: 'SEA_NOT_INITIALIZED',
-          message: 'GunDB not initialized',
-        } as EncryptionError
-      }
+      const userPair = this.gun.user()._?.sea;
 
-      if (!senderPair || !senderPair.epriv || !senderPair.epub) {
+      if (!userPair || !userPair.epriv || !userPair.epub) {
         throw {
           code: 'NO_USER_PAIR',
-          message:
-            'Ephemeral keys not provided.',
-        } as EncryptionError
+          message: 'User must be authenticated to encrypt data',
+        } as EncryptionError;
       }
 
-      // Derive shared secret using ECDH
-      const sharedSecret = await this.sea.secret({ epub: recipientEpub }, senderPair)
+      // Derive shared secret using ECDH with recipient's epub
+      const sharedSecret = await this.sea.secret({ epub: recipientEpub }, userPair);
 
       if (!sharedSecret) {
-        throw new Error('Failed to derive shared secret')
+        throw new Error('Failed to derive shared secret');
       }
 
       // Encrypt data with shared secret
-      const encryptedKey = await this.sea.encrypt(data, sharedSecret)
+      const encrypted = await this.sea.encrypt(data, sharedSecret);
 
-      // Return encrypted key + sender's ephemeral public key (NOT pub!)
-      return encryptedKey
+      // Return encrypted data
+      return encrypted;
     } catch (error) {
       throw {
-        code: 'KEY_ENCRYPTION_FAILED',
-        message: 'Failed to encrypt document key with SEA',
+        code: 'ENCRYPTION_FAILED',
+        message: 'Failed to encrypt data with SEA',
         details: error,
-      } as EncryptionError
+      } as EncryptionError;
     }
   }
 
   /**
    * Decrypt ciphertext with SEA's ECDH
    * @param encryptedData - Encrypted data string
-   * @param senderEpub - Sender's ephemeral public key (from encryptDocumentKeyWithSEA)
-   * @param recipientPair - Recipient's ephemeral key pair
+   * @param senderEpub - Sender's epub
    * @returns Promise resolving to string
    */
   async decryptWithSEA(
-    encryptedData: string,
-    senderEpub: string,
-    recipientPair: EPair
-  ): Promise<string|undefined> {
-    this.checkInitialized()
+    encryptedData: string, senderEpub: string
+  ): Promise<string | undefined> {
+    this.checkInitialized();
 
     if (!this.sea || !this.gun) {
       throw {
         code: 'SEA_NOT_INITIALIZED',
         message: 'SEA not initialized',
-      } as EncryptionError
+      } as EncryptionError;
     }
 
     try {
-      if (!recipientPair || !recipientPair.epriv || !recipientPair.epub) {
+      const userPair = this.gun.user()._?.sea;
+
+      if (!userPair || !userPair.epriv || !userPair.epub) {
         throw {
           code: 'NO_KEY_PAIR',
-          message:
-            'Ephemeral keys not provided.',
-        } as EncryptionError
+          message: 'User must be authenticated to decrypt data',
+        } as EncryptionError;
       }
 
-      // Derive shared secret using ECDH
-      // senderEpub is the ephemeral public key from the sender
-      // recipientPair is the recipient's persistent key pair
-      const sharedSecret = await this.sea.secret({ epub: senderEpub }, recipientPair);
+      // Derive shared secret using ECDH with sender's epub
+      const sharedSecret = await this.sea.secret({ epub: senderEpub }, userPair);
 
       if (!sharedSecret) {
         throw new Error('Failed to derive shared secret');
@@ -268,52 +254,11 @@ class EncryptionService {
       return await this.sea.decrypt(encryptedData, sharedSecret);
     } catch (error) {
       throw {
-        code: 'KEY_DECRYPTION_FAILED',
-        message: 'Failed to decrypt document key with SEA',
+        code: 'DECRYPTION_FAILED',
+        message: 'Failed to decrypt ciphertext with SEA',
         details: error,
       } as EncryptionError;
     }
-  }
-
-  /**
-   * Retrieve stored ephemeral keys for the authenticated user
-   * These keys are generated once per user and stored in GunDB
-   */
-  public async getStoredEphemeralKeys(): Promise<{ epriv: string; epub: string } | null> {
-    const user = this.gun!.user()
-    const userPub = user.is?.pub;
-    if (!userPub || !this.gun) {
-      return null;
-    }
-
-    // Get epub from app namespace path (publicly accessible)
-    const epub = await new Promise<string | null>((resolve) => {
-      const timeout = setTimeout(() => resolve(null), 200);
-      const userNode = this.gun!.get(gunService.getNodePath('user', userPub));
-      userNode.get('ephemeralPub').once((value: any) => {
-        clearTimeout(timeout);
-        resolve(value || null);
-      });
-    });
-
-    if (!epub) {
-      return null;
-    }
-
-    // Get epriv from user's encrypted storage (stored via user.get())
-    const epriv = await new Promise<string | null>((resolve) => {
-      const timeout = setTimeout(() => resolve(null), 200);
-      user.get('ephemeralKeys').get('epriv').once((value: any) => {
-        clearTimeout(timeout);
-        resolve(value || null);
-      });
-    });
-
-    if (!epriv) {
-      return null;
-    }
-
-    return { epriv, epub };
   }
 
   /**
