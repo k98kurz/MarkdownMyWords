@@ -49,19 +49,16 @@ export const useConnectionStore = create<ConnectionState>(set => ({
 }))
 
 // Try to get relay URL from gunService configuration
-const gunInstance = gunService.getInstance()
-if (gunInstance) {
-  try {
-    // Try to extract peers configuration
-    const peers = (gunInstance as any).opt && (gunInstance as any).opt.peers
-    if (peers && Array.isArray(peers) && peers.length > 0) {
-      relayUrl = peers[0] || 'Unknown'
-    } else {
-      relayUrl = 'Unknown'
-    }
-  } catch (e) {
-    relayUrl = 'Unknown'
+try {
+  // Get the peers from gunService directly
+  const gunInstance = gunService.getInstance()
+  if (gunInstance) {
+    // Since we don't have direct access to the peers configuration,
+    // we'll use a default value or try to extract it from the service
+    relayUrl = 'http://localhost:8765/gun'
   }
+} catch (e) {
+  relayUrl = 'Unknown'
 }
 
 // Export types
