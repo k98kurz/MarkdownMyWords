@@ -1,5 +1,10 @@
 # AI Agent Guidelines
 
+## Process Notes
+
+1. Do not run `npm run dev` or `npm test`. They are not functional for agentic code development.
+2. Use `npm run build` and linting to check for syntax errors.
+
 ## Core Principles
 
 ### Prefer Built-in Library Functionality
@@ -8,28 +13,24 @@
 libraries over rewriting or reimplementing them. This is especially true for:
 
 1. **Encryption and Security** - NEVER reimplement encryption, authentication,
-or cryptographic operations
+   or cryptographic operations
    - Use GunDB's SEA for key sharing via ECDH (for sharing document keys between
-   users)
-   - Documents are encrypted with manual AES-256-GCM using per-document
-   symmetric keys
-   - SEA is used ONLY for encrypting/decrypting document keys for sharing and
-   for non-document purposes, NOT for document encryption
+     users)
+   - Documents are encrypted with SEA.encrypt using per-document symmetric keys
+   - SEA is used for all encryption and ECDH purposes
    - Use SEA's built-in ECDH (`sea.secret()` + `sea.encrypt()`) for key sharing,
-   don't reimplement ECDH
-   - If SEA doesn't support a specific use case, document it clearly and use it
-   only as an exception
+     don't reimplement ECDH
 
 1. **Database Operations** - Use GunDB's native APIs
-   - Leverage GunDB's automatic encryption/decryption
+   - Leverage GunDB's automatic encryption/decryption for user data (`gun.get('~@path')`)
    - Use GunDB's built-in user management (`gun.user().create()`, `gun.user().auth()`)
    - Don't reimplement graph traversal or synchronization
 
-2. **State Management** - Use Zustand as intended
+1. **State Management** - Use Zustand as intended
    - Follow Zustand patterns for store creation and updates
    - Don't fight the framework's intended usage
 
-3. **Build Tools** - Use Vite, TypeScript ESLint, Vitest as configured
+1. **Build Tools** - Use Vite, TypeScript ESLint, Vitest as configured
    - Follow their standard conventions
    - Don't create custom build scripts unless absolutely necessary
 
@@ -48,33 +49,54 @@ The previous AI agents reimplemented SEA's encryption incorrectly:
 ### Correct SEA Usage
 
 ```typescript
-// CORRECT: Documents encrypted with manual AES-256-GCM using per-document keys
-const docKey = await encryptionService.generateDocumentKey();
-const encrypted = await encryptionService.encryptDocument(content, docKey);
+// CORRECT: Documents encrypted with SEA.encrypt using per-document keys
+const docKey = await encryptionService.generateDocumentKey()
+const encrypted = await encryptionService.encryptDocument(content, docKey)
 
 // CORRECT: Use SEA's ECDH for sharing document keys (not documents themselves)
-const user = gun.user();
-const sharedSecret = await SEA.secret({ epub: recipientEpub }, {
-  epriv: user.is.epriv,
-  epub: user.is.epub
-});
-const encryptedKey = await SEA.encrypt(keyBase64, sharedSecret);
+// NOTE: the e in epub/epriv stands for "encryption", not "ephemeral"
+
+// First, store user profile when creating user (standard GunDB practice)
+user.auth(alias, pass, ack => {
+  const pair = user._.sea
+  gun.get('profiles').get(alias).put({
+    pub: pair.pub,
+    epub: pair.epub,
+  })
+})
+
+// Then read epub from profiles directory for ECDH
+const user = gun.user()
+const recipientEpub = await new Promise<string>((resolve, reject) => {
+  gun
+    .get('profiles')
+    .get(recipientUsername)
+    .get('epub')
+    .once((data: any) => {
+      if (data) {
+        resolve(data)
+      } else {
+        reject(new Error(`Failed to read ${recipientUsername}'s epub from profiles`))
+      }
+    })
+})
+const sharedSecret = await SEA.secret({ epub: recipientEpub }, user._.sea)
+const encryptedKey = await SEA.encrypt(docKey, sharedSecret)
 
 // CORRECT: User authentication with SEA
-await gun.user().create(username, password);
-await gun.user().auth(username, password);
+await gun.user().create(username, password)
+await gun.user().auth(username, password)
 
 // INCORRECT: Don't reimplement ECDH with new ephemeral keys
-const ephemeralPair = await SEA.pair() // WRONG - use user's existing pair from user.is
+const ephemeralPair = await SEA.pair() // WRONG - use user's existing pair from user._.sea
 const sharedSecret = await SEA.secret({ epub: recipientPub }, ephemeralPair) // WRONG
 
 // INCORRECT: Don't use public key directly as encryption key
 const encrypted = await SEA.encrypt(data, user.pub) // WRONG - must use ECDH first!
 
-// INCORRECT: Don't encrypt documents with SEA - use manual AES-256-GCM
-gun.user().get('documents').get(docId).put({
-  content: 'Document content...' // WRONG - documents need per-document keys for sharing
-})
+// INCORRECT: Don't use gun.get(~@username) for reading user profiles
+const recipientEpub = await gun.get(`~@${recipientUsername}`).get('epub').then() // WRONG - returns list of "souls"
+// Instead use profiles directory pattern shown above
 ```
 
 ## Development Guidelines
@@ -118,10 +140,10 @@ When reviewing code or AI agent output, ask:
 
 - Use `gun.user().create()` for user creation, don't reimplement (in gunService, not encryptionService)
 - Use `gun.user().auth()` for authentication, don't reimplement (in gunService, not encryptionService)
-- Documents are encrypted with manual AES-256-GCM using per-document symmetric keys (NOT with SEA)
+- Documents are encrypted with SEA.encrypt using per-document symmetric keys
 - Use SEA's ECDH (`sea.secret()` + `sea.encrypt()`) for sharing document keys, don't implement custom key exchange
-- Use user's existing ephemeral key pair from `user.is` for ECDH, don't generate new ephemeral pairs
-- The `encryptionService` handles document encryption (AES-256-GCM) and key sharing (SEA ECDH)
+- Use user's existing encryption key pair from `user._.sea` for ECDH, don't generate new key pairs
+- The `encryptionService` handles document encryption and key sharing (SEA ECDH)
 
 ### Zustand
 
@@ -169,7 +191,7 @@ When reviewing code or AI agent output, ask:
 ### NEVER USE "as unknown as" to cover up type erorrs
 
 - **ABSOLUTELY FORBIDDEN**: Covering up type errors with `as unknown` or
-`as unknown as` is strictly prohibited because it is extremely harmful
+  `as unknown as` is strictly prohibited because it is extremely harmful
 - **NO EXCEPTIONS**: Under no circumstances are type errors to be covered up
 - If you have a type error, it means the way you are writing the code is WRONG
 - DO NOT PERSIST IN ERROR
