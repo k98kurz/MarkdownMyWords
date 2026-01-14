@@ -11,7 +11,7 @@ export interface RetryOptions {
  */
 export async function retryWithBackoff<T>(
   operation: (attempt: number) => Promise<T>,
-  options: RetryOptions = { maxAttempts: 4, baseDelay: 100, backoffMultiplier: 2 }
+  options: RetryOptions = { maxAttempts: 9, baseDelay: 50, backoffMultiplier: 1.5 }
 ): Promise<T | never> {
   for (let attempt = 1; attempt <= options.maxAttempts; attempt++) {
     try {

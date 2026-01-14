@@ -21,6 +21,7 @@ export class TestRunner {
   }
 
   async run(testName: string, testFn: () => Promise<void> | void): Promise<void> {
+    console.log(`beginning ${testName}`)
     const startTime = performance.now()
     try {
       await testFn()
@@ -95,4 +96,8 @@ export function printTestSummary(suiteResults: TestSuiteResult[]): void {
     console.log(`   ${totalFailed} test(s) failed`)
   }
   console.log('='.repeat(60))
+}
+
+export async function sleep(ms: number) {
+  await new Promise(resolve => setTimeout(resolve, ms))
 }
