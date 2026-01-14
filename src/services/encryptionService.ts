@@ -1,7 +1,7 @@
 import Gun from 'gun';
 import 'gun/sea';
 import type { IGunInstance } from 'gun/types';
-import { gunService } from './gunService';
+import { gunService, EPair } from './gunService';
 
 /**
  * SEA instance type (from GunDB)
@@ -168,15 +168,17 @@ class EncryptionService {
   }
 
   /**
-   * Encrypt document key with SEA's ECDH for a specific recipient
-   * @param docKey - Document string
+   * Encrypt data with SEA's ECDH for a specific recipient
+   * @param data - string plaintext data
    * @param recipientEpub - Recipient's ephemeral public key for ECDHE key exchange
-   * @returns Promise resolving to encrypted key string and sender's ephemeral public key
+   * @param senderPair - Sender's ephemeral key pair
+   * @returns Promise resolving to encrypted key string
    */
-  async encryptDocumentKeyWithSEA(
-    docKey: string,
-    recipientEpub: string
-  ): Promise<{ encryptedKey: string; ephemeralPub: string }> {
+  async encryptWithSEA(
+    data: string,
+    recipientEpub: string,
+    senderPair: EPair
+  ): Promise<string> {
     this.checkInitialized()
 
     if (!this.sea) {
@@ -194,31 +196,26 @@ class EncryptionService {
         } as EncryptionError
       }
 
-      const userPair = await this.getStoredEphemeralKeys();
-
-      if (!userPair || !userPair.epriv || !userPair.epub) {
+      if (!senderPair || !senderPair.epriv || !senderPair.epub) {
         throw {
           code: 'NO_USER_PAIR',
           message:
-            'Ephemeral keys not available. User must be authenticated and ephemeral keys must be generated.',
+            'Ephemeral keys not provided.',
         } as EncryptionError
       }
 
       // Derive shared secret using ECDH
-      const sharedSecret = await this.sea.secret({ epub: recipientEpub }, userPair)
+      const sharedSecret = await this.sea.secret({ epub: recipientEpub }, senderPair)
 
       if (!sharedSecret) {
         throw new Error('Failed to derive shared secret')
       }
 
-      // Encrypt key with shared secret
-      const encryptedKey = await this.sea.encrypt(docKey, sharedSecret)
+      // Encrypt data with shared secret
+      const encryptedKey = await this.sea.encrypt(data, sharedSecret)
 
       // Return encrypted key + sender's ephemeral public key (NOT pub!)
-      return {
-        encryptedKey,
-        ephemeralPub: userPair.epub,
-      }
+      return encryptedKey
     } catch (error) {
       throw {
         code: 'KEY_ENCRYPTION_FAILED',
@@ -229,12 +226,17 @@ class EncryptionService {
   }
 
   /**
-   * Decrypt document key with SEA's ECDH
-   * @param encryptedKey - Encrypted key string
+   * Decrypt ciphertext with SEA's ECDH
+   * @param encryptedData - Encrypted data string
    * @param senderEpub - Sender's ephemeral public key (from encryptDocumentKeyWithSEA)
+   * @param recipientPair - Recipient's ephemeral key pair
    * @returns Promise resolving to string
    */
-  async decryptDocumentKeyWithSEA(encryptedKey: string, senderEpub: string): Promise<string|undefined> {
+  async decryptWithSEA(
+    encryptedData: string,
+    senderEpub: string,
+    recipientPair: EPair
+  ): Promise<string|undefined> {
     this.checkInitialized()
 
     if (!this.sea || !this.gun) {
@@ -245,28 +247,25 @@ class EncryptionService {
     }
 
     try {
-      // Retrieve stored ephemeral keys (generated once per user)
-      const userPair = await this.getStoredEphemeralKeys();
-
-      if (!userPair || !userPair.epriv || !userPair.epub) {
+      if (!recipientPair || !recipientPair.epriv || !recipientPair.epub) {
         throw {
           code: 'NO_KEY_PAIR',
           message:
-            'Ephemeral keys not available. User must be authenticated and ephemeral keys must be generated.',
+            'Ephemeral keys not provided.',
         } as EncryptionError
       }
 
       // Derive shared secret using ECDH
       // senderEpub is the ephemeral public key from the sender
-      // userPair is the recipient's persistent key pair
-      const sharedSecret = await this.sea.secret({ epub: senderEpub }, userPair);
+      // recipientPair is the recipient's persistent key pair
+      const sharedSecret = await this.sea.secret({ epub: senderEpub }, recipientPair);
 
       if (!sharedSecret) {
         throw new Error('Failed to derive shared secret');
       }
 
-      // Decrypt key with shared secret
-      return await this.sea.decrypt(encryptedKey, sharedSecret);
+      // Decrypt data with shared secret
+      return await this.sea.decrypt(encryptedData, sharedSecret);
     } catch (error) {
       throw {
         code: 'KEY_DECRYPTION_FAILED',
@@ -280,7 +279,7 @@ class EncryptionService {
    * Retrieve stored ephemeral keys for the authenticated user
    * These keys are generated once per user and stored in GunDB
    */
-  private async getStoredEphemeralKeys(): Promise<{ epriv: string; epub: string } | null> {
+  public async getStoredEphemeralKeys(): Promise<{ epriv: string; epub: string } | null> {
     const user = this.gun!.user()
     const userPub = user.is?.pub;
     if (!userPub || !this.gun) {
@@ -290,7 +289,7 @@ class EncryptionService {
     // Get epub from app namespace path (publicly accessible)
     const epub = await new Promise<string | null>((resolve) => {
       const timeout = setTimeout(() => resolve(null), 200);
-      const userNode = this.gun!.get(`markdownmywords~user~${userPub}`);
+      const userNode = this.gun!.get(gunService.getNodePath('user', userPub));
       userNode.get('ephemeralPub').once((value: any) => {
         clearTimeout(timeout);
         resolve(value || null);
@@ -322,67 +321,67 @@ class EncryptionService {
    * @param docId - Document ID
    * @returns Promise resolving to decrypted string
    */
-  async retrieveDocumentKey(docId: string): Promise<string|undefined> {
-    this.checkInitialized();
+  // async retrieveDocumentKey(docId: string): Promise<string|undefined> {
+  //   this.checkInitialized();
 
-    try {
-      // Get current user's public key
-      const userPub = await this.gun!.user().is!.pub;
+  //   try {
+  //     // Get current user's public key
+  //     const userPub = await this.gun!.user().is!.pub;
 
-      // Get document
-      const document = await gunService.getDocument(docId);
-      if (!document) {
-        throw {
-          code: 'DOCUMENT_NOT_FOUND',
-          message: 'Document not found',
-        } as EncryptionError;
-      }
+  //     // Get document
+  //     const document = await gunService.getDocument(docId);
+  //     if (!document) {
+  //       throw {
+  //         code: 'DOCUMENT_NOT_FOUND',
+  //         message: 'Document not found',
+  //       } as EncryptionError;
+  //     }
 
-      // Get encrypted key for current user
-      const encryptedKeyData = document.sharing.documentKey?.[userPub];
-      if (!encryptedKeyData) {
-        throw {
-          code: 'KEY_NOT_FOUND',
-          message: 'Encrypted document key not found for current user',
-        } as EncryptionError;
-      }
+  //     // Get encrypted key for current user
+  //     const encryptedKeyData = document.sharing.documentKey?.[userPub];
+  //     if (!encryptedKeyData) {
+  //       throw {
+  //         code: 'KEY_NOT_FOUND',
+  //         message: 'Encrypted document key not found for current user',
+  //       } as EncryptionError;
+  //     }
 
-      // Parse stored key data with validation
-      let keyData: { encryptedKey: string; ephemeralPub: string }
-      try {
-        keyData = JSON.parse(encryptedKeyData)
-        if (!keyData || typeof keyData !== 'object') {
-          throw new Error('Invalid key data structure: not an object')
-        }
-        if (!keyData.encryptedKey || typeof keyData.encryptedKey !== 'string') {
-          throw new Error('Invalid key data structure: missing or invalid encryptedKey')
-        }
-        if (!keyData.ephemeralPub || typeof keyData.ephemeralPub !== 'string') {
-          throw new Error('Invalid key data structure: missing or invalid ephemeralPub')
-        }
-      } catch (error) {
-        throw {
-          code: 'KEY_DATA_INVALID',
-          message: 'Failed to parse encrypted key data',
-          details: error instanceof Error ? error.message : String(error),
-        } as EncryptionError
-      }
-      const { encryptedKey, ephemeralPub } = keyData;
+  //     // Parse stored key data with validation
+  //     let keyData: { encryptedKey: string; ephemeralPub: string }
+  //     try {
+  //       keyData = JSON.parse(encryptedKeyData)
+  //       if (!keyData || typeof keyData !== 'object') {
+  //         throw new Error('Invalid key data structure: not an object')
+  //       }
+  //       if (!keyData.encryptedKey || typeof keyData.encryptedKey !== 'string') {
+  //         throw new Error('Invalid key data structure: missing or invalid encryptedKey')
+  //       }
+  //       if (!keyData.ephemeralPub || typeof keyData.ephemeralPub !== 'string') {
+  //         throw new Error('Invalid key data structure: missing or invalid ephemeralPub')
+  //       }
+  //     } catch (error) {
+  //       throw {
+  //         code: 'KEY_DATA_INVALID',
+  //         message: 'Failed to parse encrypted key data',
+  //         details: error instanceof Error ? error.message : String(error),
+  //       } as EncryptionError
+  //     }
+  //     const { encryptedKey, ephemeralPub } = keyData;
 
-      // Decrypt document key
-      const docKey = await this.decryptDocumentKeyWithSEA(encryptedKey, ephemeralPub);
-      return docKey;
-    } catch (error) {
-      if ((error as EncryptionError).code) {
-        throw error;
-      }
-      throw {
-        code: 'KEY_RETRIEVAL_FAILED',
-        message: 'Failed to retrieve document key',
-        details: error,
-      } as EncryptionError;
-    }
-  }
+  //     // Decrypt document key
+  //     const docKey = await this.decryptWithSEA(encryptedKey, ephemeralPub);
+  //     return docKey;
+  //   } catch (error) {
+  //     if ((error as EncryptionError).code) {
+  //       throw error;
+  //     }
+  //     throw {
+  //       code: 'KEY_RETRIEVAL_FAILED',
+  //       message: 'Failed to retrieve document key',
+  //       details: error,
+  //     } as EncryptionError;
+  //   }
+  // }
 }
 
 // Export singleton instance

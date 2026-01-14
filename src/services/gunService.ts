@@ -24,12 +24,15 @@ import type {
 } from '../types/gun'
 import { GunErrorCode } from '../types/gun'
 
-/**
- * SEA User interface
- */
+
 export interface SEAUser {
   alias: string
   pub: string // Public key
+}
+
+export interface EPair {
+  epriv: string
+  epub: string
 }
 
 /**
@@ -40,10 +43,10 @@ export interface SEAUser {
  * Default namespace: 'markdownmywords'
  */
 class GunService {
-  private gun: GunInstance | null = null
-  private isInitialized = false
-  private connectionState: 'connected' | 'disconnected' | 'connecting' = 'disconnected'
-  private appNamespace: string = 'markdownmywords'
+  gun: GunInstance | null = null
+  isInitialized = false
+  connectionState: 'connected' | 'disconnected' | 'connecting' = 'disconnected'
+  appNamespace: string = 'markdownmywords'
 
   /**
    * Initialize GunDB client
@@ -109,14 +112,14 @@ class GunService {
    * @param id - Node ID(s)
    * @returns Namespaced path
    */
-  private getNodePath(...parts: string[]): string {
+  public getNodePath(...parts: string[]): string {
     return `${this.appNamespace}~${parts.join('~')}`
   }
 
   /**
    * Set up connection state monitoring
    */
-  private setupConnectionMonitoring(): void {
+  setupConnectionMonitoring(): void {
     if (!this.gun) return
 
     // Monitor peer connections
@@ -158,7 +161,7 @@ class GunService {
    * Get GunDB instance
    * @throws {GunError} If GunDB is not initialized
    */
-  private getGun(): GunInstance {
+  getGun(): GunInstance {
     if (!this.gun || !this.isInitialized) {
       throw {
         code: GunErrorCode.CONNECTION_FAILED,
@@ -186,7 +189,7 @@ class GunService {
    * Helper to read a value with one retry (500ms delay)
    * Returns the value or null if not found after retry
    */
-  private readWithRetry<T>(node: any, callback: (value: T | null) => void, retryDelay = 500): void {
+  readWithRetry<T>(node: any, callback: (value: T | null) => void, retryDelay = 500): void {
     let retried = false
     const readOnce = () => {
       node.once((value: T | null) => {
@@ -1048,7 +1051,7 @@ class GunService {
    * Handle offline scenarios
    * GunDB automatically handles offline with IndexedDB, but we can add custom logic
    */
-  private handleOffline(): void {
+  handleOffline(): void {
     if (this.connectionState === 'connected') {
       this.connectionState = 'disconnected'
       console.warn('GunDB went offline - using local storage')
@@ -1168,34 +1171,39 @@ class GunService {
         }
 
         // User is authenticated, generate and store ephemeral keys if not already stored
-        retryWithBackoff(
-          async _ => {
-            await this.generateAndStoreEphemeralKeys()
-          },
-          {
-            maxAttempts: 4,
-            baseDelay: 100,
-            backoffMultiplier: 2,
-          }
-        )
-          .then(() => {
-            const userData: SEAUser = {
-              alias: username,
-              pub: pub,
-            }
-            resolve(userData)
-          })
-          .catch(err => {
-            // Reject if ephemeral key storage fails - this reveals real test failures
-            const error = err as { err?: string; message?: string }
-            const errorMessage = error.err || error.message || String(err)
+        const userData: SEAUser = {
+          alias: username,
+          pub: pub,
+        }
+        resolve(userData)
+        // retryWithBackoff(
+        //   async _ => {
+        //     await this.generateAndStoreEphemeralKeys()
+        //   },
+        //   {
+        //     maxAttempts: 4,
+        //     baseDelay: 100,
+        //     backoffMultiplier: 2,
+        //   }
+        // )
+        //   .then(() => {
+        //     const userData: SEAUser = {
+        //       alias: username,
+        //       pub: pub,
+        //     }
+        //     resolve(userData)
+        //   })
+        //   .catch(err => {
+        //     // Reject if ephemeral key storage fails - this reveals real test failures
+        //     const error = err as { err?: string; message?: string }
+        //     const errorMessage = error.err || error.message || String(err)
 
-            reject({
-              code: GunErrorCode.STORAGE_ERROR,
-              message: `Failed to generate ephemeral keys: ${errorMessage}`,
-              details: err,
-            } as GunError)
-          })
+        //     reject({
+        //       code: GunErrorCode.STORAGE_ERROR,
+        //       message: `Failed to generate ephemeral keys: ${errorMessage}`,
+        //       details: err,
+        //     } as GunError)
+        //   })
       })
     })
   }
@@ -1204,7 +1212,7 @@ class GunService {
    * Generate ephemeral key pair and store it for the authenticated user
    * This is called once per user to enable ECDH key sharing
    */
-  public generateAndStoreEphemeralKeys(): Promise<void> {
+  async generateAndStoreEphemeralKeys(): Promise<EPair> {
     const gun = this.getGun()
     const user = gun.user()
 
@@ -1213,59 +1221,65 @@ class GunService {
     }
     const userPub = user.is.pub
 
+    const SEA = Gun.SEA
+    if (!SEA) {
+      throw new Error('SEA not available')
+    }
+
     // Check if ephemeral keys already exist
-    return new Promise<void>((resolve, reject) => {
-      const userNode = gun.get(this.getNodePath('user', userPub))
-      userNode.get('epub')
-        .once((existingEpub: any) => {
-          if (existingEpub) {
-            // Ephemeral keys already exist, no need to regenerate
-            resolve()
-            return
-          }
-
-          generateKeys()
-        })
-
-      const generateKeys = () => {
-        const SEA = Gun.SEA
-        if (!SEA) {
-          reject(new Error('SEA not available'))
+    const userNode = gun.get(this.getNodePath('user', userPub))
+    return new Promise<EPair>((resolve, reject) => {
+      userNode.get('epub').once((existingEpub: any) => {
+        if (existingEpub) {
+          // Ephemeral keys already exist, retrieve both keys and return
+          user.get('ephemeralKeys').get('epriv').once((existingEpriv: any) => {
+            if (existingEpriv) {
+              resolve({
+                epub: existingEpub,
+                epriv: existingEpriv,
+              })
+            } else {
+              reject(new Error('Ephemeral public key exists but priv key not found'))
+            }
+          })
           return
         }
 
-        SEA.pair()
-          .then((pair: ISEAPair) => {
-            if (!pair || !pair.epriv || !pair.epub) {
-              reject(new Error('Failed to generate ephemeral key pair'))
+        // Generate new ephemeral key pair
+        SEA.pair().then((pair: ISEAPair) => {
+          if (!pair || !pair.epriv || !pair.epub) {
+            reject(new Error('Failed to generate ephemeral key pair'))
+            return
+          }
+
+          // Store public key in public path
+          userNode.get('epub').put(pair.epub, (ack: any) => {
+            if (ack.err) {
+              console.error('Failed to store ephemeral public key in public path:', ack.err)
+              reject(new Error('Failed to store ephemeral public key - required for key sharing'))
               return
             }
 
-            userNode.get('epub').put(pair.epub, (ack: any) => {
-              if (ack.err) {
-                console.error('Failed to store ephemeral public key in public path:', ack.err)
-                reject(new Error('Failed to store ephemeral public key - required for key sharing'))
-                return
-              }
-
-              user
-                .get('ephemeralKeys')
-                .get('epriv')
-                .put(pair.epriv, (ack: any) => {
-                  if (ack.err) {
-                    console.error('Failed to store ephemeral private key:', ack.err)
-                    reject(new Error(`Failed to store ephemeral private key: ${ack.err}`))
-                    return
-                  }
-
-                  resolve()
+            // Store privkey in user's privpath
+            user
+              .get('ephemeralKeys')
+              .get('epriv')
+              .put(pair.epriv, (ack: any) => {
+                if (ack.err) {
+                  console.error('Failed to store ephemeral privkey:', ack.err)
+                  reject(new Error(`Failed to store ephemeral privkey: ${ack.err}`))
+                  return
+                }
+                resolve({
+                  epub: pair.epub,
+                  epriv: pair.epriv,
                 })
-            })
+              })
           })
-          .catch((err: Error) => {
-            reject(err)
-          })
-      }
+        }).catch((err: Error) => {
+          reject(err)
+        })
+      })
     })
   }
 
@@ -1336,56 +1350,58 @@ class GunService {
             alias: username,
             pub: user.is.pub as string,
           }
+          resolve(userData)
 
           // Generate and store ephemeral keys if not already stored
-          retryWithBackoff(
-            async _ => {
-              await this.generateAndStoreEphemeralKeys()
-            },
-            {
-              maxAttempts: 4,
-              baseDelay: 100,
-              backoffMultiplier: 2,
-            }
-          )
-            .then(() => {
-              resolve(userData)
-            })
-            .catch(err => {
-              // Log error but don't fail authentication if ephemeral key generation fails
-              console.warn('Failed to generate ephemeral keys:', err)
-              resolve(userData)
-            })
-          return
+          // retryWithBackoff(
+          //   async _ => {
+          //     await this.generateAndStoreEphemeralKeys()
+          //   },
+          //   {
+          //     maxAttempts: 4,
+          //     baseDelay: 100,
+          //     backoffMultiplier: 2,
+          //   }
+          // )
+          //   .then(() => {
+          //     resolve(userData)
+          //   })
+          //   .catch(err => {
+          //     // Log error but don't fail authentication if ephemeral key generation fails
+          //     console.warn('Failed to generate ephemeral keys:', err)
+          //     resolve(userData)
+          //   })
+          // return
         }
 
         // If ack.ok !== undefined, login succeeded
         if (ack.ok !== undefined) {
           this.waitForUserState()
-            .then(({ pub }) => {
+            .then(pub => {
               // Authentication actually succeeded despite ok: 0
               const userData: SEAUser = {
                 alias: username,
                 pub: pub,
               }
+              resolve(userData)
               // Generate and store ephemeral keys if not already stored
-              retryWithBackoff(
-                async _ => {
-                  await this.generateAndStoreEphemeralKeys()
-                },
-                {
-                  maxAttempts: 4,
-                  baseDelay: 100,
-                  backoffMultiplier: 2,
-                }
-              )
-                .then(() => {
-                  resolve(userData)
-                })
-                .catch(err => {
-                  console.warn('Failed to generate ephemeral keys:', err)
-                  reject(err)
-                })
+              // retryWithBackoff(
+              //   async _ => {
+              //     await this.generateAndStoreEphemeralKeys()
+              //   },
+              //   {
+              //     maxAttempts: 4,
+              //     baseDelay: 100,
+              //     backoffMultiplier: 2,
+              //   }
+              // )
+              //   .then(() => {
+              //     resolve(userData)
+              //   })
+              //   .catch(err => {
+              //     console.warn('Failed to generate ephemeral keys:', err)
+              //     reject(err)
+              //   })
             })
             .catch(data => {
               // Authentication really failed - wrong password
@@ -1409,39 +1425,41 @@ class GunService {
     })
   }
 
+  async logoutAndWait() {
+    const gun = this.getGun()
+    gun.user().leave()
+    await retryWithBackoff(async _ => {
+      if (gun.user().is) {
+        throw new Error('user is not logging out')
+      }
+    }, {
+      maxAttempts: 6,
+      baseDelay: 100,
+      backoffMultiplier: 1.5,
+    })
+  }
+
   /**
    * Wait for user state to be set (for authentication)
    * @returns Promise resolving to user pub key
    */
-  private waitForUserState(): Promise<{ pub: string }> {
-    return new Promise((resolve, reject) => {
-      if (!this.gun) {
-        reject(new Error('GunDB not initialized'))
-        return
-      }
-
-      const user = this.gun.user()
-      const maxAttempts = 20
-      let attempts = 0
-
-      const checkUserState = () => {
-        attempts++
-
-        if (user.is && user.is.pub) {
-          resolve({ pub: user.is.pub as string })
-          return
+  public async waitForUserState(): Promise<string> {
+    const gun = this.getGun()
+    await retryWithBackoff(
+      async _ => {
+        const user = gun.user()
+        if (!user.is || !user.is.pub) {
+          throw new Error('user is not authenticated')
         }
-
-        if (attempts >= maxAttempts) {
-          reject(new Error('User state not set after authentication'))
-          return
-        }
-
-        setTimeout(checkUserState, 100)
+      },
+      {
+        maxAttempts: 6,
+        baseDelay: 100,
+        backoffMultiplier: 1.5,
       }
-
-      checkUserState()
-    })
+    )
+    const user = gun.user()
+    return user.is!.pub as string
   }
 }
 
