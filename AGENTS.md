@@ -99,6 +99,38 @@ const recipientEpub = await gun.get(`~@${recipientUsername}`).get('epub').then()
 // Instead use profiles directory pattern shown above
 ```
 
+### GunDB Profile Storage Pattern
+
+**CRITICAL**: Always use the profiles directory pattern for storing and reading user epubs:
+
+```typescript
+// CORRECT: Store user profiles during user creation
+user.auth(alias, pass, ack => {
+  const pair = user._.sea
+  gun.get('profiles').get(alias).put({
+    pub: pair.pub,
+    epub: pair.epub,
+  })
+})
+
+// CORRECT: Read user epubs from profiles directory
+const recipientEpub = await new Promise<string>((resolve, reject) => {
+  gun
+    .get('profiles')
+    .get(recipientUsername)
+    .get('epub')
+    .once((data: any) => {
+      if (data) {
+        resolve(data)
+      } else {
+        reject(new Error(`Failed to read ${recipientUsername}'s epub from profiles`))
+      }
+    })
+})
+```
+
+**INCORRECT**: Never use `gun.get(~@username)` for reading user profiles - it returns a list of "souls" claiming that username, not a single profile.
+
 ## Development Guidelines
 
 ### Before Writing Code
