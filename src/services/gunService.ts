@@ -21,6 +21,7 @@ import type {
   GunError,
 } from '../types/gun'
 import { GunErrorCode, GunNodeRef } from '../types/gun'
+import type { IGunUserInstance } from 'gun/types'
 
 export interface SEAUser {
   alias: string
@@ -953,13 +954,18 @@ class GunService {
    * @param nodePath - the path to the node
    * @returns Promise resolving to array of nodes
    */
-  async listItems(nodePath: string[], startNode?: GunNodeRef): Promise<any[]> {
+  async listItems(
+    nodePath: string[], startNode?: GunNodeRef|IGunUserInstance
+  ): Promise<any[]> {
     const gun = startNode ?? this.getGun()
     return new Promise<any[]>(resolve => {
       const collectedItems: any[] = []
       setTimeout(() => resolve(collectedItems), 500)
 
-      const node = nodePath.reduce((n, part) => n.get(part), gun)
+      const node = nodePath.reduce(
+        (n: GunNodeRef|IGunUserInterface, part) => n.get(part),
+        gun
+      )
       node.map()
         .once((data: any, soul: string) => {
           if (!data) return

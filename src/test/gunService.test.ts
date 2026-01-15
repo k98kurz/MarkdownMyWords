@@ -7,7 +7,10 @@
 import { gunService, GunService } from '../services/gunService'
 import type { Document, GunError } from '../types/gun'
 import { GunErrorCode } from '../types/gun'
-import { TestRunner, printTestSummary, type TestSuiteResult } from '../utils/testRunner'
+import {
+  sleep, TestRunner, printTestSummary, type TestSuiteResult
+} from '../utils/testRunner'
+import { clearGunDBLocalStorage } from '../utils/clearGunDB'
 
 /**
  * Test GunDB Service initialization
@@ -201,6 +204,131 @@ async function testDocumentOperations(): Promise<TestSuiteResult> {
 }
 
 /**
+ * Test listItems and listUserItems methods
+ */
+async function testListItems(): Promise<TestSuiteResult> {
+  console.log('🧪 Testing listItems Methods...\n')
+
+  const runner = new TestRunner('ListItems')
+
+  const timestamp = Date.now()
+  const testUser = `testuser_list_${timestamp}`
+  const testPass = 'testpass123'
+
+  await runner.task('Create test user and authenticate', async () => {
+    await gunService.createUser(testUser, testPass)
+    await gunService.authenticateUser(testUser, testPass)
+    await gunService.writeProfile()
+    await new Promise(resolve => setTimeout(resolve, 500))
+  })
+
+  await runner.run('Test listItems on public namespace', async () => {
+    const gun = gunService.getGun()
+    const item1 = gunService.newId()
+    const item2 = gunService.newId()
+    const item3 = gunService.newId()
+
+    // Write test objects to public test namespace
+    await gun.get('test').get('item1').put(item1).then()
+    await gun.get('test').get('item2').put(item2).then()
+    await gun.get('test').get('item3').put(item3).then()
+
+    // Read
+    const items = await gunService.listItems(['test'])
+    if (items.length === 0) {
+      throw new Error('No items found in test namespace')
+    }
+    console.log(
+      `  Found ${items.length} items:`,
+      `${items.map(i => i.soul.substring(0, 10)).join(', ')}`
+    )
+    console.log(items)
+
+    // Verify structure
+    for (const item of items) {
+      if (!item.soul || !item.data) {
+        console.error(`Malformed item: ${JSON.stringify(item)}`)
+        throw new Error('Item missing required properties')
+      }
+      if (![item1, item2, item3].includes(item.data)) {
+        console.error(`Unexpected item.data: ${item.data}`)
+      }
+    }
+  })
+
+  await runner.run('Test listUserItems on user namespace', async () => {
+    const gun = gunService.getGun()
+    const userItem1 = gunService.newId()
+    const userItem2 = gunService.newId()
+
+    // Write test objects to user private namespace
+    await new Promise<void>(resolve => {
+      gun
+        .user()
+        .get('private')
+        .get('item1')
+        .put({ content: userItem1 }, (_ack: any) => {
+          // Success - continue
+          gun
+            .user()
+            .get('private')
+            .get('item2')
+            .put({ content: userItem2 }, (_ack: any) => {
+              // Success - continue
+              resolve()
+            })
+        })
+    })
+
+    // Read
+    await new Promise(resolve => setTimeout(resolve, 500))
+    const items = await gunService.listUserItems(['private'])
+    if (items.length === 0) {
+      throw new Error('No user items found in private namespace')
+    }
+    console.log(
+      `  Found ${items.length} user items: ${items.map(i => i.soul.substring(0, 10)).join(', ')}`
+    )
+
+    // Verify structure
+    for (const item of items) {
+      if (!item.soul || !item.data) {
+        console.error(`Malformed item: ${JSON.stringify(item)}`)
+        throw new Error('User item missing required properties')
+      }
+      if (!item.data.content) {
+        throw new Error('User item data missing content property')
+      }
+    }
+  })
+
+  await runner.run('Test listItems on non-existent path', async () => {
+    const items = await gunService.listItems(['nonexistent'])
+    if (items.length !== 0) {
+      throw new Error(`Expected empty array, got ${items.length} items`)
+    }
+  })
+
+  await runner.task('Cleanup test data', async () => {
+    const gun = gunService.getGun()
+
+    // Remove public test items
+    await gun.get('test').get('item1').put(null).then()
+    await gun.get('test').get('item2').put(null).then()
+    await gun.get('test').get('item3').put(null).then()
+    // Verify the data is gone
+    const items = await gunService.listItems(['test']).then()
+    if (items.length !== 0) {
+      throw new Error(`items not deleted: ${items}`)
+    }
+  })
+
+  console.log('\n✅ ListItems tests complete!')
+  runner.printResults()
+  return runner.getResults()
+}
+
+/**
  * Test subscriptions
  */
 async function testSubscriptions(): Promise<TestSuiteResult> {
@@ -371,6 +499,10 @@ export async function testGunService(): Promise<void> {
 
   const docResult = await testDocumentOperations()
   suiteResults.push(docResult)
+  console.log('\n' + '='.repeat(60) + '\n')
+
+  const listResult = await testListItems()
+  suiteResults.push(listResult)
   console.log('\n' + '='.repeat(60) + '\n')
 
   const subResult = await testSubscriptions()
