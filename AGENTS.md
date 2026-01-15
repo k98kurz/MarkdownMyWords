@@ -20,9 +20,10 @@ libraries over rewriting or reimplementing them. This is especially true for:
    - SEA is used for all encryption and ECDH purposes
    - Use SEA's built-in ECDH (`sea.secret()` + `sea.encrypt()`) for key sharing,
      don't reimplement ECDH
+   - User management patterns: See `code_references/gundb.md` for user creation,
+     profile storage, private data storage, and contacts
 
 1. **Database Operations** - Use GunDB's native APIs
-   - Leverage GunDB's automatic encryption/decryption for user data (`gun.get('~@path')`)
    - Use GunDB's built-in user management (`gun.user().create()`, `gun.user().auth()`)
    - Don't reimplement graph traversal or synchronization
 
@@ -30,7 +31,7 @@ libraries over rewriting or reimplementing them. This is especially true for:
    - Follow Zustand patterns for store creation and updates
    - Don't fight the framework's intended usage
 
-1. **Build Tools** - Use Vite, TypeScript ESLint, Vitest as configured
+1. **Build Tools** - Use Vite, TypeScript ESLint
    - Follow their standard conventions
    - Don't create custom build scripts unless absolutely necessary
 
@@ -46,12 +47,14 @@ The previous AI agents reimplemented SEA's encryption incorrectly:
 4. **Ignored SEA's automatic encryption/decryption** for user data storage
 5. **Created security vulnerabilities** by misunderstanding ECDH
 
-### Correct SEA Usage: DEPRECATED?
+### Correct SEA Usage (Legacy Document Sharing)
 
-Note: there is currently an experiment to replace these conventions with
-a scheme with improved security and robustness. If you are experimenting
-with the new scheme defined in `code_references/gundb.md`, defer to those
-instead of these.
+**NOTE**: This section describes legacy document sharing via ECDH. For current
+user management and private data patterns (recommended), see
+`code_references/gundb.md`. This section may change in the future.
+
+The patterns below remain valid for document key sharing between users, but user
+profile storage and private data operations should follow gundb.md.
 
 ```typescript
 // CORRECT: Documents encrypted with SEA.encrypt using per-document keys
@@ -60,31 +63,6 @@ const encrypted = await encryptionService.encryptDocument(content, docKey)
 
 // CORRECT: Use SEA's ECDH for sharing document keys (not documents themselves)
 // NOTE: the e in epub/epriv stands for "encryption", not "ephemeral"
-
-// First, store user profile when creating user (standard GunDB practice)
-user.auth(alias, pass, ack => {
-  const pair = user._.sea
-  gun.get('profiles').get(alias).put({
-    pub: pair.pub,
-    epub: pair.epub,
-  })
-})
-
-// Then read epub from profiles directory for ECDH
-const user = gun.user()
-const recipientEpub = await new Promise<string>((resolve, reject) => {
-  gun
-    .get('profiles')
-    .get(recipientUsername)
-    .get('epub')
-    .once((data: any) => {
-      if (data) {
-        resolve(data)
-      } else {
-        reject(new Error(`Failed to read ${recipientUsername}'s epub from profiles`))
-      }
-    })
-})
 const sharedSecret = await SEA.secret({ epub: recipientEpub }, user._.sea)
 const encryptedKey = await SEA.encrypt(docKey, sharedSecret)
 
@@ -92,49 +70,30 @@ const encryptedKey = await SEA.encrypt(docKey, sharedSecret)
 await gun.user().create(username, password)
 await gun.user().auth(username, password)
 
-// INCORRECT: Don't reimplement ECDH with new ephemeral keys
+// INCORRECT: Don't use ECDH with new key pairs
 const ephemeralPair = await SEA.pair() // WRONG - use user's existing pair from user._.sea
 const sharedSecret = await SEA.secret({ epub: recipientPub }, ephemeralPair) // WRONG
 
 // INCORRECT: Don't use public key directly as encryption key
-const encrypted = await SEA.encrypt(data, user.pub) // WRONG - must use ECDH first!
+const encrypted = await SEA.encrypt(data, user.pub) // WRONG
 
-// INCORRECT: Don't use gun.get(~@username) for reading user profiles
-const recipientEpub = await gun.get(`~@${recipientUsername}`).get('epub').then() // WRONG - returns list of "souls"
-// Instead use profiles directory pattern shown above
+// INCORRECT: Don't use gun.get(~@username) directly for reading user profiles
+// This returns a list of "souls" claiming that username
+// For proper usage, see discoverUsers() in code_references/gundb.md
 ```
 
 ### GunDB Profile Storage Pattern
 
-**CRITICAL**: Always use the profiles directory pattern for storing and reading user epubs:
+**IMPORTANT**: User profile storage uses the `~@username` pattern with
+`gun.user().put()`. The old 'profiles directory' pattern is deprecated.
 
-```typescript
-// CORRECT: Store user profiles during user creation
-user.auth(alias, pass, ack => {
-  const pair = user._.sea
-  gun.get('profiles').get(alias).put({
-    pub: pair.pub,
-    epub: pair.epub,
-  })
-})
+See `code_references/gundb.md` for the current `writeProfile()` and
+`discoverUsers()` implementations.
 
-// CORRECT: Read user epubs from profiles directory
-const recipientEpub = await new Promise<string>((resolve, reject) => {
-  gun
-    .get('profiles')
-    .get(recipientUsername)
-    .get('epub')
-    .once((data: any) => {
-      if (data) {
-        resolve(data)
-      } else {
-        reject(new Error(`Failed to read ${recipientUsername}'s epub from profiles`))
-      }
-    })
-})
-```
-
-**INCORRECT**: Never use `gun.get(~@username)` for reading user profiles - it returns a list of "souls" claiming that username, not a single profile.
+**INCORRECT**: Never use `gun.get(~@username)` directly for reading user profiles
+without proper handling - it returns a list of "souls" claiming that username.
+For proper usage with `.map()` to collect profiles, see `discoverUsers()` in
+`code_references/gundb.md`.
 
 ## Development Guidelines
 
@@ -175,11 +134,14 @@ When reviewing code or AI agent output, ask:
 
 ### GunDB + SEA
 
-- Use `gun.user().create()` for user creation, don't reimplement (in gunService, not encryptionService)
-- Use `gun.user().auth()` for authentication, don't reimplement (in gunService, not encryptionService)
+- User management and private data: See `code_references/gundb.md` for complete patterns
+  - `createUser()` / `authenticateUser()` for user creation and login
+  - `writeProfile()` / `discoverUsers()` for profile storage and discovery
+  - `writePrivateData()` / `readPrivateData()` / `readPrivateMap()` for encrypted storage
 - Documents are encrypted with SEA.encrypt using per-document symmetric keys
 - Use SEA's ECDH (`sea.secret()` + `sea.encrypt()`) for sharing document keys, don't implement custom key exchange
-- Use user's existing encryption key pair from `user._.sea` for ECDH, don't generate new key pairs
+- Use sender's existing encryption key pair from `user._.sea` for ECDH, don't generate new key pairs
+- User recipient's existing encryption public key from the contacts list for ECDH
 - The `encryptionService` handles document encryption and key sharing (SEA ECDH)
 
 ### Zustand
@@ -188,16 +150,30 @@ When reviewing code or AI agent output, ask:
 - Don't over-engineer with middleware unless necessary
 - Keep stores simple and focused
 
-### Vitest
+### Testing
 
-- Use Vitest's built-in matchers and mocks
-- Don't reinvent testing utilities
+- Because GunDB does not work reliably in node, all tests must be done in the
+  browser dev console
+- There are helpful tools for testing in `src/utils/testRunner.ts`
 
 ### React
 
 - Use React hooks as intended (useState, useEffect, useCallback, useMemo)
 - Don't fight React's rendering model
 - Use controlled components for forms
+
+## GunDB + SEA Reference
+
+**User Management & Private Data**: See `code_references/gundb.md` for:
+
+- User creation/authentication with `~@username` profiles
+- Private data storage with hashed paths
+- Contact system implementation
+
+**Document Sharing**: See 'Correct SEA Usage (Legacy Document Sharing)' section for:
+
+- ECDH key exchange using SEA.secret()
+- Per-document symmetric key encryption
 
 ---
 
@@ -238,6 +214,5 @@ When reviewing code or AI agent output, ask:
 ### Tool Usage Restrictions
 
 - **NEVER** run `npm run dev` or any development server commands
-- **NEVER** run build commands like `npm run build` unless explicitly requested
 - **NEVER** run test commands like `npm run test` unless explicitly requested
 - All development and testing should be done through proper code review and static analysis

@@ -7,12 +7,16 @@ specify once and for all how exactly this library is supposed to be used.
 
 - Users are created with `gun.user().create(user, pass)`
 - Users log in with `gun.user().auth(user, pass)`
-- Data that can be changed by anyone is accessed with `gun.get('node-name').put('some data')`
-- Data that can only be changed by the current user is stored with `gun.user().get('node-name').put('data')`
-- Data that is secret to the user is stored with `gun.user().get('node-name').secret('plaintext')`
-- Data stored with `gun.user().get('node-name').secret('plaintext')` is encrypted, but the name 'node-name' is not
-- To maintain privacy of node names, they must be hashed first
-- An index of users claiming a specific username can be accessed with `gun.get('~@username').map(...)`
+- Data that can be changed by anyone is accessed with
+  `gun.get('node-name').put('some data')`
+- Data that can only be changed by the current user is stored with
+  `gun.user().get('node-name').put('data')`
+- Data that is secret to the user is encrypted
+  `SEA.encrypt(plaintext, gun.user()._.sea)` before being stored
+- To maintain privacy of node names, they must be hashed first, but this makes
+  reading them impossible
+- An index of users claiming a specific username can be accessed with
+  `gun.get('~@username').map().once(...)`
 
 ## 1. User creation, authentication, and profile storage
 
@@ -54,11 +58,14 @@ async function writeProfile(gun: any): Promise<void> {
   })
 }
 
-async () => {
+async function register(gun: any, username: string, password: string) {
+  // in this order on registration
   await createUser(gun, 'username', 'password')
   await authenticateUser(gun, 'username', 'password')
-  await writePrivateData(gun)
+  await writeProfile(gun)
 }
+
+// for login just use authenticateUser
 ```
 
 ## 2. User profile discovery
@@ -89,7 +96,8 @@ async function discoverUsers(gun: any, username: string) {
 ## 3. Private user data
 
 To write data in an absolutely private way, the node name must be hashed, and
-the data encrypted using SEA's encrypt/decrypt methods (not the built-in .secret()/.decrypt() methods):
+the data encrypted using SEA's encrypt/decrypt methods (not the 
+`gun.user().get('whatever').secret('plaintext')` method, which is unstable):
 
 ```typescript
 async getPrivatePathPart(gun: any, plainPath: string): Promise<string> {
@@ -136,9 +144,13 @@ async writePrivateData(gun: any, plainPath: string[], plaintext: string): Promis
   })
 }
 
-async readPrivateData(gun: any, plainPath: string[]): Promise<string> {
-  const privatePath = await getPrivatePath(gun, plainPath)
-  const node = privatePath.reduce((path, part) => path.get(part), gun.user())
+async readPrivateData(
+  gun: any,
+  plainPath: string[],
+  hashedPath?: string[]
+): Promise<string> {
+  const path = hashedPath || (await getPrivatePath(gun, plainPath))
+  const node = path.reduce((p, part) => p.get(part), gun.user())
 
   return await new Promise<string>((resolve, reject) => {
     node.once(async (ciphertext: any) => {
@@ -152,45 +164,60 @@ async readPrivateData(gun: any, plainPath: string[]): Promise<string> {
   })
 }
 
-async readPrivateMap(
+/**
+ * Read private structured data (like contacts) by iterating keys and accessing fields
+ * Unlike discoverUsers which reads unencrypted data, here we must:
+ * 1. First get the keys from .map() (hashed usernames)
+ * 2. Then access each field at privatePath + [key] + [hashedFieldName]
+ */
+async function readPrivateMap(
   gun: any,
   plainPath: string[],
   fields: string[]
 ): Promise<Record<string, string>[]> {
-  const privateNode = await getPrivateNode(gun, plainPath)
+  const privatePath = await getPrivatePath(gun, plainPath)
+  const privateNode = privatePath.reduce((path, part) => path.get(part), gun.user())
 
-  return await new Promise<Record<string, string>[]>(resolve => {
-    const results: Record<string, string>[] = []
+  // First, collect all keys from the map
+  const keys: string[] = await new Promise<string[]>(resolve => {
+    const collectedKeys: string[] = []
+    setTimeout(() => resolve(collectedKeys), 500)
 
-    privateNode.map().once(async () => {
-      try {
-        const record: Record<string, string> = {}
-
-        for (const fieldName of fields) {
-          const fieldPath = [...plainPath, fieldName]
-          const fieldValue = await readPrivateData(gun, fieldPath)
-          record[fieldName] = fieldValue
-        }
-
-        if (Object.keys(record).length > 0) {
-          results.push(record)
-        }
-
-        resolve(results)
-      } catch (error) {
-        // empty catch
+    privateNode.map().once((data: any, key: string) => {
+      if (key) {
+        collectedKeys.push(key)
       }
     })
   })
-}
 
-async getPrivateNode(gun: any, plainPath: string[]): Promise<any> {
-  const privatePath = await getPrivatePath(gun, plainPath)
-  return privatePath.reduce((node, part) => node.get(part), gun.user())
+  // Then for each key, access the fields at privatePath + [key] + [hashedFieldName]
+  const results: Record<string, string>[] = []
+  for (const key of keys) {
+    try {
+      const record: Record<string, string> = {}
+      for (const fieldName of fields) {
+        // privatePath is already hashed, key from map() is hashed,
+        // only fieldName needs hashing
+        const fieldNameHash = await getPrivatePathPart(gun, fieldName)
+        const fullHashedPath = [...privatePath, key, fieldNameHash]
+        const fieldValue = await readPrivateData(gun, [], fullHashedPath)
+        record[fieldName] = fieldValue
+      }
+      if (Object.keys(record).length > 0) {
+        results.push(record)
+      }
+    } catch (error: Error) {
+      console.error(`Failed to read contact for key ${key}:`, error.message)
+    }
+  }
+
+  return results
 }
 ```
 
-**Note:** In service context (gunService/encryptionService), SEA is available via `encryptionService.sea` or `Gun.SEA` - no monkey patching needed as done in tests.
+**Note:** In service context (gunService/encryptionService), SEA is available
+via `encryptionService.sea` or `Gun.SEA` - no monkey patching needed as done in
+tests.
 
 ## 4. Contact system
 
@@ -209,13 +236,19 @@ await writePrivateData(gun, ['contacts', aliceUsername, 'epub'], discovered[0].d
 Contacts are then loaded with:
 
 ```typescript
-const bobContactUsername = await readPrivateData(gun, ['contacts', aliceUsername, 'username'])
+const bobContactUsername = await readPrivateData(
+  gun, ['contacts', aliceUsername, 'username']
+)
 // or for multiple contacts:
 const allContacts = await readPrivateMap(gun, ['contacts'], ['username', 'pub', 'epub'])
 ```
 
 ## 5. Service Context Notes
 
-In production services (gunService/encryptionService), SEA is available via `encryptionService.sea` or directly via `Gun.SEA`. The test implementations use `gun.sea = Gun.SEA` as a monkey patch for ease of testing, but this is not needed in service context where SEA is properly initialized.
+In production services (gunService/encryptionService), SEA is available via
+`encryptionService.sea` or directly via `Gun.SEA`. The test implementations use
+`gun.sea = Gun.SEA` as a monkey patch for ease of testing, but this is not
+needed in service context where SEA is properly initialized.
 
-All encryption patterns have been validated through comprehensive testing and are ready for production use.
+These encryption and authentication patterns have been validated through
+comprehensive testing and are ready for production use.
