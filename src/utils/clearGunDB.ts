@@ -123,9 +123,3 @@ export async function clearGunDBLocalStorage(options: {
   console.log('💡 You may need to reload the page for changes to take full effect');
 }
 
-/**
- * Clear all GunDB data (alias for clearGunDBLocalStorage with default options)
- */
-export async function clearAllGunDBData(): Promise<void> {
-  return clearGunDBLocalStorage();
-}

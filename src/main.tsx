@@ -10,7 +10,7 @@ import { testEncryptionService } from './test/encryptionService.test'
 import { testNonEphemeralECDH } from './test/testNonEphemeralECDH'
 import { testNewGunSEAScheme } from './test/testNewGunSEAScheme'
 import { listUsers, listUsersDetailed, getUserById } from './utils/listUsers'
-import { clearGunDBLocalStorage, clearAllGunDBData } from './utils/clearGunDB'
+import { clearGunDBLocalStorage } from './utils/clearGunDB'
 import { useConnectionStore } from './stores/connectionStore'
 
 // Initialize services
@@ -85,7 +85,6 @@ if (typeof window !== 'undefined') {
   (window as any).listUsersDetailed = listUsersDetailed;
   (window as any).getUserById = getUserById;
   (window as any).clearGunDB = clearGunDBLocalStorage;
-  (window as any).clearAllGunDBData = clearAllGunDBData;
   console.log('🧪 Dev console functions available:')
   console.log('   - window.testDocumentSizes() - Test encryption with various document sizes')
   console.log('   - window.testGunService() - Test GunDB service operations')
@@ -97,19 +96,18 @@ if (typeof window !== 'undefined') {
   console.log('   - window.listUsersDetailed() - Prints formatted user list')
   console.log('   - window.getUserById(userId) - Get specific user by ID')
   console.log('   - window.clearGunDB(options) - Clear local GunDB storage')
-  console.log('   - window.clearAllGunDBData() - Clear all GunDB data (alias)')
-  console.log('\n📋 Copy-paste examples:')
-  console.log('   window.runAllTests() - Run all tests')
-  console.log('   window.testDocumentSizes() - Test document encryption')
-  console.log('   window.testGunService() - Test GunDB service')
-  console.log('   window.testEncryptionService() - Test encryption service')
-  console.log('   window.testNonEphemeralECDH() - Test non-ephemeral ECDH')
-  console.log('   window.testNewGunSEAScheme() - Test new GunDB + SEA scheme')
-  console.log('   window.listUsers().then(users => console.log(users));')
-  console.log('   window.listUsersDetailed().then(() => console.log("Done"));')
-  console.log('   window.getUserById("user-id").then(user => console.log(user));')
-  console.log('   window.clearGunDB().then(() => console.log("Cleared!"));')
-  console.log('   window.clearAllGunDBData().then(() => console.log("All cleared!"));')
+//  console.log('\n📋 Copy-paste examples:')
+//  console.log('   window.runAllTests() - Run all tests')
+//  console.log('   window.testDocumentSizes() - Test document encryption')
+//  console.log('   window.testGunService() - Test GunDB service')
+//  console.log('   window.testEncryptionService() - Test encryption service')
+//  console.log('   window.testNonEphemeralECDH() - Test non-ephemeral ECDH')
+//  console.log('   window.testNewGunSEAScheme() - Test new GunDB + SEA scheme')
+//  console.log('   window.listUsers().then(users => console.log(users));')
+//  console.log('   window.listUsersDetailed().then(() => console.log("Done"));')
+//  console.log('   window.getUserById("user-id").then(user => console.log(user));')
+//  console.log('   window.clearGunDB().then(() => console.log("Cleared!"));')
+//  console.log('   window.clearAllGunDBData().then(() => console.log("All cleared!"));')
 }
 
 createRoot(document.getElementById('root')!).render(
