@@ -135,12 +135,43 @@ async function readPrivateMap(
   })
 }
 
+async function writeProfile(gun: any): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    gun.user().put({ epub: gun.user().is.epub }, (ack: any) => {
+      if (ack.err) {
+        reject(new Error(`Profile storage failed: ${ack.err}`))
+      } else {
+        resolve()
+      }
+    })
+  })
+}
+
+async function discoverUsers(gun: any, username: string) {
+  return new Promise<any[]>(resolve => {
+    const collectedProfiles: any[] = []
+    // wait 500 ms to read them all from the local db
+    setTimeout(() => resolve(collectedProfiles), 500)
+
+    gun
+      .get(`~@${username}`)
+      .map()
+      .once((data: any, pub: string) => {
+        if (!data) return
+        const cleanPub = pub.startsWith('~') ? pub.slice(1) : pub
+        gun.get(`~${cleanPub}`).once((userNode: any) => {
+          collectedProfiles.push({ pub: cleanPub, data, userNode })
+        })
+      })
+  })
+}
+
 // =============================================================================
 // TEST SCENARIOS
 // =============================================================================
 
 /**
- * Scenario 1: Test user creation and profile storage with ~@username approach
+ * Scenario 1: Test user creation and profile storage, then profile discovery
  */
 async function testUserCreationAndProfileStorage(gun: any): Promise<void> {
   console.log('\n📝 Testing User Creation & Profile Storage...')
@@ -188,109 +219,23 @@ async function testUserCreationAndProfileStorage(gun: any): Promise<void> {
 
   console.log(`   Storing profile in ~@${username}...`)
 
-  await new Promise<void>((resolve, reject) => {
-//    gun.user().get('epub').put(
-//      pair.epub,
-    gun.user().put(
-      {epub: pair.epub},
-      (ack: any) => {
-        if (ack.err) {
-          reject(new Error(`Profile storage failed: ${ack.err}`))
-        } else {
-          resolve()
-        }
-      }
-    )
-  })
+  await writeProfile(gun)
 
   console.log(`   ✅ User created and profile stored successfully`)
 
-  // Verify profile exists
-  gun.get(`~@${username}`).map().once((data, pub) => {
-    if (!data) return;
-    const cleanPub = pub.startsWith('~') ? pub.slice(1) : pub;
-    gun.get(`~${cleanPub}`).once((userNode) => {
-      // do something with cleanPub and userNode.epub
-      // e.g. push to a list in UI so the active user can choose to add a contact
-    });
-  })
-  console.log(`profileData: ${JSON.stringify(profileData)}`)
+  // Verify profile exists - collect all discovered profiles
+  const profileData = await discoverUsers(gun, username)
 
-  assert(profileData && profileData.epub === pair.epub, 'Profile data not stored correctly')
+  console.log(`   Collected ${profileData.length} profile(s)`)
+
+  assert(profileData.length > 0, 'No profile data found')
+  const currentUserProfile = profileData.find((p: any) => p.data.epub === pair.epub)
+  assert(currentUserProfile, 'Current user profile not found in collected data')
   console.log(`   ✅ Profile verified in ~@${username}`)
 }
 
 /**
- * Scenario 2: Test user profile discovery system
- */
-async function testUserProfileDiscovery(gun: any): Promise<void> {
-  console.log('\n📝 Testing User Profile Discovery...')
-
-  const timestamp = Date.now()
-  const username = `discovery_test_${timestamp}`
-  const password = 'password123!Discovery'
-
-  // Create and store user profile
-  await new Promise<void>((resolve, reject) => {
-    gun.user().create(username, password, (ack: any) => {
-      if (ack.err) {
-        reject(new Error(`User creation failed: ${ack.err}`))
-      } else {
-        // Store profile
-        gun.get(`~@${username}`).put(
-          {
-            epub: gun.user()._.sea.epub,
-          },
-          (ack: any) => {
-            if (ack.err) {
-              reject(new Error(`Profile storage failed: ${ack.err}`))
-            } else {
-              resolve()
-            }
-          }
-        )
-      }
-    })
-  })
-
-  // Test profile discovery
-  console.log(`   Discovering users claiming username: ${username}`)
-
-  const discoveredUsers = await new Promise<any[]>(resolve => {
-    const users: any[] = []
-
-    gun
-      .get(`~@${username}`)
-      .map()
-      .once(async (data: any, pub: string) => {
-        if (!data) return
-
-        const cleanPub = pub.startsWith('~') ? pub.slice(1) : pub
-        console.log(`   Found user with pub: ${cleanPub.substring(0, 20)}...`)
-
-        // Get user node
-        const userNode = await new Promise<any>(userResolve => {
-          gun.get(`~${cleanPub}`).once((nodeData: any) => {
-            userResolve(nodeData)
-          })
-        })
-
-        users.push({ pub: cleanPub, data, userNode })
-        resolve(users)
-      })
-  })
-
-  assert(discoveredUsers.length > 0, 'No users discovered')
-  console.log(`   ✅ Successfully discovered ${discoveredUsers.length} user(s)`)
-
-  // Verify epub is accessible
-  const firstUser = discoveredUsers[0]
-  assert(firstUser.data && firstUser.data.epub, 'Epub not found in discovered user')
-  console.log(`   ✅ Epub accessible: ${firstUser.data.epub.substring(0, 20)}...`)
-}
-
-/**
- * Scenario 3: Test private data storage with hashed paths
+ * Scenario 2: Test private data storage with hashed paths
  */
 async function testPrivateDataStorage(gun: any): Promise<void> {
   console.log('\n📝 Testing Private Data Storage...')
@@ -335,7 +280,7 @@ async function testPrivateDataStorage(gun: any): Promise<void> {
 }
 
 /**
- * Scenario 4: Test contact system
+ * Scenario 3: Test contact system
  */
 async function testContactSystem(gun: any): Promise<void> {
   console.log('\n📝 Testing Contact System...')
@@ -383,7 +328,7 @@ async function testContactSystem(gun: any): Promise<void> {
 }
 
 /**
- * Scenario 5: End-to-end workflow with two users
+ * Scenario 4: End-to-end workflow with two users
  */
 async function testEndToEndWorkflow(gun: any): Promise<void> {
   console.log('\n📝 Testing End-to-End Workflow...')
@@ -403,15 +348,12 @@ async function testEndToEndWorkflow(gun: any): Promise<void> {
       if (ack.err) {
         reject(new Error(`Alice creation failed: ${ack.err}`))
       } else {
-        gun.get(`~@${aliceUsername}`).put(
-          {
-            epub: gun.user()._.sea.epub,
-          },
-          () => resolve()
-        )
+        resolve()
       }
     })
   })
+
+  await writeProfile(gun)
 
   const alicePair = (gun.user() as any)._.sea
   console.log(`   ✅ Alice created with pub: ${alicePair.pub.substring(0, 20)}...`)
@@ -429,15 +371,12 @@ async function testEndToEndWorkflow(gun: any): Promise<void> {
       if (ack.err) {
         reject(new Error(`Bob creation failed: ${ack.err}`))
       } else {
-        gun.get(`~@${bobUsername}`).put(
-          {
-            epub: gun.user()._.sea.epub,
-          },
-          () => resolve()
-        )
+        resolve()
       }
     })
   })
+
+  await writeProfile(gun)
 
   const bobPair = (gun.user() as any)._.sea
   console.log(`   ✅ Bob created with pub: ${bobPair.pub.substring(0, 20)}...`)
@@ -537,14 +476,7 @@ async function testProfileImpersonationPrevention(gun: any): Promise<void> {
   })
 
   const user1Pair = (gun.user() as any)._.sea
-  await new Promise<void>(resolve => {
-    gun.get(`~@${username}`).put(
-      {
-        epub: user1Pair.epub,
-      },
-      () => resolve()
-    )
-  })
+  await writeProfile(gun)
 
   console.log(`   ✅ First user created with epub: ${user1Pair.epub.substring(0, 20)}...`)
 
@@ -564,14 +496,7 @@ async function testProfileImpersonationPrevention(gun: any): Promise<void> {
   })
 
   const user2Pair = (gun.user() as any)._.sea
-  await new Promise<void>(resolve => {
-    gun.get(`~@${username}`).put(
-      {
-        epub: user2Pair.epub,
-      },
-      () => resolve()
-    )
-  })
+  await writeProfile(gun)
 
   console.log(`   ✅ Second user created with epub: ${user2Pair.epub.substring(0, 20)}...`)
 
@@ -671,13 +596,8 @@ export async function testNewGunSEAScheme(): Promise<TestSuiteResult> {
   try {
     // Core functionality tests
     await runner.run(
-      'User Creation & Profile Storage with ~@username approach',
+      'User Creation & Profile Storage and user discover',
       async () => await testUserCreationAndProfileStorage(gun)
-    )
-
-    await runner.run(
-      'User Profile Discovery System',
-      async () => await testUserProfileDiscovery(gun)
     )
 
     await runner.run(

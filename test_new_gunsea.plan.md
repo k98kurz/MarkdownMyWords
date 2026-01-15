@@ -39,38 +39,55 @@ async readPrivateMap(plainPath: string[], fields: string[]): Promise<Record<stri
 
 ### 3. Test Scenarios
 
-#### Scenario 1: User Creation & Profile Storage
+#### Scenario 1: User Creation, Profile Storage, and User Discovery
 
 ```typescript
-// Test the new ~@username approach (Lines 22-33 from gundb.md)
-await gun.user().create(username, password)
-gun.get(`~@${username}`).put({ epub: user.epub })
+// Step 1: create user and store profile
+await gun.user().create(username, password).then();
+await gun.user().put({epub: gun.user().is.epub}).then();
+// or
+await new Promise<void>((resolve, reject) => {
+  gun.user().create(username, password, ack => {
+    if (ack.err) {
+      reject(new Error(`User creation failed for ${username}`));
+    }
+    // store basic user profile info
+    gun.user().put({epub: gun.user().is.epub}, ack => {
+      if (ack.err) {
+        reject(new Error(`Profile storage failed: ${ack.err}`));
+      } else {
+        resolve()
+      }
+    });
+  });
+});
+
+// Step 2: test discovery of all users claiming a username (Lines 40-48 from gundb.md)
+async function discoverUsers(gun: any, username: string) {
+  return new Promise<any[]>(resolve => {
+    const collectedProfiles: any[] = [];
+    // wait 500 ms to read them all from the local db
+    setTimeout(() => resolve(collectedProfiles), 500);
+
+    gun
+      .get(`~@${username}`)
+      .map()
+      .once((data: any, pub: string) => {
+        if (!data) return;
+        const cleanPub = pub.startsWith('~') ? pub.slice(1) : pub;
+        gun.get(`~${cleanPub}`).once((userNode: any) => {
+          collectedProfiles.push({ pub: cleanPub, data, userNode })
+        });
+      });
+  });
+}
 ```
 
 - Verify user creation succeeds
 - Validate profile storage in `~@username` namespace
-- Confirm epub is properly stored
-
-#### Scenario 2: User Profile Discovery
-
-```typescript
-// Test discovery of all users claiming a username (Lines 40-48 from gundb.md)
-gun
-  .get(`~@${username}`)
-  .map()
-  .once((data, pub) => {
-    const cleanPub = pub.startsWith('~') ? pub.slice(1) : pub
-    gun.get(`~${cleanPub}`).once(userNode => {
-      // Verify we can retrieve pub/epub data
-    })
-  })
-```
-
-- Test finding users by username
 - Validate pub/epub retrieval from discovered nodes
-- Verify multiple users can claim same username
 
-#### Scenario 3: Private Data Storage
+#### Scenario 2: Private Data Storage
 
 ```typescript
 // Test hashed private paths with .secret() (Lines 56-79 from gundb.md)
@@ -82,7 +99,7 @@ const decrypted = await readPrivateData(['secret', 'note'])
 - Verify `.secret()` encryption/decryption
 - Confirm data privacy from other users
 
-#### Scenario 4: Contact System
+#### Scenario 3: Contact System
 
 ```typescript
 // Test adding contacts privately (Lines 105-108 from gundb.md)
@@ -96,7 +113,7 @@ const contacts = await readPrivateMap(['contacts'], ['username', 'pub', 'epub'])
 - Validate structured contact data retrieval
 - Verify contact system privacy
 
-#### Scenario 5: End-to-End Workflow
+#### Scenario 4: End-to-End Workflow
 
 - Create two users (Alice and Bob)
 - Alice discovers Bob and adds him as contact

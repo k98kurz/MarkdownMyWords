@@ -20,7 +20,7 @@ User creation proceeds in the following manner:
 
 ```typescript
 await gun.user().create(username, password).then();
-await gun.user()..put({epub: gun.user().is.epub}).then();
+await gun.user().put({epub: gun.user().is.epub}).then();
 // or
 await new Promise<void>((resolve, reject) => {
   gun.user().create(username, password, ack => {
@@ -44,14 +44,24 @@ await new Promise<void>((resolve, reject) => {
 Users who all claim a specific username can be found with the following:
 
 ```typescript
-gun.get(`~@${username}`).map().once((data, pub) => {
-  if (!data) return;
-  const cleanPub = pub.startsWith('~') ? pub.slice(1) : pub;
-  gun.get(`~${cleanPub}`).once((userNode) => {
-    // do something with cleanPub and userNode.epub
-    // e.g. push to a list in UI so the active user can choose to add a contact
+async function discoverUsers(gun: any, username: string) {
+  return new Promise<any[]>(resolve => {
+    const collectedProfiles: any[] = [];
+    // wait 500 ms to read them all from the local db
+    setTimeout(() => resolve(collectedProfiles), 500);
+
+    gun
+      .get(`~@${username}`)
+      .map()
+      .once((data: any, pub: string) => {
+        if (!data) return;
+        const cleanPub = pub.startsWith('~') ? pub.slice(1) : pub;
+        gun.get(`~${cleanPub}`).once((userNode: any) => {
+          collectedProfiles.push({ pub: cleanPub, data, userNode })
+        });
+      });
   });
-});
+}
 ```
 
 ## 3. Private user data
