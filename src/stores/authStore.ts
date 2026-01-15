@@ -61,7 +61,7 @@ export const useAuthStore = create<AuthState>(set => ({
       await gunService.writeProfile();
 
       // Get GunDB instance to access user object
-      const gun = gunService.getInstance();
+      const gun = gunService.getGun();
       if (!gun) {
         throw new Error('GunDB not initialized');
       }
@@ -123,7 +123,7 @@ export const useAuthStore = create<AuthState>(set => ({
       await gunService.authenticateUser(username.trim(), password);
 
       // Get GunDB instance to access user object
-      const gun = gunService.getInstance();
+      const gun = gunService.getGun();
       if (!gun) {
         throw new Error('GunDB not initialized');
       }
@@ -170,7 +170,7 @@ export const useAuthStore = create<AuthState>(set => ({
   logout: () => {
     try {
       // Get GunDB instance
-      const gun = gunService.getInstance();
+      const gun = gunService.getGun();
       if (gun) {
         // Leave the current user session
         gun.user().leave();
@@ -202,7 +202,7 @@ export const useAuthStore = create<AuthState>(set => ({
     set({ isLoading: true });
 
     try {
-      const gun = gunService.getInstance();
+      const gun = gunService.getGun();
       if (!gun) {
         set({ isLoading: false, isAuthenticated: false });
         return;

@@ -70,7 +70,7 @@ async function testKeySharing(): Promise<TestSuiteResult> {
   console.log('🧪 Testing Key Sharing (SEA ECDH)...\n')
 
   const runner = new TestRunner('Key Sharing (ECDH)')
-  const gun = gunService.getInstance()
+  const gun = gunService.getGun()
 
   if (!gun) {
     throw new Error('GunDB not initialized - cannot test ECDH key sharing')
@@ -251,7 +251,7 @@ export async function testEncryptionService(): Promise<void> {
   console.log('🚀 Starting Encryption Service Tests\n')
   console.log('='.repeat(60))
 
-  const gun = gunService.getInstance()
+  const gun = gunService.getGun()
   if (gun) {
     const currentUser = gun.user()
     if (currentUser.is && currentUser.is.pub) {

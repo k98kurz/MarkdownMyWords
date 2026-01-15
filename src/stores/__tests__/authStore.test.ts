@@ -32,7 +32,7 @@ describe('AuthStore', () => {
       // - If user.is is set with pub, treat as success
       // - Only reject if user.is is not set after multiple attempts
 
-      const gun = gunService.getInstance();
+      const gun = gunService.getGun();
       if (!gun) {
         console.warn('Skipping test: GunDB not initialized');
         return;
@@ -100,7 +100,7 @@ describe('AuthStore', () => {
       // - If user.is is not set, authenticate the user
       // - Return user data with pub key
 
-      const gun = gunService.getInstance();
+      const gun = gunService.getGun();
       if (!gun) {
         console.warn('Skipping test: GunDB not initialized');
         return;

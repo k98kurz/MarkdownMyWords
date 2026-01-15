@@ -51,7 +51,7 @@ export const useConnectionStore = create<ConnectionState>(set => ({
 // Try to get relay URL from gunService configuration
 try {
   // Get the peers from gunService directly
-  const gunInstance = gunService.getInstance()
+  const gunInstance = gunService.getGun()
   if (gunInstance) {
     // Since we don't have direct access to the peers configuration,
     // we'll use a default value or try to extract it from the service

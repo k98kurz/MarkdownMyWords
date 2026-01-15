@@ -31,7 +31,7 @@ async function testInitialization(): Promise<TestSuiteResult> {
   })
 
   await runner.run('Get GunDB instance', async () => {
-    const instance = gunService.getInstance()
+    const instance = gunService.getGun()
     if (!instance) {
       throw new Error('Instance is null')
     }
@@ -71,7 +71,7 @@ async function testUserOperations(): Promise<TestSuiteResult> {
     } else {
       throw new Error('  Ephemeral pubkey retrieval failed')
     }
-    testUserPub = (gunService.getInstance()?.user().is as any)?.pub
+    testUserPub = (gunService.getGun()?.user().is as any)?.pub
     if (!testUserPub) {
       throw new Error('Failed to get user pub key')
     }
@@ -79,7 +79,7 @@ async function testUserOperations(): Promise<TestSuiteResult> {
   })
 
   await runner.run('Authenticate user', async () => {
-    const gun = gunService.getInstance()
+    const gun = gunService.getGun()
     if (gun) {
       gun.user().leave()
       await new Promise(resolve => setTimeout(resolve, 500))
@@ -182,7 +182,7 @@ async function testDocumentOperations(): Promise<TestSuiteResult> {
   })
 
   await runner.run('List documents', async () => {
-    const gun = gunService.getInstance()
+    const gun = gunService.getGun()
     if (!gun || !gun.user().is) {
       throw new Error('Not authenticated')
     }
@@ -346,7 +346,7 @@ export async function testGunService(): Promise<void> {
   console.log('='.repeat(60))
 
   // Check if a user is already logged in and log them out
-  const gun = gunService.getInstance()
+  const gun = gunService.getGun()
   if (gun) {
     const currentUser = gun.user()
     if (currentUser.is && currentUser.is.pub) {

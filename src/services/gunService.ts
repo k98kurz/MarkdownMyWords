@@ -20,7 +20,7 @@ import type {
   Unsubscribe,
   GunError,
 } from '../types/gun'
-import { GunErrorCode } from '../types/gun'
+import { GunErrorCode, GunNodeRef } from '../types/gun'
 
 export interface SEAUser {
   alias: string
@@ -196,6 +196,14 @@ class GunService {
       })
     }
     readOnce()
+  }
+
+  /**
+   * Generate a new UUID.
+   * @returns string
+   */
+  newId(): string {
+    return crypto.randomUUID()
   }
 
   /**
@@ -844,14 +852,6 @@ class GunService {
   }
 
   /**
-   * Get GunDB instance (for advanced usage)
-   * @returns GunDB instance or null if not initialized
-   */
-  getInstance(): GunInstance | null {
-    return this.gun
-  }
-
-  /**
    * Write user profile for discovery by other users
    * Stores the user's epub at their user node
    * Reference: code_references/gundb.md:49-58
@@ -946,6 +946,38 @@ class GunService {
           })
         })
     })
+  }
+
+  /**
+   * List out all items at a specific node.
+   * @param nodePath - the path to the node
+   * @returns Promise resolving to array of nodes
+   */
+  async listItems(nodePath: string[], startNode?: GunNodeRef): Promise<any[]> {
+    const gun = startNode ?? this.getGun()
+    return new Promise<any[]>(resolve => {
+      const collectedItems: any[] = []
+      setTimeout(() => resolve(collectedItems), 500)
+
+      const node = nodePath.reduce((n, part) => n.get(part), gun)
+      node.map()
+        .once((data: any, soul: string) => {
+          if (!data) return
+          const cleanSoul = soul.startsWith('~') ? soul.slice(1) : soul
+          gun.get(`~${cleanSoul}`).once((node: any) => {
+            collectedItems.push({ soul: cleanSoul, data, node })
+          })
+        })
+    })
+  }
+
+  /**
+   * List out all items at a specific user node.
+   * @param nodePath - the path to the node
+   * @returns Promise resolving to array of nodes
+   */
+  async listUserItems(nodePath: string[]): Promise<any[]> {
+    return await this.listItems(nodePath, this.getGun().user())
   }
 
   /**

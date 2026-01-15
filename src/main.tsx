@@ -8,7 +8,6 @@ import { testVariousDocumentSizes } from './test/testDocumentSizes'
 import { testGunService } from './test/gunService.test'
 import { testEncryptionService } from './test/encryptionService.test'
 //import { testNewGunSEAScheme } from './test/testNewGunSEAScheme'
-import { listUsers, listUsersDetailed, getUserById } from './utils/listUsers'
 import { clearGunDBLocalStorage } from './utils/clearGunDB'
 import { useConnectionStore } from './stores/connectionStore'
 
@@ -79,9 +78,6 @@ if (typeof window !== 'undefined') {
   (window as any).testEncryptionService = testEncryptionService;
 //  (window as any).testNewGunSEAScheme = testNewGunSEAScheme;
   (window as any).runAllTests = runAllTests;
-  (window as any).listUsers = listUsers;
-  (window as any).listUsersDetailed = listUsersDetailed;
-  (window as any).getUserById = getUserById;
   (window as any).clearGunDB = clearGunDBLocalStorage;
   (window as any).gunService = gunService;
   console.log('🧪 Dev console functions available:')
@@ -90,9 +86,6 @@ if (typeof window !== 'undefined') {
   console.log('   - window.testEncryptionService() - Test encryption service (full test suite)')
 //  console.log('   - window.testNewGunSEAScheme() - Test new GunDB + SEA security scheme')
   console.log('   - window.runAllTests() - Run all test suites')
-  console.log('   - window.listUsers() - Returns array of all users (profiles + SEA)')
-  console.log('   - window.listUsersDetailed() - Prints formatted user list')
-  console.log('   - window.getUserById(userId) - Get specific user by ID')
   console.log('   - window.clearGunDB(options) - Clear local GunDB storage')
 //  console.log('\n📋 Copy-paste examples:')
 //  console.log('   window.runAllTests() - Run all tests')
@@ -100,9 +93,6 @@ if (typeof window !== 'undefined') {
 //  console.log('   window.testGunService() - Test GunDB service')
 //  console.log('   window.testEncryptionService() - Test encryption service')
 //  console.log('   window.testNewGunSEAScheme() - Test new GunDB + SEA scheme')
-//  console.log('   window.listUsers().then(users => console.log(users));')
-//  console.log('   window.listUsersDetailed().then(() => console.log("Done"));')
-//  console.log('   window.getUserById("user-id").then(user => console.log(user));')
 //  console.log('   window.clearGunDB().then(() => console.log("Cleared!"));')
 //  console.log('   window.clearAllGunDBData().then(() => console.log("All cleared!"));')
 }
