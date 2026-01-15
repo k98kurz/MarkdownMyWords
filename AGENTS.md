@@ -46,7 +46,12 @@ The previous AI agents reimplemented SEA's encryption incorrectly:
 4. **Ignored SEA's automatic encryption/decryption** for user data storage
 5. **Created security vulnerabilities** by misunderstanding ECDH
 
-### Correct SEA Usage
+### Correct SEA Usage: DEPRECATED?
+
+Note: there is currently an experiment to replace these conventions with
+a scheme with improved security and robustness. If you are experimenting
+with the new scheme defined in `code_references/gundb.md`, defer to those
+instead of these.
 
 ```typescript
 // CORRECT: Documents encrypted with SEA.encrypt using per-document keys

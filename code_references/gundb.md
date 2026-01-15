@@ -59,7 +59,7 @@ async getPrivatePathPart(plainPath: string): Promise<string> {
 
 async getPrivatePath(plainPath: string[]): Promise<string[]> {
   return await Promise.all(
-    array.map(async (p: string) => await getPrivatePathPart(plainPath))
+    plainPath.map(async (p: string) => await getPrivatePathPart(plainPath))
   );
 }
 
