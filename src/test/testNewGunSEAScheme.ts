@@ -51,7 +51,7 @@ async function createUser(gun: any, username: string, password: string) {
 
 async function authenticateUser(gun: any, username: string, password: string) {
   return new Promise<void>(resolve => {
-    gun.user().auth(username, password, ack => {
+    gun.user().auth(username, password, (ack: any) => {
       if (ack.err) {
         throw new Error(`Authentication failed: ${ack.err}`)
       }
@@ -80,9 +80,7 @@ async function getPrivatePathPart(gun: any, plainPath: string): Promise<string> 
  * Hash an array of path parts for private node naming
  */
 async function getPrivatePath(gun: any, plainPath: string[]): Promise<string[]> {
-  return await Promise.all(
-    plainPath.map(async (p: string) => await getPrivatePathPart(gun, p))
-  )
+  return await Promise.all(plainPath.map(async (p: string) => await getPrivatePathPart(gun, p)))
 }
 
 /**
@@ -112,10 +110,15 @@ async function writePrivateData(gun: any, plainPath: string[], plaintext: string
 
 /**
  * Read private data using hashed path and .decrypt() decryption
+ * If hashedPath is provided, use it directly instead of hashing plainPath parts
  */
-async function readPrivateData(gun: any, plainPath: string[]): Promise<string> {
-  const privatePath = await getPrivatePath(gun, plainPath)
-  const node = privatePath.reduce((path, part) => path.get(part), gun.user())
+async function readPrivateData(
+  gun: any,
+  plainPath: string[],
+  hashedPath?: string[]
+): Promise<string> {
+  const path = hashedPath || (await getPrivatePath(gun, plainPath))
+  const node = path.reduce((p, part) => p.get(part), gun.user())
   return await new Promise<string>((resolve, reject) => {
     node.once(async (ciphertext: any) => {
       if (ciphertext === undefined) {
@@ -129,38 +132,52 @@ async function readPrivateData(gun: any, plainPath: string[]): Promise<string> {
 }
 
 /**
- * Read private structured data (like contacts) with specific fields
+ * Read private structured data (like contacts) by iterating keys and accessing fields
+ * Unlike discoverUsers which reads unencrypted data, here we must:
+ * 1. First get the keys from .map() (hashed usernames)
+ * 2. Then access each field at plainPath + [key] + [fieldName]
  */
 async function readPrivateMap(
   gun: any,
   plainPath: string[],
   fields: string[]
 ): Promise<Record<string, string>[]> {
-  const privateNode = await getPrivateNode(gun, plainPath)
+  const privatePath = await getPrivatePath(gun, plainPath)
+  const privateNode = privatePath.reduce((path, part) => path.get(part), gun.user())
 
-  return await new Promise<Record<string, string>[]>(resolve => {
-    const results: Record<string, string>[] = []
+  // First, collect all keys from the map
+  const keys: string[] = await new Promise<string[]>(resolve => {
+    const collectedKeys: string[] = []
+    setTimeout(() => resolve(collectedKeys), 500)
 
-    privateNode.map().once(async () => {
-      try {
-        const record: Record<string, string> = {}
-
-        for (const fieldName of fields) {
-          const fieldPath = [...plainPath, fieldName]
-          const fieldValue = await readPrivateData(gun, fieldPath)
-          record[fieldName] = fieldValue
-        }
-
-        if (Object.keys(record).length > 0) {
-          results.push(record)
-        }
-
-        resolve(results)
-      } catch (error) {
-        // empty catch
+    privateNode.map().once((data: any, key: string) => {
+      if (key) {
+        collectedKeys.push(key)
       }
     })
   })
+
+  // Then for each key, access the fields at privatePath + [key] + [hashedFieldName]
+  const results: Record<string, string>[] = []
+  for (const key of keys) {
+    try {
+      const record: Record<string, string> = {}
+      for (const fieldName of fields) {
+        // privatePath is already hashed, key from map() is hashed, only fieldName needs hashing
+        const fieldNameHash = await getPrivatePathPart(gun, fieldName)
+        const fullHashedPath = [...privatePath, key, fieldNameHash]
+        const fieldValue = await readPrivateData(gun, [], fullHashedPath)
+        record[fieldName] = fieldValue
+      }
+      if (Object.keys(record).length > 0) {
+        results.push(record)
+      }
+    } catch (error: Error) {
+      console.error(`Failed to read contact for key ${key}:`, error.message)
+    }
+  }
+
+  return results
 }
 
 async function writeProfile(gun: any): Promise<void> {
@@ -352,23 +369,24 @@ async function testEndToEndWorkflow(gun: any): Promise<void> {
   assert(discovered.length == 1, `discovered.length ${discovered.length})`)
   assert(discovered[0].data.epub, 'Alice missing epub')
   assert(discovered[0].data.epub == aliceEpub, 'mismatch')
-  console.log(
-    `✅ Bob discovered Alice with epub: ${discovered[0].data.epub.substring(0, 20)}...`
-  )
+  console.log(`✅ Bob discovered Alice with epub: ${discovered[0].data.epub.substring(0, 20)}...`)
 
   // Bob adds Alice as a contact
-  await writePrivateData(gun,
-    ['contacts', aliceUsername, 'username'], aliceUsername)
-  await writePrivateData(gun,
-    ['contacts', aliceUsername, 'pub'], discovered[0].pub)
-  await writePrivateData(gun,
-    ['contacts', aliceUsername, 'epub'], discovered[0].data.epub)
+  await writePrivateData(gun, ['contacts', aliceUsername, 'username'], aliceUsername)
+  await writePrivateData(gun, ['contacts', aliceUsername, 'pub'], discovered[0].pub)
+  await writePrivateData(gun, ['contacts', aliceUsername, 'epub'], discovered[0].data.epub)
 
   console.log(`   ✅ Bob added Alice as contact`)
 
+  // Test contact iteration via readPrivateMap (keys are hashed, so iteration is needed)
+  console.log('   Testing contact iteration with readPrivateMap...')
+  const contacts = await readPrivateMap(gun, ['contacts'], ['username', 'pub', 'epub'])
+  assert(contacts.length === 1, `Expected 1 contact, got ${contacts.length}`)
+  assert(contacts[0].username === aliceUsername, 'Contact username mismatch')
+  console.log('   ✅ Contact iteration works correctly')
+
   // Verify Bob's contact data
-  const bobContactUsername = await readPrivateData(gun,
-    ['contacts', aliceUsername, 'username'])
+  const bobContactUsername = await readPrivateData(gun, ['contacts', aliceUsername, 'username'])
   assert(bobContactUsername === aliceUsername, 'Contact username mismatch')
   console.log(`   ✅ Bob's contact data verified`)
 
@@ -388,8 +406,8 @@ async function testEndToEndWorkflow(gun: any): Promise<void> {
     if (shouldBeScrambled == aliceUsername) {
       throw new Error('XXX SECURITY BREACH')
     }
-  } catch (error) {
-    if (error.message == 'XXX SECURITY BREACH') throw error;
+  } catch (error: Error) {
+    if (error.message == 'XXX SECURITY BREACH') throw error
     // Expected: Bob shouldn't have Alice's contacts
     console.log(`   ✅ Alice's contacts remain private from Bob`)
   }
@@ -427,7 +445,7 @@ async function testProfileImpersonationPrevention(gun: any): Promise<void> {
   try {
     await createUser(gun, username, password2)
   } catch {
-    console.log("GunDB prevents local duplicate user creation")
+    console.log('GunDB prevents local duplicate user creation')
     return
   }
   await authenticateUser(gun, username, password2)
@@ -460,7 +478,6 @@ async function testPrivateDataEncryptionValidation(gun: any): Promise<void> {
 
   const username = `impersonation_test_${Date.now()}`
   const password1 = 'password1'
-  const password2 = 'password2'
 
   // Create first user with username
   await createUser(gun, username, password1)
@@ -530,7 +547,8 @@ export async function testNewGunSEAScheme(): Promise<TestSuiteResult> {
     throw new Error('SEA not available')
   }
 
-  gun.sea = Gun.SEA // monkey patch for testing
+  // monkey patch for testing
+  gun.sea = Gun.SEA
 
   try {
     // Core functionality tests
@@ -544,10 +562,7 @@ export async function testNewGunSEAScheme(): Promise<TestSuiteResult> {
       async () => await testPrivateDataStorage(gun)
     )
 
-    await runner.run(
-      'Contacts system with two users',
-      async () => await testEndToEndWorkflow(gun)
-    )
+    await runner.run('Contacts system with two users', async () => await testEndToEndWorkflow(gun))
 
     // Security validation tests
     await runner.run(
