@@ -5,7 +5,7 @@
  */
 
 import { gunService, GunService } from '../services/gunService'
-import type { User, Document, GunError } from '../types/gun'
+import type { Document, GunError } from '../types/gun'
 import { GunErrorCode } from '../types/gun'
 import { TestRunner, printTestSummary, type TestSuiteResult } from '../utils/testRunner'
 

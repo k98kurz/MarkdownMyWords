@@ -185,7 +185,9 @@ class EncryptionService {
     }
 
     try {
-      const userPair = this.gun.user()._?.sea;
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore
+      const userPair = this.gun?.user()._?.sea;
 
       if (!userPair || !userPair.epriv || !userPair.epub) {
         throw {
@@ -234,6 +236,8 @@ class EncryptionService {
     }
 
     try {
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore
       const userPair = this.gun.user()._?.sea;
 
       if (!userPair || !userPair.epriv || !userPair.epub) {

@@ -12,12 +12,10 @@ import 'gun/lib/radisk' // Radisk for IndexedDB
 import { retryWithBackoff } from '../utils/retryHelper'
 import type {
   GunInstance,
-  User,
   Document,
   Branch,
   GunConfig,
   DocumentCallback,
-  UserCallback,
   BranchCallback,
   Unsubscribe,
   GunError,

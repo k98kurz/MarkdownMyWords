@@ -7,7 +7,7 @@ import { encryptionService } from './services/encryptionService'
 import { testVariousDocumentSizes } from './test/testDocumentSizes'
 import { testGunService } from './test/gunService.test'
 import { testEncryptionService } from './test/encryptionService.test'
-import { testNewGunSEAScheme } from './test/testNewGunSEAScheme'
+//import { testNewGunSEAScheme } from './test/testNewGunSEAScheme'
 import { listUsers, listUsersDetailed, getUserById } from './utils/listUsers'
 import { clearGunDBLocalStorage } from './utils/clearGunDB'
 import { useConnectionStore } from './stores/connectionStore'
@@ -77,7 +77,7 @@ if (typeof window !== 'undefined') {
   (window as any).testDocumentSizes = testVariousDocumentSizes;
   (window as any).testGunService = testGunService;
   (window as any).testEncryptionService = testEncryptionService;
-  (window as any).testNewGunSEAScheme = testNewGunSEAScheme;
+//  (window as any).testNewGunSEAScheme = testNewGunSEAScheme;
   (window as any).runAllTests = runAllTests;
   (window as any).listUsers = listUsers;
   (window as any).listUsersDetailed = listUsersDetailed;
@@ -88,7 +88,7 @@ if (typeof window !== 'undefined') {
   console.log('   - window.testDocumentSizes() - Test encryption with various document sizes')
   console.log('   - window.testGunService() - Test GunDB service operations')
   console.log('   - window.testEncryptionService() - Test encryption service (full test suite)')
-  console.log('   - window.testNewGunSEAScheme() - Test new GunDB + SEA security scheme')
+//  console.log('   - window.testNewGunSEAScheme() - Test new GunDB + SEA security scheme')
   console.log('   - window.runAllTests() - Run all test suites')
   console.log('   - window.listUsers() - Returns array of all users (profiles + SEA)')
   console.log('   - window.listUsersDetailed() - Prints formatted user list')

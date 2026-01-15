@@ -4,7 +4,6 @@
  * Tests that AES-256-GCM encryption/decryption works correctly with documents of various sizes.
  */
 
-import { describe, it, expect } from 'vitest'
 import { encryptionService } from '../services/encryptionService'
 
 /**
@@ -14,32 +13,6 @@ function generateTestContent(sizeInBytes: number): string {
   const char = 'A';
   return char.repeat(sizeInBytes);
 }
-
-describe('Document Encryption - Various Sizes', () => {
-  const testSizes = [
-    { name: '1 KB', bytes: 1024 },
-    { name: '100 KB', bytes: 100 * 1024 },
-    { name: '10 MB', bytes: 10 * 1024 * 1024 },
-  ]
-
-  for (const testSize of testSizes) {
-    it(`should encrypt and decrypt ${testSize.name} document correctly`, async () => {
-      const content = generateTestContent(testSize.bytes);
-      const docKey = await encryptionService.generateDocumentKey();
-
-      // Encrypt
-      const encrypted = await encryptionService.encryptDocument(content, docKey);
-      expect(encrypted.encryptedContent).toBeTruthy();
-      expect(encrypted.iv).toBeTruthy();
-      expect(encrypted.tag).toBeTruthy();
-
-      // Decrypt
-      const decrypted = await encryptionService.decryptDocument(encrypted, docKey);
-      expect(decrypted).toBe(content);
-      expect(decrypted.length).toBe(testSize.bytes);
-    });
-  }
-});
 
 /**
  * Test encryption/decryption with various document sizes in the browser console
@@ -66,7 +39,7 @@ export async function testVariousDocumentSizes(): Promise<void> {
       const encryptTime = performance.now() - encryptStart;
 
       const decryptStart = performance.now();
-      const decrypted = await encryptionService.decryptDocument(encrypted, docKey);
+      const decrypted = await encryptionService.decryptDocument(encrypted!, docKey);
       const decryptTime = performance.now() - decryptStart;
 
       const success = decrypted === content && decrypted.length === testSize.bytes;

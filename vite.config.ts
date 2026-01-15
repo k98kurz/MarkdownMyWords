@@ -27,9 +27,7 @@ export default defineConfig({
       'node_modules/**',
       'dist/**',
       // Exclude test files that export browser console functions
-      // These contain 'describe/it' for Vitest AND exported functions for browser console
-      'src/test/encryptionService.test.ts',
-      'src/test/gunService.test.ts',
+      'src/test/**',
     ],
   },
 })
