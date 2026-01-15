@@ -2,9 +2,9 @@
  * Encryption Service Tests
  */
 
-import { encryptionService } from '../encryptionService'
-import { gunService } from '../gunService'
-import { TestRunner, printTestSummary, type TestSuiteResult, sleep } from '../../utils/testRunner'
+import { encryptionService } from '../services/encryptionService'
+import { gunService } from '../services/gunService'
+import { TestRunner, printTestSummary, type TestSuiteResult, sleep } from '../utils/testRunner'
 // import { retryWithBackoff } from '../../utils/retryHelper'
 
 const assert = (condition: any, message: string) => {
@@ -13,56 +13,58 @@ const assert = (condition: any, message: string) => {
   }
 }
 
- async function testDocumentEncryption(): Promise<TestSuiteResult> {
-   console.log('🧪 Testing Document Encryption (SEA.encrypt/SEA.decrypt)...\n')
+async function testDocumentEncryption(): Promise<TestSuiteResult> {
+  console.log('🧪 Testing Document Encryption (SEA.encrypt/SEA.decrypt)...\n')
 
-   const runner = new TestRunner('Document Encryption')
+  const runner = new TestRunner('Document Encryption')
 
-   await runner.run('should generate document-specific keys', async () => {
-     const key = await encryptionService.generateDocumentKey()
-     assert(key, 'key not generated')
-   })
+  await runner.run('should generate document-specific keys', async () => {
+    const key = await encryptionService.generateDocumentKey()
+    assert(key, 'key not generated')
+  })
 
-   await runner.run('should encrypt document', async () => {
-     const key = await encryptionService.generateDocumentKey()
-     const content = 'test document content'
-     const encrypted = await encryptionService.encryptDocument(content, key)
-     assert(encrypted, 'document encryption failed')
-   })
+  await runner.run('should encrypt document', async () => {
+    const key = await encryptionService.generateDocumentKey()
+    const content = 'test document content'
+    const encrypted = await encryptionService.encryptDocument(content, key)
+    assert(encrypted, 'document encryption failed')
+  })
 
-   await runner.run('should decrypt document', async () => {
-     const key = await encryptionService.generateDocumentKey()
-     const content = 'test document content'
-     const encrypted = await encryptionService.encryptDocument(content, key)
-     assert(typeof encrypted === 'string', 'encryption failed')
-     const decrypted = await encryptionService.decryptDocument(encrypted!, key)
-     assert(decrypted == content,
-       `Decrypted content mismatch. Expected "${content}", got "${decrypted}"`)
-   })
+  await runner.run('should decrypt document', async () => {
+    const key = await encryptionService.generateDocumentKey()
+    const content = 'test document content'
+    const encrypted = await encryptionService.encryptDocument(content, key)
+    assert(typeof encrypted === 'string', 'encryption failed')
+    const decrypted = await encryptionService.decryptDocument(encrypted!, key)
+    assert(
+      decrypted == content,
+      `Decrypted content mismatch. Expected "${content}", got "${decrypted}"`
+    )
+  })
 
-   await runner.run('should encrypt and decrypt different content correctly', async () => {
-     const key = await encryptionService.generateDocumentKey()
-     const content1 = 'First document'
-     const content2 = 'Second document'
+  await runner.run('should encrypt and decrypt different content correctly', async () => {
+    const key = await encryptionService.generateDocumentKey()
+    const content1 = 'First document'
+    const content2 = 'Second document'
 
-     const encrypted1 = await encryptionService.encryptDocument(content1, key)
-     const encrypted2 = await encryptionService.encryptDocument(content2, key)
+    const encrypted1 = await encryptionService.encryptDocument(content1, key)
+    const encrypted2 = await encryptionService.encryptDocument(content2, key)
 
-     if (encrypted1 === encrypted2) {
-       throw new Error('Different content should encrypt to different ciphertexts')
-     }
+    if (encrypted1 === encrypted2) {
+      throw new Error('Different content should encrypt to different ciphertexts')
+    }
 
-     const decrypted1 = await encryptionService.decryptDocument(encrypted1!, key)
-     const decrypted2 = await encryptionService.decryptDocument(encrypted2!, key)
+    const decrypted1 = await encryptionService.decryptDocument(encrypted1!, key)
+    const decrypted2 = await encryptionService.decryptDocument(encrypted2!, key)
 
-     if (decrypted1 !== content1 || decrypted2 !== content2) {
-       throw new Error('Decrypted content mismatch')
-     }
-   })
+    if (decrypted1 !== content1 || decrypted2 !== content2) {
+      throw new Error('Decrypted content mismatch')
+    }
+  })
 
-   runner.printResults()
-   return runner.getResults()
- }
+  runner.printResults()
+  return runner.getResults()
+}
 
 async function testKeySharing(): Promise<TestSuiteResult> {
   console.log('🧪 Testing Key Sharing (SEA ECDH)...\n')

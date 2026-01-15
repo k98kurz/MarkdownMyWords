@@ -4,8 +4,8 @@
  * Tests that AES-256-GCM encryption/decryption works correctly with documents of various sizes.
  */
 
-import { describe, it, expect } from 'vitest';
-import { encryptionService } from '../encryptionService';
+import { describe, it, expect } from 'vitest'
+import { encryptionService } from '../services/encryptionService'
 
 /**
  * Generate test content of specified size
@@ -20,7 +20,7 @@ describe('Document Encryption - Various Sizes', () => {
     { name: '1 KB', bytes: 1024 },
     { name: '100 KB', bytes: 100 * 1024 },
     { name: '10 MB', bytes: 10 * 1024 * 1024 },
-  ];
+  ]
 
   for (const testSize of testSizes) {
     it(`should encrypt and decrypt ${testSize.name} document correctly`, async () => {
@@ -46,7 +46,7 @@ describe('Document Encryption - Various Sizes', () => {
  * @returns Promise that resolves when tests complete
  */
 export async function testVariousDocumentSizes(): Promise<void> {
-  console.log('🧪 Testing AES-256-GCM encryption with various document sizes...\n');
+  console.log('🧪 Testing SEA encryption with various document sizes...\n');
 
   const testSizes = [
     { name: '1 KB', bytes: 1024 },

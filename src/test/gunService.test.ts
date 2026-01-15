@@ -4,10 +4,10 @@
  * Tests for GunDB service operations that can be run from the browser console.
  */
 
-import { gunService, GunService, SEAUser } from '../gunService'
-import type { User, Document, GunError } from '../../types/gun'
-import { GunErrorCode } from '../../types/gun'
-import { TestRunner, printTestSummary, type TestSuiteResult } from '../../utils/testRunner'
+import { gunService, GunService, SEAUser } from '../services/gunService'
+import type { User, Document, GunError } from '../types/gun'
+import { GunErrorCode } from '../types/gun'
+import { TestRunner, printTestSummary, type TestSuiteResult } from '../utils/testRunner'
 
 /**
  * Test GunDB Service initialization

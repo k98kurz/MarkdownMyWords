@@ -15,8 +15,8 @@
 
 import Gun from 'gun'
 import 'gun/sea'
-import { gunService } from '../gunService'
-import { TestRunner, type TestSuiteResult } from '../../utils/testRunner'
+import { gunService } from '../services/gunService'
+import { TestRunner, type TestSuiteResult } from '../utils/testRunner'
 
 /**
  * Assert helper for tests
