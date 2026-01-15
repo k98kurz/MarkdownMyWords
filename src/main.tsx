@@ -8,6 +8,7 @@ import { testVariousDocumentSizes } from './test/testDocumentSizes'
 import { testGunService } from './test/gunService.test'
 import { testEncryptionService } from './test/encryptionService.test'
 import { testNonEphemeralECDH } from './test/testNonEphemeralECDH'
+import { testNewGunSEAScheme } from './test/testNewGunSEAScheme'
 import { listUsers, listUsersDetailed, getUserById } from './utils/listUsers'
 import { clearGunDBLocalStorage, clearAllGunDBData } from './utils/clearGunDB'
 import { useConnectionStore } from './stores/connectionStore'
@@ -78,6 +79,7 @@ if (typeof window !== 'undefined') {
   (window as any).testGunService = testGunService;
   (window as any).testEncryptionService = testEncryptionService;
   (window as any).testNonEphemeralECDH = testNonEphemeralECDH;
+  (window as any).testNewGunSEAScheme = testNewGunSEAScheme;
   (window as any).runAllTests = runAllTests;
   (window as any).listUsers = listUsers;
   (window as any).listUsersDetailed = listUsersDetailed;
@@ -89,6 +91,7 @@ if (typeof window !== 'undefined') {
   console.log('   - window.testGunService() - Test GunDB service operations')
   console.log('   - window.testEncryptionService() - Test encryption service (full test suite)')
   console.log('   - window.testNonEphemeralECDH() - Test ECDH with non-ephemeral public key')
+  console.log('   - window.testNewGunSEAScheme() - Test new GunDB + SEA security scheme')
   console.log('   - window.runAllTests() - Run all test suites')
   console.log('   - window.listUsers() - Returns array of all users (profiles + SEA)')
   console.log('   - window.listUsersDetailed() - Prints formatted user list')
@@ -101,6 +104,7 @@ if (typeof window !== 'undefined') {
   console.log('   window.testGunService() - Test GunDB service')
   console.log('   window.testEncryptionService() - Test encryption service')
   console.log('   window.testNonEphemeralECDH() - Test non-ephemeral ECDH')
+  console.log('   window.testNewGunSEAScheme() - Test new GunDB + SEA scheme')
   console.log('   window.listUsers().then(users => console.log(users));')
   console.log('   window.listUsersDetailed().then(() => console.log("Done"));')
   console.log('   window.getUserById("user-id").then(user => console.log(user));')
