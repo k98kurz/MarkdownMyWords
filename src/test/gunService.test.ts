@@ -4,7 +4,7 @@
  * Tests for GunDB service operations that can be run from the browser console.
  */
 
-import { gunService, GunService, SEAUser } from '../services/gunService'
+import { gunService, GunService } from '../services/gunService'
 import type { User, Document, GunError } from '../types/gun'
 import { GunErrorCode } from '../types/gun'
 import { TestRunner, printTestSummary, type TestSuiteResult } from '../utils/testRunner'
@@ -57,78 +57,35 @@ async function testUserOperations(): Promise<TestSuiteResult> {
   const timestamp = Date.now()
   const testUsername = `testuser_${timestamp}`
   const testPassword = 'testpassword123'
-  let seaUser: SEAUser | null = null
+  let testUserPub: string | null = null
 
-  await runner.run('Create SEA user', async () => {
-    const user = await gunService.createSEAUser(testUsername, testPassword)
-    if (!user || !user.pub) {
-      throw new Error('No pub key returned')
-    }
-    seaUser = user
-    console.log(`  User created: ${user.alias} (${user.pub.substring(0, 20)}...)`)
-    const epub = await gunService.getUserEpub(user.alias)
-    if (epub) {
+  await runner.run('Create user', async () => {
+    await gunService.createUser(testUsername, testPassword)
+    await gunService.authenticateUser(testUsername, testPassword)
+    await gunService.writeProfile()
+    await new Promise(resolve => setTimeout(resolve, 500))
+    const users = await gunService.discoverUsers(testUsername)
+    if (users.length > 0 && users[0].data.epub) {
+      const epub = users[0].data.epub
       console.log(`  Ephemeral pubkey retrieved: ${epub.substring(0, 20)}...`)
     } else {
       throw new Error('  Ephemeral pubkey retrieval failed')
     }
+    testUserPub = (gunService.getInstance()?.user().is as any)?.pub
+    if (!testUserPub) {
+      throw new Error('Failed to get user pub key')
+    }
+    console.log(`  User created: ${testUsername} (${testUserPub.substring(0, 20)}...)`)
   })
 
-  await runner.run('Put user profile', async () => {
-    if (!seaUser) {
-      throw new Error('User not created')
-    }
-    const userProfile: Partial<User> = {
-      profile: {
-        username: testUsername,
-        publicKey: seaUser.pub,
-      },
-      settings: {
-        theme: 'dark',
-      },
-    }
-    await gunService.putUserProfile(seaUser.pub, userProfile)
-    await new Promise(resolve => setTimeout(resolve, 800))
-  })
-
-  await runner.run('Get user by ID', async () => {
-    if (!seaUser) {
-      throw new Error('User not created')
-    }
-    const user = await gunService.getUser(seaUser.pub)
-    if (!user) {
-      throw new Error('User not found')
-    }
-    const hasProfile = user.profile !== undefined && user.profile !== null
-    const hasUsername = user.profile?.username === testUsername
-    const hasPublicKey = user.profile?.publicKey === seaUser.pub
-    const hasSettings = user.settings !== undefined
-    const hasTheme = user.settings?.theme === 'dark'
-
-    if (!hasProfile || !hasUsername || !hasPublicKey || !hasSettings || !hasTheme) {
-      const missing = []
-      if (!hasProfile) missing.push('profile')
-      if (!hasUsername) missing.push('username')
-      if (!hasPublicKey) missing.push('publicKey')
-      if (!hasSettings) missing.push('settings')
-      if (!hasTheme) missing.push('theme')
-      throw new Error(`Missing data: ${missing.join(', ')}`)
-    }
-    console.log(`  Username: ${user.profile.username}`)
-    console.log(`  Theme: ${user.settings?.theme || 'N/A'}`)
-  })
-
-  await runner.run('Authenticate SEA user', async () => {
+  await runner.run('Authenticate user', async () => {
     const gun = gunService.getInstance()
     if (gun) {
       gun.user().leave()
       await new Promise(resolve => setTimeout(resolve, 500))
     }
-    const authUser = await gunService.authenticateSEAUser(testUsername, testPassword)
-    if (!authUser || !authUser.pub) {
-      throw new Error('No pub key returned')
-    }
-    console.log(`  User authenticated: ${authUser.alias}`)
+    await gunService.authenticateUser(testUsername, testPassword)
+    console.log(`  User authenticated: ${testUsername}`)
   })
 
   console.log('\n✅ User operations tests complete!')
@@ -295,36 +252,6 @@ async function testSubscriptions(): Promise<TestSuiteResult> {
     } catch {}
   })
 
-  await runner.run('Subscribe to user', async () => {
-    const gun = gunService.getInstance()
-    if (!gun || !gun.user().is) {
-      throw new Error('Not authenticated')
-    }
-
-    const userId = gun.user().is!.pub
-    let userSubscriptionTriggered = false
-
-    const unsubscribeUser = gunService.subscribeToUser(userId, user => {
-      userSubscriptionTriggered = true
-      if (user) {
-        console.log(`  📡 User update received: ${user.profile?.username || 'N/A'}`)
-      }
-    })
-
-    await gunService.putUserProfile(userId, {
-      profile: {
-        username: 'updated-username',
-      },
-    })
-    await new Promise(resolve => setTimeout(resolve, 500))
-
-    if (!userSubscriptionTriggered) {
-      throw new Error('Subscription not triggered')
-    }
-
-    unsubscribeUser()
-  })
-
   console.log('\n✅ Subscription tests complete!')
   runner.printResults()
   return runner.getResults()
@@ -337,13 +264,6 @@ async function testErrorHandling(): Promise<TestSuiteResult> {
   console.log('🧪 Testing Error Handling...\n')
 
   const runner = new TestRunner('Error Handling')
-
-  await runner.run('Get non-existent user', async () => {
-    const user = await gunService.getUser('non-existent-user-id')
-    if (user !== null) {
-      throw new Error('Expected null')
-    }
-  })
 
   await runner.run('Get non-existent document', async () => {
     const doc = await gunService.getDocument('non-existent-doc-id')
@@ -374,7 +294,7 @@ async function testErrorHandling(): Promise<TestSuiteResult> {
   await runner.run('Operations without initialization', async () => {
     const uninitializedService = new GunService()
     try {
-      await uninitializedService.getUser('test-id')
+      await uninitializedService.getDocument('test-id')
       throw new Error('Operation should have failed')
     } catch (error) {
       const gunError = error as GunError

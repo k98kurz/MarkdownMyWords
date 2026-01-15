@@ -201,220 +201,6 @@ class GunService {
   }
 
   /**
-   * Get user by ID
-   * @param userId - User ID
-   * @returns Promise resolving to User or null if not found
-   */
-  async getUser(userId: string): Promise<User | null> {
-    try {
-      const gun = this.getGun()
-      const userNode = gun.get(this.getNodePath('user', userId))
-
-      return new Promise<User | null>(resolve => {
-        // First check if user exists (with retry)
-        this.readWithRetry<string>(userNode.get('profile').get('username'), username => {
-          if (!username) {
-            resolve(null)
-            return
-          }
-
-          // User exists, read all fields
-          const user: Partial<User> = { profile: { username: '' } }
-          user.profile!.username = username
-          let pendingReads = 4 // publicKey, encryptedProfile, theme, apiKey (username already read)
-
-          const checkDone = () => {
-            pendingReads--
-            if (pendingReads <= 0) {
-              const reconstructed: User = {
-                profile: user.profile || { username: '' },
-                settings: user.settings,
-                documents: user.documents,
-              }
-              resolve(reconstructed)
-            }
-          }
-
-          // Read profile.publicKey
-          this.readWithRetry<string>(userNode.get('profile').get('publicKey'), publicKey => {
-            if (publicKey) {
-              if (!user.profile) user.profile = { username: '' }
-              user.profile.publicKey = publicKey
-            }
-            checkDone()
-          })
-
-          // Read profile.encryptedProfile (optional)
-          this.readWithRetry<string>(
-            userNode.get('profile').get('encryptedProfile'),
-            encryptedProfile => {
-              if (encryptedProfile) {
-                if (!user.profile) user.profile = { username: '' }
-                user.profile.encryptedProfile = encryptedProfile
-              }
-              checkDone()
-            }
-          )
-
-          // Read settings.theme
-          this.readWithRetry<string>(userNode.get('settings').get('theme'), theme => {
-            if (theme) {
-              if (!user.settings) user.settings = { theme: 'light' }
-              user.settings.theme = theme as 'light' | 'dark'
-            }
-            checkDone()
-          })
-
-          // Read settings.openRouterApiKey (optional)
-          this.readWithRetry<string>(userNode.get('settings').get('openRouterApiKey'), apiKey => {
-            if (apiKey) {
-              if (!user.settings) user.settings = { theme: 'light' }
-              user.settings.openRouterApiKey = apiKey
-            }
-            checkDone()
-          })
-        })
-      })
-    } catch (error) {
-      if ((error as GunError).code) {
-        throw error
-      }
-
-      if (this.isOffline()) {
-        return null
-      }
-
-      throw {
-        code: GunErrorCode.SYNC_ERROR,
-        message: 'Failed to get user',
-        details: error,
-      } as GunError
-    }
-  }
-
-  /**
-   * Put user profile data in GunDB
-   * Stores or updates user profile information (username, preferences, etc.) in GunDB.
-   * Note: This does NOT create the authentication account - use createSEAUser() for that.
-   * @param userId - User ID (typically the public key from SEA authentication)
-   * @param userData - User profile data to store
-   */
-  async putUserProfile(userId: string, userData: Partial<User>): Promise<void> {
-    try {
-      const gun = this.getGun()
-      const isOffline = this.isOffline()
-
-      return new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(
-          () => {
-            if (isOffline) {
-              // In offline mode, operation may still succeed in local storage
-              // GunDB will sync when connection is restored
-              resolve()
-              return
-            }
-            reject({
-              code: GunErrorCode.SYNC_ERROR,
-              message: 'Timeout creating user',
-            } as GunError)
-          },
-          isOffline ? 5000 : 10000
-        )
-
-        const userNode = gun.get(this.getNodePath('user', userId))
-
-        // GunDB works better with flat puts on each nested path
-        // rather than one big nested object put
-        let pendingPuts = 0
-        let hasError = false
-        let errorDetails: any = null
-
-        const checkDone = () => {
-          pendingPuts--
-          if (pendingPuts <= 0) {
-            clearTimeout(timeout)
-            if (hasError && !isOffline) {
-              reject({
-                code: GunErrorCode.SYNC_ERROR,
-                message: 'Failed to create user',
-                details: errorDetails,
-              } as GunError)
-            } else {
-              resolve()
-            }
-          }
-        }
-
-        const handleAck = (ack: any) => {
-          if (ack.err && !hasError) {
-            hasError = true
-            errorDetails = ack.err
-            if (isOffline) {
-              console.warn('User creation error (offline mode):', ack.err)
-            }
-          }
-          checkDone()
-        }
-
-        // Store profile data (flat properties only)
-        if (userData.profile) {
-          const profile = userData.profile
-          if (profile.username) {
-            pendingPuts++
-            userNode.get('profile').get('username').put(profile.username, handleAck)
-          }
-          if (profile.publicKey) {
-            pendingPuts++
-            userNode.get('profile').get('publicKey').put(profile.publicKey, handleAck)
-          }
-          if (profile.encryptedProfile) {
-            pendingPuts++
-            userNode.get('profile').get('encryptedProfile').put(profile.encryptedProfile, handleAck)
-          }
-        }
-
-        // Store settings if provided (flat properties only)
-        if (userData.settings) {
-          const settings = userData.settings
-          if (settings.theme) {
-            pendingPuts++
-            userNode.get('settings').get('theme').put(settings.theme, handleAck)
-          }
-          if (settings.openRouterApiKey) {
-            pendingPuts++
-            userNode
-              .get('settings')
-              .get('openRouterApiKey')
-              .put(settings.openRouterApiKey, handleAck)
-          }
-        }
-
-        // If no properties to store, resolve immediately
-        if (pendingPuts === 0) {
-          clearTimeout(timeout)
-          resolve()
-        }
-      })
-    } catch (error) {
-      if ((error as GunError).code) {
-        throw error
-      }
-
-      // If offline, still resolve - data may be queued locally
-      if (this.isOffline()) {
-        console.warn('User creation error (offline mode):', error)
-        return
-      }
-
-      throw {
-        code: GunErrorCode.SYNC_ERROR,
-        message: 'Failed to create user',
-        details: error,
-      } as GunError
-    }
-  }
-
-  /**
    * Get document by ID
    * @param docId - Document ID
    * @returns Promise resolving to Document or null if not found
@@ -964,48 +750,6 @@ class GunService {
   }
 
   /**
-   * Subscribe to user changes
-   * @param userId - User ID
-   * @param callback - Callback function called on changes
-   * @returns Unsubscribe function
-   */
-  subscribeToUser(userId: string, callback: UserCallback): Unsubscribe {
-    try {
-      const gun = this.getGun()
-      const userNode = gun.get(this.getNodePath('user', userId))
-
-      const handler = (data: User | null) => {
-        if (!data || Object.keys(data).length === 0) {
-          callback(null)
-          return
-        }
-
-        // Validate user structure
-        if (!data.profile) {
-          callback(null)
-          return
-        }
-
-        callback(data)
-      }
-
-      userNode.on(handler)
-
-      // Return unsubscribe function
-      return () => {
-        userNode.off()
-      }
-    } catch (error) {
-      const gunError: GunError = {
-        code: GunErrorCode.SYNC_ERROR,
-        message: 'Failed to subscribe to user',
-        details: error,
-      }
-      throw gunError
-    }
-  }
-
-  /**
    * Subscribe to branch changes
    * @param branchId - Branch ID
    * @param callback - Callback function called on changes
@@ -1110,12 +854,31 @@ class GunService {
   }
 
   /**
+   * Write user profile for discovery by other users
+   * Stores the user's epub at their user node
+   * Reference: code_references/gundb.md:49-58
+   */
+  async writeProfile(): Promise<void> {
+    const gun = this.getGun()
+    return new Promise<void>((resolve, reject) => {
+      gun.user().put({ epub: (gun.user().is as any)?.epub }, (ack: any) => {
+        if (ack.err) {
+          reject(new Error(`Profile storage failed: ${ack.err}`))
+        } else {
+          resolve()
+        }
+      })
+    })
+  }
+
+  /**
    * Create user with SEA
+   * Reference: code_references/gundb.md:26-35
    * @param username - Username/alias
    * @param password - User password
-   * @returns Promise resolving to SEAUser
+   * @returns Promise resolving to void
    */
-  createSEAUser(username: string, password: string): Promise<SEAUser> {
+  async createUser(username: string, password: string): Promise<void> {
     if (!this.gun) {
       throw {
         code: GunErrorCode.CONNECTION_FAILED,
@@ -1123,118 +886,220 @@ class GunService {
       } as GunError
     }
 
-    const gun = this.gun
-
-    return new Promise<SEAUser>((resolve, reject) => {
-      // Create user with SEA
+    return new Promise<void>((resolve, reject) => {
+      const gun = this.gun!
       gun.user().create(username, password, (ack: any) => {
         if (ack.err) {
-          reject({
-            code: GunErrorCode.SYNC_ERROR,
-            message: 'Failed to create user',
-            details: ack.err,
-          } as GunError)
-          return
+          reject(new Error(`User creation failed: ${ack.err}`))
+        } else {
+          resolve()
         }
-
-        // Check if user is authenticated by checking gun.user().is
-        const user = gun.user()
-        if (!user.is) {
-          reject({
-            code: 'WTF',
-            message: 'user creation failed???',
-            details: '!user.is after gun.user().create()',
-          })
-        }
-
-        // Get public key from user.is or ack.pub
-        const pub = (user.is?.pub as string) || ''
-
-        // If we have a pub key, user was created or exists
-        // If ack.ok is undefined and no pub, it's a real failure
-        if (!pub) {
-          reject({
-            code: GunErrorCode.SYNC_ERROR,
-            message:
-              ack.ok === undefined
-                ? 'User creation failed or user already exists'
-                : 'User created but no public key found',
-            details: ack,
-          } as GunError)
-          return
-        }
-
-        const userData: SEAUser = {
-          alias: username,
-          pub: pub,
-        }
-        this.storeUserProfile(username)
-          .then(() => {
-            resolve(userData)
-          })
-          .catch(err => {
-            console.warn('Failed to store user profile:', err)
-            resolve(userData)
-          })
       })
     })
   }
 
   /**
-   * Store user profile in GunDB profiles directory
-   * Stores the user's pub and epub for discovery by other users
+   * Authenticate user
+   * Reference: code_references/gundb.md:37-47
    * @param username - Username/alias
+   * @param password - User password
    * @returns Promise resolving to void
    */
-  async storeUserProfile(username: string): Promise<void> {
-    const gun = this.getGun()
-    const pair = gun.user()._?.sea
-
-    if (!pair || !pair.pub || !pair.epub) {
-      throw new Error('User must be authenticated to store profile')
+  async authenticateUser(username: string, password: string): Promise<void> {
+    if (!this.gun) {
+      throw {
+        code: GunErrorCode.CONNECTION_FAILED,
+        message: 'GunDB not initialized',
+      } as GunError
     }
 
     return new Promise<void>((resolve, reject) => {
-      gun
-        .get('profiles')
-        .get(username)
-        .put(
-          {
-            pub: pair.pub,
-            epub: pair.epub,
-          },
-          (ack: unknown) => {
-            const ackObj = ack as { err?: unknown }
-            if (ackObj.err) {
-              reject(new Error(`Failed to store profile for ${username}: ${String(ackObj.err)}`))
-            } else {
-              resolve()
-            }
-          }
-        )
+      const gun = this.gun!
+      gun.user().auth(username, password, (ack: any) => {
+        if (ack.err) {
+          reject(new Error(`Authentication failed: ${ack.err}`))
+        } else {
+          resolve()
+        }
+      })
     })
   }
 
   /**
-   * Get user epub from GunDB profiles directory
-   * @param username - Username/alias
-   * @returns Promise resolving to epub string
+   * Discover users who claim a specific username
+   * Reference: code_references/gundb.md:76-93
+   * @param username - Username to search for
+   * @returns Promise resolving to array of discovered user profiles
    */
-  async getUserEpub(username: string): Promise<string> {
+  async discoverUsers(username: string): Promise<any[]> {
     const gun = this.getGun()
-    return new Promise<string>((resolve, reject) => {
+    return new Promise<any[]>(resolve => {
+      const collectedProfiles: any[] = []
+      setTimeout(() => resolve(collectedProfiles), 500)
+
       gun
-        .get('profiles')
-        .get(username)
-        .get('epub')
-        .once((data: unknown) => {
-          if (data && typeof data === 'string') {
-            resolve(data)
-          } else {
-            reject(new Error(`Failed to read ${username}'s epub from profiles`))
-          }
+        .get(`~@${username}`)
+        .map()
+        .once((data: any, pub: string) => {
+          if (!data) return
+          const cleanPub = pub.startsWith('~') ? pub.slice(1) : pub
+          gun.get(`~${cleanPub}`).once((userNode: any) => {
+            collectedProfiles.push({ pub: cleanPub, data, userNode })
+          })
         })
     })
+  }
+
+  /**
+   * Hash a path part for private data storage
+   * Reference: code_references/gundb.md:103-113
+   * @param plainPath - Plain text path part to hash
+   * @returns Promise resolving to hashed path string
+   */
+  async getPrivatePathPart(plainPath: string): Promise<string> {
+    const SEA = Gun.SEA
+    if (!SEA) {
+      throw new Error('SEA not available')
+    }
+    const gun = this.getGun()
+    const user = gun.user()
+    const sea = (user as any)._?.sea
+    const result = await SEA.work(plainPath, sea)
+    if (!result) {
+      throw new Error('Failed to hash path part')
+    }
+    return result
+  }
+
+  /**
+   * Hash all path parts for private data storage
+   * Reference: code_references/gundb.md:115-119
+   * @param plainPath - Array of plain text path parts
+   * @returns Promise resolving to array of hashed path strings
+   */
+  async getPrivatePath(plainPath: string[]): Promise<string[]> {
+    return await Promise.all(plainPath.map(async (p: string) => await this.getPrivatePathPart(p)))
+  }
+
+  /**
+   * Write encrypted private data to user storage
+   * Reference: code_references/gundb.md:121-145
+   * @param plainPath - Array of plain text path parts
+   * @param plaintext - Data to encrypt and store
+   * @returns Promise resolving to void
+   */
+  async writePrivateData(plainPath: string[], plaintext: string): Promise<void> {
+    const gun = this.getGun()
+    const privatePath = await this.getPrivatePath(plainPath)
+    const user = gun.user()
+    let node: any = user
+    for (const part of privatePath) {
+      node = node.get(part)
+    }
+
+    return new Promise<void>(async (resolve, reject) => {
+      const sea = (user as any)._?.sea
+      if (!sea) {
+        reject(new Error('User cryptographic keypair not available'))
+        return
+      }
+
+      const SEA = Gun.SEA
+      const ciphertext = await SEA?.encrypt(plaintext, sea)
+      if (!ciphertext) {
+        reject(new Error('SEA.encrypt failed: returned undefined'))
+        return
+      }
+
+      node.put(ciphertext, (ack: any) => {
+        if (ack && ack.err) {
+          reject(new Error(`Failed to write private data: ${ack.err}`))
+        } else {
+          resolve()
+        }
+      })
+    })
+  }
+
+  /**
+   * Read and decrypt private data from user storage
+   * Reference: code_references/gundb.md:147-165
+   * @param plainPath - Array of plain text path parts
+   * @param hashedPath - Optional pre-hashed path (for internal use)
+   * @returns Promise resolving to decrypted string
+   */
+  async readPrivateData(plainPath: string[], hashedPath?: string[]): Promise<string> {
+    const gun = this.getGun()
+    const path = hashedPath || (await this.getPrivatePath(plainPath))
+    const user = gun.user()
+    let node: any = user
+    for (const part of path) {
+      node = node.get(part)
+    }
+
+    return await new Promise<string>((resolve, reject) => {
+      node.once(async (ciphertext: any) => {
+        if (ciphertext === undefined) {
+          reject(new Error('Private data not found or could not be decrypted'))
+        } else {
+          const SEA = Gun.SEA
+          const sea = (user as any)._?.sea
+          const plaintext = await SEA?.decrypt(ciphertext, sea)
+          resolve(plaintext)
+        }
+      })
+    })
+  }
+
+  /**
+   * Read private structured data (like contacts) by iterating keys
+   * Reference: code_references/gundb.md:167-215
+   * @param plainPath - Array of plain text path parts
+   * @param fields - Array of field names to read
+   * @returns Promise resolving to array of private data records
+   */
+  async readPrivateMap(plainPath: string[], fields: string[]): Promise<Record<string, string>[]> {
+    const gun = this.getGun()
+    const privatePath = await this.getPrivatePath(plainPath)
+    const user = gun.user()
+    let privateNode: any = user
+    for (const part of privatePath) {
+      privateNode = privateNode.get(part)
+    }
+
+    const keys: string[] = await new Promise<string[]>(resolve => {
+      const collectedKeys: string[] = []
+      setTimeout(() => resolve(collectedKeys), 500)
+
+      privateNode.map().once((_data: any, key: string) => {
+        if (key) {
+          collectedKeys.push(key)
+        }
+      })
+    })
+
+    const results: Record<string, string>[] = []
+    for (const key of keys) {
+      try {
+        const record: Record<string, string> = {}
+        for (const fieldName of fields) {
+          const fieldNameHash = await this.getPrivatePathPart(fieldName)
+          const fullHashedPath = [...privatePath, key, fieldNameHash]
+          const fieldValue = await this.readPrivateData([], fullHashedPath)
+          record[fieldName] = fieldValue
+        }
+        if (Object.keys(record).length > 0) {
+          results.push(record)
+        }
+      } catch (error: unknown) {
+        console.error(
+          `Failed to read contact for key ${key}:`,
+          error instanceof Error ? error.message : String(error)
+        )
+      }
+    }
+
+    return results
   }
 
   /**

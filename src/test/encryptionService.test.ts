@@ -103,19 +103,22 @@ async function testKeySharing(): Promise<TestSuiteResult> {
     const bobPass = 'password123!Bob'
 
     // create Alice user (profile auto-stored in GunDB profiles directory)
-    const aliceUser = await gunService.createSEAUser(aliceUsername, alicePass)
-    assert(aliceUser, 'creating Alice user failed')
+    await gunService.createUser(aliceUsername, alicePass)
+    await gunService.authenticateUser(aliceUsername, alicePass)
+    await gunService.writeProfile()
     console.log('Alice user created')
-
     await gunService.logoutAndWait()
 
     // create Bob user (profile auto-stored in GunDB profiles directory)
-    const bobUser = await gunService.createSEAUser(bobUsername, bobPass)
-    assert(bobUser, 'creating Bob user failed')
+    await gunService.createUser(bobUsername, bobPass)
+    await gunService.authenticateUser(bobUsername, bobPass)
+    await gunService.writeProfile()
     console.log('Bob user created')
 
-    // Bob gets Alice's epub from profiles directory
-    const aliceEpub = await gunService.getUserEpub(aliceUsername)
+    // Bob gets Alice's epub from discovered users
+    const aliceUsers = await gunService.discoverUsers(aliceUsername)
+    assert(aliceUsers.length > 0, "Failed to discover Alice's profile")
+    const aliceEpub = aliceUsers[0].data.epub
     assert(aliceEpub, "Failed to get Alice's epub from profiles")
     console.log(`Bob retrieved Alice's epub: ${aliceEpub.substring(0, 20)}...`)
 
@@ -130,12 +133,12 @@ async function testKeySharing(): Promise<TestSuiteResult> {
 
     // switch to Alice
     await gunService.logoutAndWait()
-    await sleep(500)
-    await gunService.authenticateSEAUser(aliceUsername, alicePass)
-    await sleep(1000)
+    await gunService.authenticateUser(aliceUsername, alicePass)
 
-    // Alice gets Bob's epub from profiles directory
-    const bobEpub = await gunService.getUserEpub(bobUsername)
+    // Alice gets Bob's epub from discovered users
+    const bobUsers = await gunService.discoverUsers(bobUsername)
+    assert(bobUsers.length > 0, "Failed to discover Bob's profile")
+    const bobEpub = bobUsers[0].data.epub
     assert(bobEpub, "Failed to get Bob's epub from profiles")
     console.log(`Alice retrieved Bob's epub: ${bobEpub.substring(0, 20)}...`)
 
@@ -273,9 +276,9 @@ export async function testEncryptionService(): Promise<void> {
 
   const suiteResults: TestSuiteResult[] = []
 
-  // const docEncResult = await testDocumentEncryption()
-  // suiteResults.push(docEncResult)
-  // console.log('\n' + '='.repeat(60) + '\n')
+  const docEncResult = await testDocumentEncryption()
+  suiteResults.push(docEncResult)
+  console.log('\n' + '='.repeat(60) + '\n')
 
   const keyShareResult = await testKeySharing()
   suiteResults.push(keyShareResult)

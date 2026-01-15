@@ -32,7 +32,7 @@ interface AuthState {
  * Manages authentication state using GunDB's SEA.
  * Handles user registration, login, logout, and session persistence.
  */
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>(set => ({
   // Initial state
   user: null,
   isAuthenticated: false,
@@ -55,8 +55,10 @@ export const useAuthStore = create<AuthState>((set) => ({
         throw new Error('Password must be at least 6 characters');
       }
 
-      // Create user with SEA
-      const seaUser = await gunService.createSEAUser(username.trim(), password);
+      // Create user (create, authenticate, write profile)
+      await gunService.createUser(username.trim(), password);
+      await gunService.authenticateUser(username.trim(), password);
+      await gunService.writeProfile();
 
       // Get GunDB instance to access user object
       const gun = gunService.getInstance();
@@ -67,16 +69,6 @@ export const useAuthStore = create<AuthState>((set) => ({
       // Get the authenticated user object from GunDB
       const gunUser = gun.user();
 
-      // Create user profile in GunDB
-      const userId = gunUser.is?.pub || seaUser.pub;
-      if (userId) {
-        await gunService.putUserProfile(userId, {
-          profile: {
-            username: username.trim(),
-          },
-        });
-      }
-
       // Set authenticated state
       set({
         user: gunUser,
@@ -84,9 +76,10 @@ export const useAuthStore = create<AuthState>((set) => ({
         isLoading: false,
         error: null,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       // For user creation failures, show user-friendly message
-      const isUserCreationError = error?.code === 'USER_CREATION_FAILED';
+      const isUserCreationError =
+        error instanceof Error && error.message.includes('User creation failed');
       const errorMessage = isUserCreationError
         ? 'Could not create account. Username may already be taken.'
         : error instanceof Error
@@ -127,7 +120,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       }
 
       // Authenticate with SEA
-      await gunService.authenticateSEAUser(username.trim(), password);
+      await gunService.authenticateUser(username.trim(), password);
 
       // Get GunDB instance to access user object
       const gun = gunService.getInstance();
@@ -217,7 +210,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
       // Try to recall session from localStorage
       // GunDB's SEA stores session in localStorage automatically
-      return new Promise<void>((resolve) => {
+      return new Promise<void>(resolve => {
         gun.user().recall({ sessionStorage: true }, (_ack: any) => {
           // Check if user is authenticated after recall
           // Give it a moment for the session to restore
