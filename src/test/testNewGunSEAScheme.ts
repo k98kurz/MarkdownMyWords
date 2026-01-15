@@ -38,6 +38,29 @@ function wait(ms: number): Promise<void> {
 // CORE IMPLEMENTATION FUNCTIONS FROM code_references/gundb.md
 // =============================================================================
 
+async function createUser(gun: any, username: string, password: string) {
+  return new Promise<void>((resolve, reject) => {
+    gun.user().create(username, password, (ack: any) => {
+      if (ack.err) {
+        reject(new Error(`User creation failed: ${ack.err}`))
+      }
+      resolve()
+    })
+  })
+}
+
+async function authenticateUser(gun: any, username: string, password: string) {
+  return new Promise<void>(resolve => {
+    gun.user().auth(username, password, ack => {
+      if (ack.err) {
+        throw new Error(`Authentication failed: ${ack.err}`)
+      }
+      console.log(`Auth for ${username} succeeded.`)
+      resolve()
+    })
+  })
+}
+
 /**
  * Hash a single path part for private node naming
  */
@@ -57,24 +80,27 @@ async function getPrivatePathPart(gun: any, plainPath: string): Promise<string> 
  * Hash an array of path parts for private node naming
  */
 async function getPrivatePath(gun: any, plainPath: string[]): Promise<string[]> {
-  return await Promise.all(plainPath.map(async (p: string) => await getPrivatePathPart(gun, p)))
-}
-
-/**
- * Get a private node reference from a plain path array
- */
-async function getPrivateNode(gun: any, plainPath: string[]): Promise<any> {
-  const privatePath = await getPrivatePath(gun, plainPath)
-  return privatePath.reduce((node, part) => node.get(part), gun.user())
+  return await Promise.all(
+    plainPath.map(async (p: string) => await getPrivatePathPart(gun, p))
+  )
 }
 
 /**
  * Write private data using hashed path and .secret() encryption
  */
 async function writePrivateData(gun: any, plainPath: string[], plaintext: string): Promise<void> {
-  const node = await getPrivateNode(gun, plainPath)
-  await new Promise<void>((resolve, reject) => {
-    node.secret(plaintext, (ack: any) => {
+  const privatePath = await getPrivatePath(gun, plainPath)
+  const node = privatePath.reduce((path, part) => path.get(part), gun.user())
+  assert(!!node, 'no node!?!?')
+  await new Promise<void>(async (resolve, reject) => {
+    if (!gun.user()._.sea) {
+      reject(new Error('user cryptographic keypair not available'))
+    }
+    const ciphertext = await gun.sea?.encrypt(plaintext, gun.user()._.sea)
+    if (!ciphertext) {
+      reject(new Error('sea.encrypt failed: returned undefined'))
+    }
+    node.put(ciphertext, (ack: any) => {
       if (ack && ack.err) {
         reject(new Error(`Failed to write private data: ${ack.err}`))
       } else {
@@ -88,13 +114,15 @@ async function writePrivateData(gun: any, plainPath: string[], plaintext: string
  * Read private data using hashed path and .decrypt() decryption
  */
 async function readPrivateData(gun: any, plainPath: string[]): Promise<string> {
-  const node = await getPrivateNode(gun, plainPath)
+  const privatePath = await getPrivatePath(gun, plainPath)
+  const node = privatePath.reduce((path, part) => path.get(part), gun.user())
   return await new Promise<string>((resolve, reject) => {
-    node.decrypt((data: any) => {
-      if (data === undefined) {
+    node.once(async (ciphertext: any) => {
+      if (ciphertext === undefined) {
         reject(new Error('Private data not found or could not be decrypted'))
       } else {
-        resolve(data)
+        const plaintext = await gun.sea?.decrypt(ciphertext, gun.user()._.sea)
+        resolve(plaintext)
       }
     })
   })
@@ -191,25 +219,10 @@ async function testUserCreationAndProfileStorage(gun: any): Promise<void> {
   console.log(`   Creating user: ${username}`)
 
   // Create user with new scheme
-  await new Promise<void>(resolve => {
-    gun.user().create(username, password, (ack: any) => {
-      if (ack.err) {
-        throw new Error(`User creation failed: ${ack.err}`)
-      }
-      resolve()
-    })
-  })
+  await createUser(gun, username, password)
 
   // Authenticate user
-  await new Promise<void>(resolve => {
-    gun.user().auth(username, password, ack => {
-      if (ack.err) {
-        throw new Error(`Authentication failed: ${ack.err}`)
-      }
-      console.log(`Auth for ${username} succeeded.`)
-      resolve()
-    })
-  })
+  await authenticateUser(gun, username, password)
 
   // Store profile using ~@username approach
   const user = gun.user()
@@ -243,6 +256,22 @@ async function testPrivateDataStorage(gun: any): Promise<void> {
   const testData = 'confidential_secret_data_123'
   const plainPath = ['secret', 'note']
 
+  // Create and login a user first
+  const timestamp = Date.now()
+  const username = `testuser_${timestamp}`
+  const username2 = `testuser2_${timestamp}`
+  const password = 'password123!Test'
+
+  console.log(`   Creating user: ${username}`)
+
+  // Create user with new scheme
+  await createUser(gun, username, password)
+
+  // Authenticate user
+  await authenticateUser(gun, username, password)
+  // set up profile
+  await writeProfile(gun)
+
   // Write private data
   console.log(`   Writing private data to path: [${plainPath.join(', ')}]`)
   await writePrivateData(gun, plainPath, testData)
@@ -269,10 +298,9 @@ async function testPrivateDataStorage(gun: any): Promise<void> {
   gun.user().leave()
   await wait(500)
 
-  // Create another user to test hash differences
-  await new Promise<void>(resolve => {
-    gun.user().create('temp_user_for_hash_test', 'temp123!', () => resolve())
-  })
+  // Create another user and login to test hash differences
+  await createUser(gun, username2, 'temp123!')
+  await authenticateUser(gun, username2, 'temp123!')
 
   const hashedPartDifferentUser = await getPrivatePathPart(gun, 'secret')
   assert(hashedPart1 !== hashedPartDifferentUser, 'Hash should be different for different users')
@@ -280,58 +308,10 @@ async function testPrivateDataStorage(gun: any): Promise<void> {
 }
 
 /**
- * Scenario 3: Test contact system
- */
-async function testContactSystem(gun: any): Promise<void> {
-  console.log('\n📝 Testing Contact System...')
-
-  // Create contact data
-  const contactUsername = 'alice_contact_test'
-  const contactPub = 'test_pub_key_12345'
-  const contactEpub = 'test_epub_key_67890'
-
-  // Store contact using private data system
-  console.log(`   Storing contact: ${contactUsername}`)
-  await writePrivateData(gun, ['contacts', contactUsername, 'username'], contactUsername)
-  await writePrivateData(gun, ['contacts', contactUsername, 'pub'], contactPub)
-  await writePrivateData(gun, ['contacts', contactUsername, 'epub'], contactEpub)
-
-  console.log(`   ✅ Contact stored privately`)
-
-  // Read contact data
-  console.log(`   Reading contact data...`)
-  try {
-    const contacts = await readPrivateMap(gun, ['contacts'], ['username', 'pub', 'epub'])
-    console.log(`   ✅ Contacts read: ${JSON.stringify(contacts, null, 2)}`)
-
-    // Verify contact data integrity
-    const aliceContact = contacts.find(c => c.username === contactUsername)
-    assert(aliceContact, 'Alice contact not found')
-    assert(aliceContact.pub === contactPub, 'Contact pub mismatch')
-    assert(aliceContact.epub === contactEpub, 'Contact epub mismatch')
-
-    console.log(`   ✅ Contact data integrity verified`)
-  } catch (error) {
-    console.log(`   ⚠️  Map read failed, trying individual field reads...`)
-
-    // Fallback: read individual fields
-    const username = await readPrivateData(gun, ['contacts', contactUsername, 'username'])
-    const pub = await readPrivateData(gun, ['contacts', contactUsername, 'pub'])
-    const epub = await readPrivateData(gun, ['contacts', contactUsername, 'epub'])
-
-    assert(username === contactUsername, 'Username mismatch')
-    assert(pub === contactPub, 'Pub mismatch')
-    assert(epub === contactEpub, 'Epub mismatch')
-
-    console.log(`   ✅ Individual contact fields verified`)
-  }
-}
-
-/**
- * Scenario 4: End-to-end workflow with two users
+ * Scenario 3: Contact system with two users
  */
 async function testEndToEndWorkflow(gun: any): Promise<void> {
-  console.log('\n📝 Testing End-to-End Workflow...')
+  console.log('\n📝 Testing contact system test with two users...')
 
   // Cleanup any existing user
   gun.user().leave()
@@ -342,21 +322,13 @@ async function testEndToEndWorkflow(gun: any): Promise<void> {
   // Create Alice
   const aliceUsername = `alice_${timestamp}`
   const alicePassword = 'alicePassword123!'
-
-  await new Promise<void>((resolve, reject) => {
-    gun.user().create(aliceUsername, alicePassword, (ack: any) => {
-      if (ack.err) {
-        reject(new Error(`Alice creation failed: ${ack.err}`))
-      } else {
-        resolve()
-      }
-    })
-  })
-
+  console.log('creating Alice account')
+  await createUser(gun, aliceUsername, alicePassword)
+  await authenticateUser(gun, aliceUsername, alicePassword)
+  console.log('writing Alice profile')
   await writeProfile(gun)
-
-  const alicePair = (gun.user() as any)._.sea
-  console.log(`   ✅ Alice created with pub: ${alicePair.pub.substring(0, 20)}...`)
+  const aliceEpub = gun.user().is.epub
+  console.log(`   ✅ Alice created with pub: ${gun.user().is.pub.substring(0, 20)}...`)
 
   // Logout Alice
   gun.user().leave()
@@ -365,86 +337,59 @@ async function testEndToEndWorkflow(gun: any): Promise<void> {
   // Create Bob
   const bobUsername = `bob_${timestamp}`
   const bobPassword = 'bobPassword123!'
-
-  await new Promise<void>((resolve, reject) => {
-    gun.user().create(bobUsername, bobPassword, (ack: any) => {
-      if (ack.err) {
-        reject(new Error(`Bob creation failed: ${ack.err}`))
-      } else {
-        resolve()
-      }
-    })
-  })
-
+  console.log('creating Bob account')
+  await createUser(gun, bobUsername, bobPassword)
+  await authenticateUser(gun, bobUsername, bobPassword)
+  console.log('writing Bob profile')
   await writeProfile(gun)
+  console.log(`   ✅ Bob created with pub: ${gun.user().is.pub.substring(0, 20)}...`)
 
-  const bobPair = (gun.user() as any)._.sea
-  console.log(`   ✅ Bob created with pub: ${bobPair.pub.substring(0, 20)}...`)
+  // Discover Alice
+  console.log('attempting to discover Alice...')
+  const discovered = await discoverUsers(gun, aliceUsername)
+  console.log(`results: ${JSON.stringify(discovered)}`)
 
-  // Discover Bob as Alice
-  gun.user().leave()
-  await wait(500)
-
-  // Login as Alice
-  await new Promise<void>(resolve => {
-    gun.user().auth(aliceUsername, alicePassword, () => resolve())
-  })
-
-  console.log(`   Alice discovering Bob...`)
-
-  // Discover Bob
-  const discoveredBob = await new Promise<any>(resolve => {
-    gun
-      .get(`~@${bobUsername}`)
-      .map()
-      .once(async (data: any, pub: string) => {
-        if (!data) return
-
-        const cleanPub = pub.startsWith('~') ? pub.slice(1) : pub
-        const bobNode = await new Promise<any>(userResolve => {
-          gun.get(`~${cleanPub}`).once((nodeData: any) => {
-            userResolve({ pub: cleanPub, data, nodeData })
-          })
-        })
-
-        resolve(bobNode)
-      })
-  })
-
-  assert(discoveredBob && discoveredBob.data.epub, 'Bob not discovered properly')
+  assert(discovered.length == 1, `discovered.length ${discovered.length})`)
+  assert(discovered[0].data.epub, 'Alice missing epub')
+  assert(discovered[0].data.epub == aliceEpub, 'mismatch')
   console.log(
-    `   ✅ Alice discovered Bob with epub: ${discoveredBob.data.epub.substring(0, 20)}...`
+    `✅ Bob discovered Alice with epub: ${discovered[0].data.epub.substring(0, 20)}...`
   )
 
-  // Alice adds Bob as contact
-  await writePrivateData(gun, ['contacts', bobUsername, 'username'], bobUsername)
-  await writePrivateData(gun, ['contacts', bobUsername, 'pub'], discoveredBob.pub)
-  await writePrivateData(gun, ['contacts', bobUsername, 'epub'], discoveredBob.data.epub)
+  // Bob adds Alice as a contact
+  await writePrivateData(gun,
+    ['contacts', aliceUsername, 'username'], aliceUsername)
+  await writePrivateData(gun,
+    ['contacts', aliceUsername, 'pub'], discovered[0].pub)
+  await writePrivateData(gun,
+    ['contacts', aliceUsername, 'epub'], discovered[0].data.epub)
 
-  console.log(`   ✅ Alice added Bob as contact`)
+  console.log(`   ✅ Bob added Alice as contact`)
 
-  // Verify Alice's contact data
-  const aliceContactUsername = await readPrivateData(gun, ['contacts', bobUsername, 'username'])
-  assert(aliceContactUsername === bobUsername, 'Contact username mismatch')
-  console.log(`   ✅ Alice's contact data verified`)
+  // Verify Bob's contact data
+  const bobContactUsername = await readPrivateData(gun,
+    ['contacts', aliceUsername, 'username'])
+  assert(bobContactUsername === aliceUsername, 'Contact username mismatch')
+  console.log(`   ✅ Bob's contact data verified`)
 
   // Test privacy: Bob cannot access Alice's contacts
   gun.user().leave()
   await wait(500)
 
-  // Login as Bob
-  await new Promise<void>(resolve => {
-    gun.user().auth(bobUsername, bobPassword, () => resolve())
-  })
+  // Login as Alice
+  await authenticateUser(gun, aliceUsername, alicePassword)
 
-  console.log(`   Testing contact privacy (Bob accessing Alice's contacts)...`)
+  console.log(`   Testing contact privacy (Alice accessing Bob's contacts)...`)
 
-  // Bob should not be able to access Alice's contacts
+  // Alice should not be able to access Bob's contacts
   try {
-    await readPrivateData(gun, ['contacts', bobUsername, 'username'])
-    // If Bob can read this, it should be his own contact list, not Alice's
-    console.log(`   ✅ Bob's own contacts remain private`)
+    const shouldBeScrambled = await readPrivateData(gun, ['contacts', aliceUsername, 'username'])
+    // If Alice can read this, it should be her own contact list, not Bob's
+    if (shouldBeScrambled == aliceUsername) {
+      throw new Error('XXX SECURITY BREACH')
+    }
   } catch (error) {
+    if (error.message == 'XXX SECURITY BREACH') throw error;
     // Expected: Bob shouldn't have Alice's contacts
     console.log(`   ✅ Alice's contacts remain private from Bob`)
   }
@@ -465,16 +410,9 @@ async function testProfileImpersonationPrevention(gun: any): Promise<void> {
   const password2 = 'password2'
 
   // Create first user with username
-  await new Promise<void>((resolve, reject) => {
-    gun.user().create(username, password1, (ack: any) => {
-      if (ack.err) {
-        reject(new Error(`First user creation failed: ${ack.err}`))
-      } else {
-        resolve()
-      }
-    })
-  })
-
+  console.log(`Creating first user with ${username}, ${password1}`)
+  await createUser(gun, username, password1)
+  await authenticateUser(gun, username, password1)
   const user1Pair = (gun.user() as any)._.sea
   await writeProfile(gun)
 
@@ -485,33 +423,21 @@ async function testProfileImpersonationPrevention(gun: any): Promise<void> {
   await wait(500)
 
   // Create second user with same username but different password
-  await new Promise<void>((resolve, reject) => {
-    gun.user().create(username, password2, (ack: any) => {
-      if (ack.err) {
-        reject(new Error(`Second user creation failed: ${ack.err}`))
-      } else {
-        resolve()
-      }
-    })
-  })
-
+  console.log(`Creating second user with ${username}, ${password2}`)
+  try {
+    await createUser(gun, username, password2)
+  } catch {
+    console.log("GunDB prevents local duplicate user creation")
+    return
+  }
+  await authenticateUser(gun, username, password2)
   const user2Pair = (gun.user() as any)._.sea
   await writeProfile(gun)
 
   console.log(`   ✅ Second user created with epub: ${user2Pair.epub.substring(0, 20)}...`)
 
   // Test that both users have separate namespaces
-  const allUsers = await new Promise<any[]>(resolve => {
-    const users: any[] = []
-    gun
-      .get(`~@${username}`)
-      .map()
-      .once((data: any, pub: string) => {
-        if (!data) return
-        users.push({ pub, data })
-        if (users.length === 2) resolve(users)
-      })
-  })
+  const allUsers = await discoverUsers(gun, username)
 
   assert(allUsers.length === 2, 'Should have 2 users claiming the same username')
   assert(
@@ -531,6 +457,18 @@ async function testProfileImpersonationPrevention(gun: any): Promise<void> {
  */
 async function testPrivateDataEncryptionValidation(gun: any): Promise<void> {
   console.log('\n🔒 Testing Private Data Encryption Validation...')
+
+  const username = `impersonation_test_${Date.now()}`
+  const password1 = 'password1'
+  const password2 = 'password2'
+
+  // Create first user with username
+  await createUser(gun, username, password1)
+  await authenticateUser(gun, username, password1)
+  const user1Pair = (gun.user() as any)._.sea
+  await writeProfile(gun)
+
+  console.log(`   ✅ User created with epub: ${user1Pair.epub.substring(0, 20)}...`)
 
   const testData = 'top_secret_information'
   const plainPath = ['test_encryption']
@@ -588,10 +526,11 @@ export async function testNewGunSEAScheme(): Promise<TestSuiteResult> {
     throw new Error('GunDB instance not available')
   }
 
-  const SEA = Gun.SEA
-  if (!SEA) {
+  if (!Gun.SEA) {
     throw new Error('SEA not available')
   }
+
+  gun.sea = Gun.SEA // monkey patch for testing
 
   try {
     // Core functionality tests
@@ -601,17 +540,12 @@ export async function testNewGunSEAScheme(): Promise<TestSuiteResult> {
     )
 
     await runner.run(
-      'Private Data Storage with hashed paths and .secret() encryption',
+      'Private Data Storage with hashed paths and .encrypt() encryption',
       async () => await testPrivateDataStorage(gun)
     )
 
     await runner.run(
-      'Contact System with encrypted storage',
-      async () => await testContactSystem(gun)
-    )
-
-    await runner.run(
-      'End-to-End Workflow with multiple users',
+      'Contacts system with two users',
       async () => await testEndToEndWorkflow(gun)
     )
 
