@@ -85,6 +85,7 @@ if (typeof window !== 'undefined') {
   (window as any).listUsersDetailed = listUsersDetailed;
   (window as any).getUserById = getUserById;
   (window as any).clearGunDB = clearGunDBLocalStorage;
+  (window as any).gunService = gunService;
   console.log('🧪 Dev console functions available:')
   console.log('   - window.testDocumentSizes() - Test encryption with various document sizes')
   console.log('   - window.testGunService() - Test GunDB service operations')
