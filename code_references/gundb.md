@@ -20,16 +20,23 @@ User creation proceeds in the following manner:
 
 ```typescript
 await gun.user().create(username, password).then();
+await gun.user()..put({epub: gun.user().is.epub}).then();
 // or
-gun.user().create(username, password, ack => {
-  if (ack.err) {
-    // reject or throw error
-  }
-  // store basic user profile info
-  gun.get(`~@${username}`).put({
-    epub: gun.user().is.epub
+await new Promise<void>((resolve, reject) => {
+  gun.user().create(username, password, ack => {
+    if (ack.err) {
+      reject(new Error(`User creation failed for ${username}`));
+    }
+    // store basic user profile info
+    gun.user().put({epub: gun.user().is.epub}, ack => {
+      if (ack.err) {
+        reject(new Error(`Profile storage failed: ${ack.err}`));
+      } else {
+        resolve()
+      }
+    });
   });
-})
+});
 ```
 
 ## 2. User profile discovery

@@ -169,18 +169,30 @@ async function testUserCreationAndProfileStorage(gun: any): Promise<void> {
     })
   })
 
+  // Authenticate user
+  await new Promise<void>(resolve => {
+    gun.user().auth(username, password, ack => {
+      if (ack.err) {
+        throw new Error(`Authentication failed: ${ack.err}`)
+      }
+      console.log(`Auth for ${username} succeeded.`)
+      resolve()
+    })
+  })
+
   // Store profile using ~@username approach
   const user = gun.user()
   const pair = (user as any)._.sea
   assert(pair && pair.epub, 'User SEA pair not available')
+  assert(user.is.alias == username, `Alias issue: ${user.is.alias} != ${username}`)
 
   console.log(`   Storing profile in ~@${username}...`)
 
   await new Promise<void>((resolve, reject) => {
-    gun.get(`~@${username}`).put(
-      {
-        epub: pair.epub,
-      },
+//    gun.user().get('epub').put(
+//      pair.epub,
+    gun.user().put(
+      {epub: pair.epub},
       (ack: any) => {
         if (ack.err) {
           reject(new Error(`Profile storage failed: ${ack.err}`))
@@ -194,11 +206,15 @@ async function testUserCreationAndProfileStorage(gun: any): Promise<void> {
   console.log(`   ✅ User created and profile stored successfully`)
 
   // Verify profile exists
-  const profileData = await new Promise<any>(resolve => {
-    gun.get(`~@${username}`).once((data: any) => {
-      resolve(data)
-    })
+  gun.get(`~@${username}`).map().once((data, pub) => {
+    if (!data) return;
+    const cleanPub = pub.startsWith('~') ? pub.slice(1) : pub;
+    gun.get(`~${cleanPub}`).once((userNode) => {
+      // do something with cleanPub and userNode.epub
+      // e.g. push to a list in UI so the active user can choose to add a contact
+    });
   })
+  console.log(`profileData: ${JSON.stringify(profileData)}`)
 
   assert(profileData && profileData.epub === pair.epub, 'Profile data not stored correctly')
   console.log(`   ✅ Profile verified in ~@${username}`)
@@ -699,17 +715,6 @@ export async function testNewGunSEAScheme(): Promise<TestSuiteResult> {
   }
 
   runner.printResults()
-
-  console.log('\n' + '='.repeat(80))
-  console.log('🎉 NEW GUNDB + SEA SCHEME TEST COMPLETE')
-  console.log('='.repeat(80))
-  console.log('✅ Successfully validated the improved security scheme')
-  console.log('🔒 Profile impersonation vulnerability fixed')
-  console.log('🔐 Private data properly encrypted with hashed paths')
-  console.log('👥 Contact system functional and private')
-  console.log('🌐 Browser console execution successful')
-  console.log('='.repeat(80))
-
   return runner.getResults()
 }
 
