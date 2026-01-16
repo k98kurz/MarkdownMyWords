@@ -79,13 +79,14 @@ const encrypted = await SEA.encrypt(data, user.pub) // WRONG
 
 // INCORRECT: Don't use gun.get(~@username) directly for reading user profiles
 // This returns a list of "souls" claiming that username
-// For proper usage, see discoverUsers() in code_references/gundb.md
+// For proper usage, use gunService.discoverUsers()
 ```
 
 ### GunDB Profile Storage Pattern
 
 **IMPORTANT**: User profile storage uses the `~@username` pattern with
-`gun.user().put()`. The old 'profiles directory' pattern is deprecated.
+`gun.user().put()`. The commonly suggested 'profiles directory' pattern
+is not used because it is insecure.
 
 See `code_references/gundb.md` for the current `writeProfile()` and
 `discoverUsers()` implementations.
