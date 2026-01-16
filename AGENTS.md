@@ -192,7 +192,7 @@ When reviewing code or AI agent output, ask:
 ### NEVER USE "any" TYPE OR "as any" ASSERTIONS
 
 - **ABSOLUTELY FORBIDDEN**: The use of `any` type or `as any` type assertions is strictly prohibited
-- **NO EXCEPTIONS**: Under no circumstances should `any` be used anywhere in the codebase
+- **ONLY 1 EXCEPTION**: ONLY the functionalResult utility is allowed to use `any` because it is necessary for `pipe`
 - `as any` covers up type errors and leads to runtime bugs and maintenance issues
 - If you encounter a type error, fix it properly by:
   - Adding proper type definitions
