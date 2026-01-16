@@ -132,35 +132,35 @@ class EncryptionService {
   }
 
   /**
-   * Encrypt document
+   * Encrypt content
    * @param content - Plain text content to encrypt
    * @param key - string for encryption
-   * @returns Promise resolving to EncryptedDocument
+   * @returns Promise resolving to string
    */
-  async encryptDocument(content: string, key: string): Promise<string|undefined> {
+  async encrypt(content: string, key: string): Promise<string|undefined> {
     try {
       return await this.sea?.encrypt(content, key)
     } catch (error) {
       throw {
-        code: 'DOCUMENT_ENCRYPTION_FAILED',
-        message: 'Failed to encrypt document',
+        code: 'ENCRYPTION_FAILED',
+        message: 'Failed to encrypt content',
         details: error,
       } as EncryptionError;
     }
   }
 
   /**
-   * Decrypt document
-   * @param encrypted - EncryptedDocument
+   * Decrypt content
+   * @param encrypted - string
    * @param key - string for decryption
    * @returns Promise resolving to decrypted string
    */
-  async decryptDocument(encrypted: string, key: string): Promise<string|undefined> {
+  async decrypt(encrypted: string, key: string): Promise<string|undefined> {
     try {
       return this.sea?.decrypt(encrypted, key)
     } catch (error) {
       throw {
-        code: 'DOCUMENT_DECRYPTION_FAILED',
+        code: 'DECRYPTION_FAILED',
         message: 'Failed to decrypt document',
         details: error,
       } as EncryptionError;
@@ -174,7 +174,7 @@ class EncryptionService {
    * @param senderPair - Sender's ephemeral key pair
    * @returns Promise resolving to encrypted key string
    */
-  async encryptWithSEA(data: string, recipientEpub: string): Promise<string> {
+  async encryptECDH(data: string, recipientEpub: string): Promise<string> {
     this.checkInitialized();
 
     if (!this.sea) {
@@ -210,8 +210,8 @@ class EncryptionService {
       return encrypted;
     } catch (error) {
       throw {
-        code: 'ENCRYPTION_FAILED',
-        message: 'Failed to encrypt data with SEA',
+        code: 'ECDH_ENCRYPTION_FAILED',
+        message: 'Failed to encrypt data with ECDH',
         details: error,
       } as EncryptionError;
     }
@@ -223,7 +223,7 @@ class EncryptionService {
    * @param senderEpub - Sender's epub
    * @returns Promise resolving to string
    */
-  async decryptWithSEA(
+  async decryptECDH(
     encryptedData: string, senderEpub: string
   ): Promise<string | undefined> {
     this.checkInitialized();
@@ -258,79 +258,12 @@ class EncryptionService {
       return await this.sea.decrypt(encryptedData, sharedSecret);
     } catch (error) {
       throw {
-        code: 'DECRYPTION_FAILED',
-        message: 'Failed to decrypt ciphertext with SEA',
+        code: 'ECDH_DECRYPTION_FAILED',
+        message: 'Failed to decrypt ciphertext with ECDH',
         details: error,
       } as EncryptionError;
     }
   }
-
-  /**
-   * Retrieve and decrypt document key for current user
-   * @param docId - Document ID
-   * @returns Promise resolving to decrypted string
-   */
-  // async retrieveDocumentKey(docId: string): Promise<string|undefined> {
-  //   this.checkInitialized();
-
-  //   try {
-  //     // Get current user's public key
-  //     const userPub = await this.gun!.user().is!.pub;
-
-  //     // Get document
-  //     const document = await gunService.getDocument(docId);
-  //     if (!document) {
-  //       throw {
-  //         code: 'DOCUMENT_NOT_FOUND',
-  //         message: 'Document not found',
-  //       } as EncryptionError;
-  //     }
-
-  //     // Get encrypted key for current user
-  //     const encryptedKeyData = document.sharing.documentKey?.[userPub];
-  //     if (!encryptedKeyData) {
-  //       throw {
-  //         code: 'KEY_NOT_FOUND',
-  //         message: 'Encrypted document key not found for current user',
-  //       } as EncryptionError;
-  //     }
-
-  //     // Parse stored key data with validation
-  //     let keyData: { encryptedKey: string; ephemeralPub: string }
-  //     try {
-  //       keyData = JSON.parse(encryptedKeyData)
-  //       if (!keyData || typeof keyData !== 'object') {
-  //         throw new Error('Invalid key data structure: not an object')
-  //       }
-  //       if (!keyData.encryptedKey || typeof keyData.encryptedKey !== 'string') {
-  //         throw new Error('Invalid key data structure: missing or invalid encryptedKey')
-  //       }
-  //       if (!keyData.ephemeralPub || typeof keyData.ephemeralPub !== 'string') {
-  //         throw new Error('Invalid key data structure: missing or invalid ephemeralPub')
-  //       }
-  //     } catch (error) {
-  //       throw {
-  //         code: 'KEY_DATA_INVALID',
-  //         message: 'Failed to parse encrypted key data',
-  //         details: error instanceof Error ? error.message : String(error),
-  //       } as EncryptionError
-  //     }
-  //     const { encryptedKey, ephemeralPub } = keyData;
-
-  //     // Decrypt document key
-  //     const docKey = await this.decryptWithSEA(encryptedKey, ephemeralPub);
-  //     return docKey;
-  //   } catch (error) {
-  //     if ((error as EncryptionError).code) {
-  //       throw error;
-  //     }
-  //     throw {
-  //       code: 'KEY_RETRIEVAL_FAILED',
-  //       message: 'Failed to retrieve document key',
-  //       details: error,
-  //     } as EncryptionError;
-  //   }
-  // }
 }
 
 // Export singleton instance

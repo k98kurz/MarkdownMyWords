@@ -35,11 +35,11 @@ export async function testVariousDocumentSizes(): Promise<void> {
       const docKey = await encryptionService.generateDocumentKey();
 
       const encryptStart = performance.now();
-      const encrypted = await encryptionService.encryptDocument(content, docKey);
+      const encrypted = await encryptionService.encrypt(content, docKey);
       const encryptTime = performance.now() - encryptStart;
 
       const decryptStart = performance.now();
-      const decrypted = await encryptionService.decryptDocument(encrypted!, docKey);
+      const decrypted = await encryptionService.decrypt(encrypted!, docKey);
       const decryptTime = performance.now() - decryptStart;
 
       const success = decrypted === content && decrypted.length === testSize.bytes;

@@ -26,16 +26,16 @@ async function testDocumentEncryption(): Promise<TestSuiteResult> {
   await runner.run('should encrypt document', async () => {
     const key = await encryptionService.generateDocumentKey()
     const content = 'test document content'
-    const encrypted = await encryptionService.encryptDocument(content, key)
+    const encrypted = await encryptionService.encrypt(content, key)
     assert(encrypted, 'document encryption failed')
   })
 
   await runner.run('should decrypt document', async () => {
     const key = await encryptionService.generateDocumentKey()
     const content = 'test document content'
-    const encrypted = await encryptionService.encryptDocument(content, key)
+    const encrypted = await encryptionService.encrypt(content, key)
     assert(typeof encrypted === 'string', 'encryption failed')
-    const decrypted = await encryptionService.decryptDocument(encrypted!, key)
+    const decrypted = await encryptionService.decrypt(encrypted!, key)
     assert(
       decrypted == content,
       `Decrypted content mismatch. Expected "${content}", got "${decrypted}"`
@@ -47,15 +47,15 @@ async function testDocumentEncryption(): Promise<TestSuiteResult> {
     const content1 = 'First document'
     const content2 = 'Second document'
 
-    const encrypted1 = await encryptionService.encryptDocument(content1, key)
-    const encrypted2 = await encryptionService.encryptDocument(content2, key)
+    const encrypted1 = await encryptionService.encrypt(content1, key)
+    const encrypted2 = await encryptionService.encrypt(content2, key)
 
     if (encrypted1 === encrypted2) {
       throw new Error('Different content should encrypt to different ciphertexts')
     }
 
-    const decrypted1 = await encryptionService.decryptDocument(encrypted1!, key)
-    const decrypted2 = await encryptionService.decryptDocument(encrypted2!, key)
+    const decrypted1 = await encryptionService.decrypt(encrypted1!, key)
+    const decrypted2 = await encryptionService.decrypt(encrypted2!, key)
 
     if (decrypted1 !== content1 || decrypted2 !== content2) {
       throw new Error('Decrypted content mismatch')
@@ -124,7 +124,7 @@ async function testKeySharing(): Promise<TestSuiteResult> {
 
     // Bob encrypts document key for Alice (Bob is authenticated)
     const docKey = await encryptionService.generateDocumentKey()
-    const encryptedKey = await encryptionService.encryptWithSEA(docKey, aliceEpub)
+    const encryptedKey = await encryptionService.encryptECDH(docKey, aliceEpub)
     console.log('Bob encrypted key for Alice')
 
     if (!encryptedKey) {
@@ -143,13 +143,13 @@ async function testKeySharing(): Promise<TestSuiteResult> {
     console.log(`Alice retrieved Bob's epub: ${bobEpub.substring(0, 20)}...`)
 
     // Alice decrypts from Bob (Alice is authenticated)
-    const decryptedKey = await encryptionService.decryptWithSEA(encryptedKey, bobEpub)
+    const decryptedKey = await encryptionService.decryptECDH(encryptedKey, bobEpub)
     console.log('Alice decrypted key from Bob')
     assert(docKey == decryptedKey, `key decryption failed: ${docKey} != ${decryptedKey}`)
 
     const content = 'test document for ECDH key sharing'
-    const encrypted = await encryptionService.encryptDocument(content, docKey)
-    const decrypted = await encryptionService.decryptDocument(encrypted!, decryptedKey!)
+    const encrypted = await encryptionService.encrypt(content, docKey)
+    const decrypted = await encryptionService.decrypt(encrypted!, decryptedKey!)
 
     if (decrypted !== content) {
       throw new Error('ECDH key sharing failed - decrypted document mismatch')
@@ -169,10 +169,10 @@ async function testKeySharing(): Promise<TestSuiteResult> {
 //     const key1 = await encryptionService.generateDocumentKey()
 //     const key2 = await encryptionService.generateDocumentKey()
 //     const content = 'test content'
-//     const encrypted = await encryptionService.encryptDocument(content, key1)
+//     const encrypted = await encryptionService.encrypt(content, key1)
 
 //     try {
-//       await encryptionService.decryptDocument(encrypted!, key2)
+//       await encryptionService.decrypt(encrypted!, key2)
 //       throw new Error('Should have thrown an error for wrong key')
 //     } catch (error) {
 //       const errorMessage = error instanceof Error ? error.message : String(error)
@@ -191,7 +191,7 @@ async function testKeySharing(): Promise<TestSuiteResult> {
 //     }
 
 //     try {
-//       await encryptionService.decryptDocument(corrupted, key)
+//       await encryptionService.decrypt(corrupted, key)
 //       throw new Error('Should have thrown an error for corrupted data')
 //     } catch (error) {
 //       const errorMessage = error instanceof Error ? error.message : String(error)
@@ -207,7 +207,7 @@ async function testKeySharing(): Promise<TestSuiteResult> {
 //     )
 
 //     try {
-//       await encryptionService.encryptDocument('test', invalidKey)
+//       await encryptionService.encrypt('test', invalidKey)
 //       throw new Error('Should have thrown an error for invalid key')
 //     } catch (error) {
 //       const errorMessage = error instanceof Error ? error.message : String(error)
@@ -223,7 +223,7 @@ async function testKeySharing(): Promise<TestSuiteResult> {
 //     const key = await encryptionService.generateDocumentKey()
 
 //     try {
-//       await uninitializedService.encryptWithSEA(key, 'some-pub')
+//       await uninitializedService.encryptECDH(key, 'some-pub')
 //       throw new Error('Should have thrown an error for uninitialized service')
 //     } catch (error) {
 //       const errorMessage = error instanceof Error ? error.message : String(error)
@@ -233,7 +233,7 @@ async function testKeySharing(): Promise<TestSuiteResult> {
 //     }
 
 //     try {
-//       await uninitializedService.decryptDocumentKeyWithSEA('encrypted', 'epub')
+//       await uninitializedService.decryptKeyECDH('encrypted', 'epub')
 //       throw new Error('Should have thrown an error for uninitialized service')
 //     } catch (error) {
 //       const errorMessage = error instanceof Error ? error.message : String(error)
