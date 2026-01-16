@@ -7,6 +7,13 @@ Currently, authStore has regression tests that are not executable due to GunDB's
 browser-only requirements. The existing tests use vitest (abandoned) and are not
 accessible from the browser console where GunDB tests must run.
 
+## Status
+
+- **Phase 1: Cleanup**: done
+- **Phase 2: Regression Tests**: done
+- **Phase 3: New Tests**: done
+- **Phase 4: Integration**: done
+
 ## Current State Analysis
 
 ### Issues Identified
