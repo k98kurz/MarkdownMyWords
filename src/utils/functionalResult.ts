@@ -164,40 +164,36 @@ const isFailure = <T, E>(result: Result<T, E>): result is { success: false; erro
   !result.success
 
 /**
- * Wraps an async function in a try-catch block, returning a Result
+ * Wraps a function in a try-catch block, returning a Result
+ * Handles both synchronous and asynchronous functions with a unified interface
+ *
+ * @example
+ * ```typescript
+ * // Sync function
+ * const syncResult = await tryCatch(() => 42)
+ *
+ * // Async function
+ * const asyncResult = await tryCatch(async () => 42)
+ *
+ * // With error transformation
+ * const result = await tryCatch(
+ *   () => riskyOperation(),
+ *   error => `Custom: ${error}`
+ * )
+ * ```
+ *
  * @template T - Return type of the function
  * @template E - Error type (defaults to unknown)
- * @param fn - Async function to wrap
+ * @param fn - Function to wrap (sync or async)
  * @param errorTransformer - Optional function to transform caught errors
  * @returns Promise resolving to a Result
  */
 const tryCatch = async <T, E = unknown>(
-  fn: () => Promise<T>,
+  fn: (() => T) | (() => Promise<T>),
   errorTransformer?: (error: unknown) => E
 ): Promise<Result<T, E>> => {
   try {
-    const data = await fn()
-    return success<T, E>(data)
-  } catch (error) {
-    const transformedError = errorTransformer ? errorTransformer(error) : (error as E)
-    return failure<T, E>(transformedError)
-  }
-}
-
-/**
- * Wraps a synchronous function in a try-catch block, returning a Result
- * @template T - Return type of the function
- * @template E - Error type (defaults to unknown)
- * @param fn - Synchronous function to wrap
- * @param errorTransformer - Optional function to transform caught errors
- * @returns Result
- */
-const tryCatchSync = <T, E = unknown>(
-  fn: () => T,
-  errorTransformer?: (error: unknown) => E
-): Result<T, E> => {
-  try {
-    const data = fn()
+    const data = await Promise.resolve(fn())
     return success<T, E>(data)
   } catch (error) {
     const transformedError = errorTransformer ? errorTransformer(error) : (error as E)
@@ -270,7 +266,6 @@ export {
   isSuccess,
   isFailure,
   tryCatch,
-  tryCatchSync,
   getOrElse,
   getOrThrow,
   pipe,

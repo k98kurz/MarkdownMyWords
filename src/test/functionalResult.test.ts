@@ -16,7 +16,6 @@ import {
   isSuccess,
   isFailure,
   tryCatch,
-  tryCatchSync,
   getOrElse,
   getOrThrow,
   pipe,
@@ -189,7 +188,7 @@ async function testErrorHandling(): Promise<TestSuiteResult> {
   const runner = new TestRunner('Functional Result - Error Handling')
 
   await runner.run('should tryCatch handle successful async operations', async () => {
-    const result = await tryCatch(async () => 'success')
+    const result = await tryCatch<string, unknown>(async () => 'success')
     assert(
       result.success && result.data === 'success',
       'tryCatch should handle successful async operations'
@@ -211,19 +210,24 @@ async function testErrorHandling(): Promise<TestSuiteResult> {
   })
 
   await runner.run('should tryCatch handle sync operations', async () => {
-    const result = await tryCatch<string, unknown>(async () => 'sync result')
+    const result = await tryCatch<string, unknown>(() => 'sync result')
     assert(
       result.success && result.data === 'sync result',
-      'tryCatch should handle sync operations in async context'
+      'tryCatch should handle sync operations'
     )
   })
 
-  await runner.run('should tryCatchSync handle sync operations', async () => {
-    const result = tryCatchSync<string, unknown>(() => 'sync result')
+  await runner.run('should tryCatch handle async operations', async () => {
+    const result = await tryCatch<string, unknown>(async () => 'async result')
     assert(
-      result.success && result.data === 'sync result',
-      'tryCatchSync should handle successful sync operations'
+      result.success && result.data === 'async result',
+      'tryCatch should handle async operations'
     )
+  })
+
+  await runner.run('should tryCatch handle sync functions', async () => {
+    const result = await tryCatch<string, unknown>(() => 'sync result')
+    assert(result.success && result.data === 'sync result', 'tryCatch should handle sync functions')
   })
 
   await runner.run('should preserve original error types without assertions', async () => {
@@ -237,13 +241,33 @@ async function testErrorHandling(): Promise<TestSuiteResult> {
     )
   })
 
-  await runner.run('should tryCatchSync handle sync operations', async () => {
-    const result = tryCatchSync(() => 'sync result')
+  await runner.run('should tryCatch handle sync functions with type parameters', async () => {
+    const result = await tryCatch(() => 'sync result')
     assert(
       result.success && result.data === 'sync result',
-      'tryCatchSync should handle successful sync operations'
+      'tryCatch should handle sync functions with type parameters'
     )
   })
+
+  await runner.run(
+    'should tryCatch handle both sync and async functions with same interface',
+    async () => {
+      const syncFn = (): string => 'sync'
+      const asyncFn = async (): Promise<string> => 'async'
+
+      const syncResult = await tryCatch<string, unknown>(syncFn)
+      const asyncResult = await tryCatch<string, unknown>(asyncFn)
+
+      assert(
+        syncResult.success && syncResult.data === 'sync',
+        'tryCatch should handle sync functions'
+      )
+      assert(
+        asyncResult.success && asyncResult.data === 'async',
+        'tryCatch should handle async functions'
+      )
+    }
+  )
 
   await runner.run('should preserve original error types without assertions', async () => {
     const customError = { code: 'CUSTOM', message: 'custom error' }
