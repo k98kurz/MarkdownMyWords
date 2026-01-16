@@ -4,35 +4,53 @@
  * Modal for user authentication with login and registration forms.
  */
 
-import { useState } from 'react';
-import { LoginForm } from './LoginForm';
-import { RegisterForm } from './RegisterForm';
+import { useState } from 'react'
+import { LoginForm } from './LoginForm'
+import { RegisterForm } from './RegisterForm'
 
 interface AuthModalProps {
-  isOpen: boolean;
-  onClose?: () => void;
-  defaultTab?: 'login' | 'register';
+  isOpen: boolean
+  onClose?: () => void
+  defaultTab?: 'login' | 'register'
+  isLoading?: boolean
 }
 
-export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalProps) {
-  const [activeTab, setActiveTab] = useState<'login' | 'register'>(defaultTab);
+export function AuthModal({
+  isOpen,
+  onClose,
+  defaultTab = 'login',
+  isLoading = false,
+}: AuthModalProps) {
+  const [activeTab, setActiveTab] = useState<'login' | 'register'>(defaultTab)
 
   if (!isOpen) {
-    return null;
+    return null
   }
 
   const handleSuccess = () => {
     // Close modal on successful auth
     if (onClose) {
-      onClose();
+      onClose()
     }
-  };
+  }
+
+  const handleOverlayClick = () => {
+    // Don't close if loading
+    if (!isLoading && onClose) {
+      onClose()
+    }
+  }
 
   return (
-    <div className="auth-modal-overlay" onClick={onClose || undefined}>
-      <div className="auth-modal" onClick={(e) => e.stopPropagation()}>
+    <div className="auth-modal-overlay" onClick={handleOverlayClick}>
+      <div className="auth-modal" onClick={e => e.stopPropagation()}>
         {onClose && (
-          <button className="auth-modal-close" onClick={onClose} aria-label="Close">
+          <button
+            className="auth-modal-close"
+            onClick={onClose}
+            aria-label="Close"
+            disabled={isLoading}
+          >
             ×
           </button>
         )}
@@ -41,12 +59,14 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
           <button
             className={`auth-tab ${activeTab === 'login' ? 'active' : ''}`}
             onClick={() => setActiveTab('login')}
+            disabled={isLoading}
           >
             Log In
           </button>
           <button
             className={`auth-tab ${activeTab === 'register' ? 'active' : ''}`}
             onClick={() => setActiveTab('register')}
+            disabled={isLoading}
           >
             Register
           </button>
@@ -59,13 +79,10 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
               onSwitchToRegister={() => setActiveTab('register')}
             />
           ) : (
-            <RegisterForm
-              onSuccess={handleSuccess}
-              onSwitchToLogin={() => setActiveTab('login')}
-            />
+            <RegisterForm onSuccess={handleSuccess} onSwitchToLogin={() => setActiveTab('login')} />
           )}
         </div>
       </div>
     </div>
-  );
+  )
 }

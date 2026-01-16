@@ -39,14 +39,15 @@ function App() {
     })
   }, [checkSession, setError])
 
-  // Show auth modal if not authenticated and not loading
+  // Show auth modal if not authenticated
+  // Keep modal open during loading and only close on successful authentication
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      setShowAuthModal(true)
-    } else {
+    if (isAuthenticated) {
       setShowAuthModal(false)
+    } else {
+      setShowAuthModal(true)
     }
-  }, [isAuthenticated, isLoading])
+  }, [isAuthenticated])
 
   return (
     <div className="app">
@@ -73,6 +74,7 @@ function App() {
         isOpen={showAuthModal}
         onClose={isAuthenticated ? () => setShowAuthModal(false) : undefined}
         defaultTab="login"
+        isLoading={isLoading}
       />
 
       <ErrorModal />

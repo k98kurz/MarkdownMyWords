@@ -4,26 +4,25 @@
  * Zustand store for authentication state management using GunDB's SEA.
  */
 
-import { create } from 'zustand';
-import { gunService } from '../services/gunService';
-import { useErrorStore } from './errorStore';
+import { create } from 'zustand'
+import { gunService } from '../services/gunService'
 
 /**
  * Auth State Interface
  */
 interface AuthState {
   // State
-  user: any | null; // SEA user object from gun.user()
-  isAuthenticated: boolean;
-  isLoading: boolean;
-  error: string | null;
+  user: any | null // SEA user object from gun.user()
+  isAuthenticated: boolean
+  isLoading: boolean
+  error: string | null
 
   // Actions
-  login: (username: string, password: string) => Promise<void>;
-  logout: () => void;
-  register: (username: string, password: string) => Promise<void>;
-  clearError: () => void;
-  checkSession: () => Promise<void>;
+  login: (username: string, password: string) => Promise<void>
+  logout: () => void
+  register: (username: string, password: string) => Promise<void>
+  clearError: () => void
+  checkSession: () => Promise<void>
 }
 
 /**
@@ -43,31 +42,31 @@ export const useAuthStore = create<AuthState>(set => ({
    * Register a new user
    */
   register: async (username: string, password: string) => {
-    set({ isLoading: true, error: null });
+    set({ isLoading: true, error: null })
 
     try {
       // Validate inputs
       if (!username || username.trim().length === 0) {
-        throw new Error('Username is required');
+        throw new Error('Username is required')
       }
 
       if (!password || password.length < 6) {
-        throw new Error('Password must be at least 6 characters');
+        throw new Error('Password must be at least 6 characters')
       }
 
       // Create user (create, authenticate, write profile)
-      await gunService.createUser(username.trim(), password);
-      await gunService.authenticateUser(username.trim(), password);
-      await gunService.writeProfile();
+      await gunService.createUser(username.trim(), password)
+      await gunService.authenticateUser(username.trim(), password)
+      await gunService.writeProfile()
 
       // Get GunDB instance to access user object
-      const gun = gunService.getGun();
+      const gun = gunService.getGun()
       if (!gun) {
-        throw new Error('GunDB not initialized');
+        throw new Error('GunDB not initialized')
       }
 
       // Get the authenticated user object from GunDB
-      const gunUser = gun.user();
+      const gunUser = gun.user()
 
       // Set authenticated state
       set({
@@ -75,31 +74,26 @@ export const useAuthStore = create<AuthState>(set => ({
         isAuthenticated: true,
         isLoading: false,
         error: null,
-      });
+      })
     } catch (error: unknown) {
       // For user creation failures, show user-friendly message
       const isUserCreationError =
-        error instanceof Error && error.message.includes('User creation failed');
+        error instanceof Error && error.message.includes('User creation failed')
       const errorMessage = isUserCreationError
         ? 'Could not create account. Username may already be taken.'
         : error instanceof Error
           ? error.message
-          : 'Registration failed';
+          : 'Registration failed'
 
       set({
         isLoading: false,
         error: errorMessage,
         isAuthenticated: false,
         user: null,
-      });
+      })
 
-      // Don't show global error modal for expected user creation failures
-      // Only show modal for unexpected errors
-      if (!isUserCreationError) {
-        useErrorStore.getState().setError(error);
-      }
-
-      throw error;
+      // Never show global error modal for registration failures - handle all locally
+      throw error
     }
   },
 
@@ -107,29 +101,29 @@ export const useAuthStore = create<AuthState>(set => ({
    * Login user
    */
   login: async (username: string, password: string) => {
-    set({ isLoading: true, error: null });
+    set({ isLoading: true, error: null })
 
     try {
       // Validate inputs
       if (!username || username.trim().length === 0) {
-        throw new Error('Username is required');
+        throw new Error('Username is required')
       }
 
       if (!password || password.length === 0) {
-        throw new Error('Password is required');
+        throw new Error('Password is required')
       }
 
       // Authenticate with SEA
-      await gunService.authenticateUser(username.trim(), password);
+      await gunService.authenticateUser(username.trim(), password)
 
       // Get GunDB instance to access user object
-      const gun = gunService.getGun();
+      const gun = gunService.getGun()
       if (!gun) {
-        throw new Error('GunDB not initialized');
+        throw new Error('GunDB not initialized')
       }
 
       // Get the authenticated user object from GunDB
-      const gunUser = gun.user();
+      const gunUser = gun.user()
 
       // Set authenticated state
       set({
@@ -137,30 +131,20 @@ export const useAuthStore = create<AuthState>(set => ({
         isAuthenticated: true,
         isLoading: false,
         error: null,
-      });
+      })
     } catch (error: any) {
-      // For authentication failures, show user-friendly message
-      const isAuthError = error?.code === 'AUTHENTICATION_FAILED';
-      const errorMessage = isAuthError
-        ? 'Invalid username or password'
-        : error instanceof Error
-          ? error.message
-          : 'Login failed';
+      // For all authentication failures, show user-friendly message locally
+      const errorMessage = error instanceof Error ? error.message : 'Login failed'
 
       set({
         isLoading: false,
         error: errorMessage,
         isAuthenticated: false,
         user: null,
-      });
+      })
 
-      // Don't show global error modal for expected auth failures
-      // Only show modal for unexpected errors
-      if (!isAuthError) {
-        useErrorStore.getState().setError(error);
-      }
-
-      throw error;
+      // Never show global error modal for login failures - handle all locally
+      throw error
     }
   },
 
@@ -170,13 +154,13 @@ export const useAuthStore = create<AuthState>(set => ({
   logout: () => {
     try {
       // Get GunDB instance
-      const gun = gunService.getGun();
+      const gun = gunService.getGun()
       if (gun) {
         // Leave the current user session
-        gun.user().leave();
+        gun.user().leave()
       }
     } catch (error) {
-      console.error('Error during logout:', error);
+      console.error('Error during logout:', error)
     }
 
     // Clear state
@@ -184,14 +168,14 @@ export const useAuthStore = create<AuthState>(set => ({
       user: null,
       isAuthenticated: false,
       error: null,
-    });
+    })
   },
 
   /**
    * Clear error message
    */
   clearError: () => {
-    set({ error: null });
+    set({ error: null })
   },
 
   /**
@@ -199,13 +183,13 @@ export const useAuthStore = create<AuthState>(set => ({
    * Called on app initialization to restore session
    */
   checkSession: async () => {
-    set({ isLoading: true });
+    set({ isLoading: true })
 
     try {
-      const gun = gunService.getGun();
+      const gun = gunService.getGun()
       if (!gun) {
-        set({ isLoading: false, isAuthenticated: false });
-        return;
+        set({ isLoading: false, isAuthenticated: false })
+        return
       }
 
       // Try to recall session from localStorage
@@ -215,7 +199,7 @@ export const useAuthStore = create<AuthState>(set => ({
           // Check if user is authenticated after recall
           // Give it a moment for the session to restore
           setTimeout(() => {
-            const gunUser = gun.user();
+            const gunUser = gun.user()
 
             if (gunUser.is && gunUser.is.pub) {
               // User is authenticated
@@ -224,22 +208,22 @@ export const useAuthStore = create<AuthState>(set => ({
                 isAuthenticated: true,
                 isLoading: false,
                 error: null,
-              });
+              })
             } else {
               // No authenticated user
               set({
                 isLoading: false,
                 isAuthenticated: false,
                 user: null,
-              });
+              })
             }
-            resolve();
-          }, 100);
-        });
+            resolve()
+          }, 100)
+        })
 
         // Timeout fallback - check user state directly after a delay
         setTimeout(() => {
-          const gunUser = gun.user();
+          const gunUser = gun.user()
 
           if (gunUser.is && gunUser.is.pub) {
             set({
@@ -247,24 +231,24 @@ export const useAuthStore = create<AuthState>(set => ({
               isAuthenticated: true,
               isLoading: false,
               error: null,
-            });
+            })
           } else {
             set({
               isLoading: false,
               isAuthenticated: false,
               user: null,
-            });
+            })
           }
-          resolve();
-        }, 500);
-      });
+          resolve()
+        }, 500)
+      })
     } catch (error) {
-      console.error('Error checking session:', error);
+      console.error('Error checking session:', error)
       set({
         isLoading: false,
         isAuthenticated: false,
         user: null,
-      });
+      })
     }
   },
-}));
+}))
