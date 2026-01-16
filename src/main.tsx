@@ -8,6 +8,7 @@ import { testVariousDocumentSizes } from './test/testDocumentSizes'
 import { testGunService } from './test/gunService.test'
 import { testAuthStore } from './test/authStore.test'
 import { testEncryptionService } from './test/encryptionService.test'
+import { testFunctionalResult } from './test/functionalResult.test'
 //import { testNewGunSEAScheme } from './test/testNewGunSEAScheme'
 import { clearGunDBLocalStorage } from './utils/clearGunDB'
 import { useConnectionStore } from './stores/connectionStore'
@@ -84,6 +85,7 @@ if (typeof window !== 'undefined') {
   (window as any).testGunService = testGunService;
   (window as any).testAuthStore = testAuthStore;
   (window as any).testEncryptionService = testEncryptionService;
+  (window as any).testFunctionalResult = testFunctionalResult;
   //(window as any).testNewGunSEAScheme = testNewGunSEAScheme;
   (window as any).runAllTests = runAllTests;
   (window as any).clearGunDB = clearGunDBLocalStorage;
@@ -93,6 +95,9 @@ if (typeof window !== 'undefined') {
   console.log('   - window.testGunService() - Test GunDB service operations');
   console.log('   - window.testAuthStore() - Test authentication store');
   console.log('   - window.testEncryptionService() - Test encryption service (full test suite)');
+  console.log(
+    '   - window.testFunctionalResult() - Test functional result utility (comprehensive suite)'
+  );
   //  console.log('   - window.testNewGunSEAScheme() - Test new GunDB + SEA security scheme');
   console.log('   - window.runAllTests() - Run all test suites');
   console.log('   - window.clearGunDB(options) - Clear local GunDB storage');
