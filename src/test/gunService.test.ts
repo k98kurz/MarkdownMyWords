@@ -5,12 +5,11 @@
  */
 
 import { gunService, GunService } from '../services/gunService'
-import type { Document, GunError } from '../types/gun'
+import type { GunError } from '../types/gun'
 import { GunErrorCode } from '../types/gun'
 import {
-  sleep, TestRunner, printTestSummary, type TestSuiteResult
+  TestRunner, printTestSummary, type TestSuiteResult
 } from '../utils/testRunner'
-import { clearGunDBLocalStorage } from '../utils/clearGunDB'
 
 /**
  * Test GunDB Service initialization
@@ -97,113 +96,6 @@ async function testUserOperations(): Promise<TestSuiteResult> {
 }
 
 /**
- * Test document operations
- */
-async function testDocumentOperations(): Promise<TestSuiteResult> {
-  console.log('🧪 Testing Document Operations...\n')
-
-  const runner = new TestRunner('Document Operations')
-
-  const timestamp = Date.now()
-  const docId = `testdoc_${timestamp}`
-  const testContent = 'This is a test document'
-
-  const document: Document = {
-    metadata: {
-      title: 'Test Document',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      lastModifiedBy: 'test-user',
-    },
-    encryptedContent: testContent,
-    contentIV: 'test-iv',
-    sharing: {
-      owner: 'test-user',
-      isPublic: false,
-      readAccess: [],
-      writeAccess: [],
-    },
-  }
-
-  await runner.run('Create document', async () => {
-    await gunService.createDocument(docId, document)
-    await new Promise(resolve => setTimeout(resolve, 800))
-  })
-
-  await runner.run('Get document by ID', async () => {
-    const retrievedDoc = await gunService.getDocument(docId)
-    if (!retrievedDoc) {
-      throw new Error('Document not found')
-    }
-    const hasMetadata = retrievedDoc.metadata !== undefined && retrievedDoc.metadata !== null
-    const hasTitle = retrievedDoc.metadata?.title === 'Test Document'
-    const hasEncryptedContent = retrievedDoc.encryptedContent === testContent
-    const hasContentIV = retrievedDoc.contentIV === 'test-iv'
-    const hasSharing = retrievedDoc.sharing !== undefined && retrievedDoc.sharing !== null
-    const hasOwner = retrievedDoc.sharing?.owner === 'test-user'
-
-    if (
-      !hasMetadata ||
-      !hasTitle ||
-      !hasEncryptedContent ||
-      !hasContentIV ||
-      !hasSharing ||
-      !hasOwner
-    ) {
-      const missing = []
-      if (!hasMetadata) missing.push('metadata')
-      if (!hasTitle) missing.push('title')
-      if (!hasEncryptedContent) missing.push('encryptedContent')
-      if (!hasContentIV) missing.push('contentIV')
-      if (!hasSharing) missing.push('sharing')
-      if (!hasOwner) missing.push('owner')
-      throw new Error(`Missing data: ${missing.join(', ')}`)
-    }
-    console.log(`  Title: ${retrievedDoc.metadata.title}`)
-    console.log(`  Content length: ${retrievedDoc.encryptedContent.length} chars`)
-  })
-
-  await runner.run('Update document', async () => {
-    const updatedTitle = 'Updated Test Document'
-    const updates: Partial<Document> = {
-      metadata: {
-        title: updatedTitle,
-        createdAt: document.metadata.createdAt,
-        updatedAt: Date.now(),
-        lastModifiedBy: 'test-user',
-      },
-    }
-    await gunService.updateDocument(docId, updates)
-    await new Promise(resolve => setTimeout(resolve, 400))
-    const updatedDoc = await gunService.getDocument(docId)
-
-    if (!updatedDoc || updatedDoc.metadata?.title !== updatedTitle) {
-      const actualTitle = updatedDoc?.metadata?.title || 'missing'
-      throw new Error(`Title mismatch: got "${actualTitle}"`)
-    }
-    console.log(`  New title: ${updatedDoc.metadata.title}`)
-  })
-
-  await runner.run('List documents', async () => {
-    const gun = gunService.getGun()
-    if (!gun || !gun.user().is) {
-      throw new Error('Not authenticated')
-    }
-    const userId = gun.user().is!.pub
-    const docList = await gunService.listDocuments(userId)
-    console.log(`  Documents listed: ${docList.length} found`)
-  })
-
-  await runner.run('Delete document', async () => {
-    await gunService.deleteDocument(docId)
-  })
-
-  console.log('\n✅ Document operations tests complete!')
-  runner.printResults()
-  return runner.getResults()
-}
-
-/**
  * Test listItems and listUserItems methods
  */
 async function testListItems(): Promise<TestSuiteResult> {
@@ -229,9 +121,9 @@ async function testListItems(): Promise<TestSuiteResult> {
     const item3 = gunService.newId()
 
     // Write test objects to public test namespace
-    await gun.get('test').get('item1').put(item1).then()
-    await gun.get('test').get('item2').put(item2).then()
-    await gun.get('test').get('item3').put(item3).then()
+    await gun.get('test').get('item1').put(item1)
+    await gun.get('test').get('item2').put(item2)
+    await gun.get('test').get('item3').put(item3)
 
     // Read
     const items = await gunService.listItems(['test'])
@@ -313,9 +205,9 @@ async function testListItems(): Promise<TestSuiteResult> {
     const gun = gunService.getGun()
 
     // Remove public test items
-    await gun.get('test').get('item1').put(null).then()
-    await gun.get('test').get('item2').put(null).then()
-    await gun.get('test').get('item3').put(null).then()
+    await gun.get('test').get('item1').put(null)
+    await gun.get('test').get('item2').put(null)
+    await gun.get('test').get('item3').put(null)
     // Verify the data is gone
     const items = await gunService.listItems(['test']).then()
     if (items.length !== 0) {
@@ -329,100 +221,16 @@ async function testListItems(): Promise<TestSuiteResult> {
 }
 
 /**
- * Test subscriptions
- */
-async function testSubscriptions(): Promise<TestSuiteResult> {
-  console.log('🧪 Testing Subscriptions...\n')
-
-  const runner = new TestRunner('Subscriptions')
-
-  const timestamp = Date.now()
-  const docId = `testdoc_sub_${timestamp}`
-
-  await runner.run('Subscribe to document', async () => {
-    let subscriptionTriggered = false
-
-    const unsubscribeDoc = gunService.subscribeToDocument(docId, doc => {
-      subscriptionTriggered = true
-      if (doc) {
-        console.log(`  📡 Document update received: ${doc.metadata.title}`)
-      } else {
-        console.log('  📡 Document deleted')
-      }
-    })
-
-    const document: Document = {
-      metadata: {
-        title: 'Subscription Test Document',
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        lastModifiedBy: 'test-user',
-      },
-      encryptedContent: 'test content',
-      contentIV: 'test-iv',
-      sharing: {
-        owner: 'test-user',
-        isPublic: false,
-        readAccess: [],
-        writeAccess: [],
-      },
-    }
-    await gunService.createDocument(docId, document)
-    await new Promise(resolve => setTimeout(resolve, 500))
-
-    if (!subscriptionTriggered) {
-      throw new Error('Subscription not triggered')
-    }
-
-    unsubscribeDoc()
-    try {
-      await gunService.deleteDocument(docId)
-    } catch {}
-  })
-
-  console.log('\n✅ Subscription tests complete!')
-  runner.printResults()
-  return runner.getResults()
-}
-
-/**
  * Test error handling
  */
 async function testErrorHandling(): Promise<TestSuiteResult> {
   console.log('🧪 Testing Error Handling...\n')
 
   const runner = new TestRunner('Error Handling')
-
-  await runner.run('Get non-existent document', async () => {
-    const doc = await gunService.getDocument('non-existent-doc-id')
-    if (doc !== null) {
-      throw new Error('Expected null')
-    }
-  })
-
-  await runner.run('Update non-existent document', async () => {
-    try {
-      await gunService.updateDocument('non-existent-doc-id', {
-        metadata: {
-          title: 'Updated',
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          lastModifiedBy: 'test',
-        },
-      })
-      throw new Error('Update should have failed')
-    } catch (error) {
-      const gunError = error as GunError
-      if (gunError.code !== GunErrorCode.NOT_FOUND) {
-        throw new Error(`Expected NOT_FOUND error, got: ${gunError.message}`)
-      }
-    }
-  })
-
   await runner.run('Operations without initialization', async () => {
     const uninitializedService = new GunService()
     try {
-      await uninitializedService.getDocument('test-id')
+      await uninitializedService.discoverUsers('test-id')
       throw new Error('Operation should have failed')
     } catch (error) {
       const gunError = error as GunError
@@ -497,16 +305,8 @@ export async function testGunService(): Promise<void> {
   suiteResults.push(userResult)
   console.log('\n' + '='.repeat(60) + '\n')
 
-  const docResult = await testDocumentOperations()
-  suiteResults.push(docResult)
-  console.log('\n' + '='.repeat(60) + '\n')
-
   const listResult = await testListItems()
   suiteResults.push(listResult)
-  console.log('\n' + '='.repeat(60) + '\n')
-
-  const subResult = await testSubscriptions()
-  suiteResults.push(subResult)
   console.log('\n' + '='.repeat(60) + '\n')
 
   const errorResult = await testErrorHandling()
