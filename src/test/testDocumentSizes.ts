@@ -32,7 +32,7 @@ export async function testVariousDocumentSizes(): Promise<void> {
 
     try {
       const content = generateTestContent(testSize.bytes);
-      const docKey = await encryptionService.generateDocumentKey();
+      const docKey = await encryptionService.generateKey();
 
       const encryptStart = performance.now();
       const encrypted = await encryptionService.encrypt(content, docKey);

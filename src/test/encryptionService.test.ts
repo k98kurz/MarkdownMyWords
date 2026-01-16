@@ -19,19 +19,19 @@ async function testDocumentEncryption(): Promise<TestSuiteResult> {
   const runner = new TestRunner('Document Encryption')
 
   await runner.run('should generate document-specific keys', async () => {
-    const key = await encryptionService.generateDocumentKey()
+    const key = await encryptionService.generateKey()
     assert(key, 'key not generated')
   })
 
   await runner.run('should encrypt document', async () => {
-    const key = await encryptionService.generateDocumentKey()
+    const key = await encryptionService.generateKey()
     const content = 'test document content'
     const encrypted = await encryptionService.encrypt(content, key)
     assert(encrypted, 'document encryption failed')
   })
 
   await runner.run('should decrypt document', async () => {
-    const key = await encryptionService.generateDocumentKey()
+    const key = await encryptionService.generateKey()
     const content = 'test document content'
     const encrypted = await encryptionService.encrypt(content, key)
     assert(typeof encrypted === 'string', 'encryption failed')
@@ -43,7 +43,7 @@ async function testDocumentEncryption(): Promise<TestSuiteResult> {
   })
 
   await runner.run('should encrypt and decrypt different content correctly', async () => {
-    const key = await encryptionService.generateDocumentKey()
+    const key = await encryptionService.generateKey()
     const content1 = 'First document'
     const content2 = 'Second document'
 
@@ -123,7 +123,7 @@ async function testKeySharing(): Promise<TestSuiteResult> {
     console.log(`Bob retrieved Alice's epub: ${aliceEpub.substring(0, 20)}...`)
 
     // Bob encrypts document key for Alice (Bob is authenticated)
-    const docKey = await encryptionService.generateDocumentKey()
+    const docKey = await encryptionService.generateKey()
     const encryptedKey = await encryptionService.encryptECDH(docKey, aliceEpub)
     console.log('Bob encrypted key for Alice')
 
@@ -166,8 +166,8 @@ async function testKeySharing(): Promise<TestSuiteResult> {
 //   const runner = new TestRunner('Error Handling')
 
 //   await runner.run('should throw error when decrypting with wrong key', async () => {
-//     const key1 = await encryptionService.generateDocumentKey()
-//     const key2 = await encryptionService.generateDocumentKey()
+//     const key1 = await encryptionService.generateKey()
+//     const key2 = await encryptionService.generateKey()
 //     const content = 'test content'
 //     const encrypted = await encryptionService.encrypt(content, key1)
 
@@ -183,7 +183,7 @@ async function testKeySharing(): Promise<TestSuiteResult> {
 //   })
 
 //   await runner.run('should throw error when decrypting corrupted data', async () => {
-//     const key = await encryptionService.generateDocumentKey()
+//     const key = await encryptionService.generateKey()
 //     const corrupted: any = {
 //       encryptedContent: 'invalid-base64!!!',
 //       iv: 'invalid',
@@ -220,7 +220,7 @@ async function testKeySharing(): Promise<TestSuiteResult> {
 //   await runner.run('should throw error when operations called before initialization', async () => {
 //     const { EncryptionService } = await import('../encryptionService')
 //     const uninitializedService = new EncryptionService()
-//     const key = await encryptionService.generateDocumentKey()
+//     const key = await encryptionService.generateKey()
 
 //     try {
 //       await uninitializedService.encryptECDH(key, 'some-pub')

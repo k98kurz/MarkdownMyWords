@@ -88,10 +88,10 @@ class EncryptionService {
   }
 
   /**
-   * Generate a random document-specific key (256-bit)
+   * Generate a random symmetric encryption key (256-bit)
    * @returns Promise resolving to string
    */
-  async generateDocumentKey(): Promise<string> {
+  async generateKey(): Promise<string> {
     try {
       const key = await crypto.subtle.generateKey(
         {
@@ -105,7 +105,7 @@ class EncryptionService {
     } catch (error) {
       throw {
         code: 'KEY_GENERATION_FAILED',
-        message: 'Failed to generate document key',
+        message: 'Failed to generate encryption key',
         details: error,
       } as EncryptionError;
     }
