@@ -8,6 +8,8 @@
 const Gun = require('gun');
 const http = require('http');
 
+const SHUTDOWN_TIMEOUT = 2000;
+
 const server = http.createServer();
 const gun = Gun({
   web: server,
@@ -34,16 +36,20 @@ server.on('error', (error) => {
 });
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('\n🛑 Shutting down GunDB relay server...');
-  server.close(() => {
-    process.exit(0);
-  });
-});
+function handleShutdown(signal) {
+  console.log(`\n🛑 Shutting down GunDB relay server (${signal})...`);
 
-process.on('SIGINT', () => {
-  console.log('\n🛑 Shutting down GunDB relay server...');
+  const timeoutId = setTimeout(() => {
+    console.error('⚠️  Graceful shutdown timed out, forcing exit...');
+    process.exit(1);
+  }, SHUTDOWN_TIMEOUT);
+
   server.close(() => {
+    clearTimeout(timeoutId);
+    console.log('✓ GunDB relay server shut down gracefully');
     process.exit(0);
   });
-});
+}
+
+process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+process.on('SIGINT', () => handleShutdown('SIGINT'));
