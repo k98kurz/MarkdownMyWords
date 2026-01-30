@@ -9,7 +9,11 @@ const Gun = require('gun');
 const http = require('http');
 
 const server = http.createServer();
-const gun = Gun({ web: server });
+const gun = Gun({
+  web: server,
+  localStorage: false,
+  radisk: false,
+});
 
 const PORT = process.env.GUN_PORT || 8765;
 
