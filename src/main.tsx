@@ -1,81 +1,81 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import './index.css'
-import App from './App.tsx'
-import { gunService } from './services/gunService'
-import { encryptionService } from './services/encryptionService'
-import { testVariousDocumentSizes } from './test/testDocumentSizes'
-import { testGunService } from './test/gunService.test'
-import { testAuthStore } from './test/authStore.test'
-import { testEncryptionService } from './test/encryptionService.test'
-import { testFunctionalResult } from './test/functionalResult.test'
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import './index.css';
+import App from './App.tsx';
+import { gunService } from './services/gunService';
+import { encryptionService } from './services/encryptionService';
+import { testVariousDocumentSizes } from './test/testDocumentSizes';
+import { testGunService } from './test/gunService.test';
+import { testAuthStore } from './test/authStore.test';
+import { testEncryptionService } from './test/encryptionService.test';
+import { testFunctionalResult } from './test/functionalResult.test';
 //import { testNewGunSEAScheme } from './test/testNewGunSEAScheme'
-import { clearGunDBLocalStorage } from './utils/clearGunDB'
-import { useConnectionStore } from './stores/connectionStore'
+import { clearGunDBLocalStorage } from './utils/clearGunDB';
+import { useConnectionStore } from './stores/connectionStore';
 
 // Initialize services
 async function initializeServices() {
   try {
     // Initialize GunDB
-    gunService.initialize()
-    console.log('✅ GunDB initialized')
+    gunService.initialize();
+    console.log('✅ GunDB initialized');
 
     // Initialize SEA
-    await encryptionService.initializeSEA()
-    console.log('✅ SEA initialized')
+    await encryptionService.initializeSEA();
+    console.log('✅ SEA initialized');
 
     // Set up connection status polling
     const updateConnectionStatus = () => {
-      const connectionStore = useConnectionStore.getState()
-      connectionStore.updateConnectionStatus()
-    }
+      const connectionStore = useConnectionStore.getState();
+      connectionStore.updateConnectionStatus();
+    };
 
     // Initial update
-    updateConnectionStatus()
+    updateConnectionStatus();
 
     // Set up polling interval
-    setInterval(updateConnectionStatus, 5000)
+    setInterval(updateConnectionStatus, 5000);
   } catch (error) {
-    console.error('❌ Failed to initialize services:', error)
+    console.error('❌ Failed to initialize services:', error);
   }
 }
 
 // Initialize services before rendering app
-initializeServices()
+initializeServices();
 
 // Run all tests function
 async function runAllTests(): Promise<void> {
-  console.log('🚀 Running All Tests\n')
-  console.log('='.repeat(60))
+  console.log('🚀 Running All Tests\n');
+  console.log('='.repeat(60));
 
   try {
     // Test 1: Document encryption sizes
-    console.log('\n📦 Test Suite 1: Document Encryption Sizes\n')
-    await testVariousDocumentSizes()
+    console.log('\n📦 Test Suite 1: Document Encryption Sizes\n');
+    await testVariousDocumentSizes();
 
-    console.log('\n' + '='.repeat(60))
+    console.log('\n' + '='.repeat(60));
 
     // Test 2: GunDB Service
-    console.log('\n📦 Test Suite 2: GunDB Service\n')
-    await testGunService()
+    console.log('\n📦 Test Suite 2: GunDB Service\n');
+    await testGunService();
 
-    console.log('\n' + '='.repeat(60))
+    console.log('\n' + '='.repeat(60));
 
     // Test 3: Auth Store
-    console.log('\n📦 Test Suite 3: Auth Store\n')
-    await testAuthStore()
+    console.log('\n📦 Test Suite 3: Auth Store\n');
+    await testAuthStore();
 
-    console.log('\n' + '='.repeat(60))
+    console.log('\n' + '='.repeat(60));
 
     // Test 4: Encryption Service
-    console.log('\n📦 Test Suite 4: Encryption Service\n')
-    await testEncryptionService()
+    console.log('\n📦 Test Suite 4: Encryption Service\n');
+    await testEncryptionService();
 
-    console.log('\n' + '='.repeat(60))
-    console.log('\n✅ All test suites complete!')
+    console.log('\n' + '='.repeat(60));
+    console.log('\n✅ All test suites complete!');
   } catch (error) {
-    console.error('\n❌ Error running tests:', error)
-    throw error
+    console.error('\n❌ Error running tests:', error);
+    throw error;
   }
 }
 
@@ -91,10 +91,14 @@ if (typeof window !== 'undefined') {
   (window as any).clearGunDB = clearGunDBLocalStorage;
   (window as any).gunService = gunService;
   console.log('🧪 Dev console functions available:');
-  console.log('   - window.testDocumentSizes() - Test encryption with various document sizes');
+  console.log(
+    '   - window.testDocumentSizes() - Test encryption with various document sizes'
+  );
   console.log('   - window.testGunService() - Test GunDB service operations');
   console.log('   - window.testAuthStore() - Test authentication store');
-  console.log('   - window.testEncryptionService() - Test encryption service (full test suite)');
+  console.log(
+    '   - window.testEncryptionService() - Test encryption service (full test suite)'
+  );
   console.log(
     '   - window.testFunctionalResult() - Test functional result utility (comprehensive suite)'
   );
@@ -115,4 +119,4 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />
   </StrictMode>
-)
+);
