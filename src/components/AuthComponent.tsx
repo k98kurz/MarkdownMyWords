@@ -6,9 +6,16 @@
  */
 
 import { useState, useEffect, useRef } from 'react'
+import type { IGunUserInstance } from 'gun/types'
+
+// GunDB user session state (from gun.user().is)
+interface GunUserSession {
+  alias?: string
+  pub?: string
+}
 
 interface AuthComponentProps {
-  user: any // GunDB user object
+  user: IGunUserInstance | null
   onLogout: () => void
 }
 
@@ -18,17 +25,19 @@ export function AuthComponent({ user, onLogout }: AuthComponentProps) {
 
   // Get username from user object with fallbacks
   const getUsername = () => {
-    if (!user) return 'User'
-    if (user.is) {
-      // Prefer alias if it exists and is not a public key
-      if (user.alias && !user.alias.includes('.')) {
-        return user.alias
-      }
-      // Fallback to pub key (truncated) if no alias
-      if (user.pub) {
-        return user.pub.substring(0, 20) + '...'
-      }
+    if (!user?.is) return 'User'
+
+    const userState = user.is as GunUserSession
+
+    // Prefer alias if it exists and is not a public key
+    if (userState.alias && !userState.alias.includes('.')) {
+      return userState.alias
     }
+    // Fallback to pub key (truncated) if no alias
+    if (userState.pub) {
+      return userState.pub.substring(0, 20) + '...'
+    }
+
     return 'User'
   }
 

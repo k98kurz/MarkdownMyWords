@@ -57,7 +57,8 @@ export const useErrorStore = create<ErrorState>((set) => ({
       try {
         message = JSON.stringify(error);
       } catch {
-        message = (error as any).message ?? String(error)
+        const errorObj = error as Record<string, unknown>;
+        message = (errorObj.message as string | undefined) ?? String(error);
       }
     }
 
