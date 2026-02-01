@@ -11,12 +11,24 @@ import 'gun/lib/radix'; // Radix for storage
 import 'gun/lib/radisk'; // Radisk for IndexedDB
 import { retryWithBackoff } from '../utils/retryHelper';
 import type { GunInstance, GunConfig, GunError } from '../types/gun';
-import { GunErrorCode, GunNodeRef } from '../types/gun';
-import type { IGunUserInstance } from 'gun/types';
+import { GunErrorCode, GunNodeRef, GunAck } from '../types/gun';
+import type { IGunUserInstance, ISEAPair } from 'gun/types';
 
 export interface SEAUser {
   alias: string;
   pub: string; // Public key
+}
+
+export interface ListItemResult {
+  soul: string;
+  data: string | Record<string, unknown>;
+  node: unknown;
+}
+
+export interface DiscoveredUser {
+  pub: string;
+  data: unknown;
+  userNode: unknown;
 }
 
 /**
@@ -117,7 +129,7 @@ class GunService {
     // Try a test operation to verify connection (using namespaced path)
     this.gun
       .get(this.getNodePath('_connection_test'))
-      .put({ timestamp: Date.now() }, (ack: any) => {
+      .put({ timestamp: Date.now() }, (ack: GunAck) => {
         if (ack.err) {
           this.connectionState = 'disconnected';
           console.warn('GunDB connection test failed:', ack.err);
@@ -134,7 +146,7 @@ class GunService {
 
       this.gun
         .get(this.getNodePath('_health_check'))
-        .put({ timestamp: Date.now() }, (ack: any) => {
+        .put({ timestamp: Date.now() }, (ack: GunAck) => {
           if (ack.err && this.connectionState === 'connected') {
             this.connectionState = 'disconnected';
             this.handleOffline();
@@ -179,15 +191,15 @@ class GunService {
    * Returns the value or null if not found after retry
    */
   readWithRetry<T>(
-    node: any,
+    node: GunNodeRef,
     callback: (value: T | null) => void,
     retryDelay = 500
   ): void {
     let retried = false;
     const readOnce = () => {
-      node.once((value: T | null) => {
+      node.once((value: unknown) => {
         if (value !== null && value !== undefined) {
-          callback(value);
+          callback(value as T);
         } else if (!retried) {
           retried = true;
           setTimeout(readOnce, retryDelay);
@@ -251,7 +263,7 @@ class GunService {
 
       this.gun!.get(this.getNodePath('_retry_test')).put(
         { timestamp: Date.now() },
-        (ack: any) => {
+        (ack: GunAck) => {
           clearTimeout(timeout);
 
           if (ack.err) {
@@ -277,8 +289,17 @@ class GunService {
    */
   async writeProfile(): Promise<void> {
     const gun = this.getGun();
+    const userNode = gun.user();
+    const userState = userNode.is;
+
+    if (!userState || !('epub' in userState) || !userState.epub) {
+      throw new Error('User session not available or ephemeral key missing');
+    }
+
+    const epub = userState.epub;
+
     return new Promise<void>((resolve, reject) => {
-      gun.user().put({ epub: (gun.user().is as any)?.epub }, (ack: any) => {
+      userNode.put({ epub }, (ack: GunAck) => {
         if (ack.err) {
           reject(new Error(`Profile storage failed: ${ack.err}`));
         } else {
@@ -305,9 +326,9 @@ class GunService {
 
     return new Promise<void>((resolve, reject) => {
       const gun = this.gun!;
-      gun.user().create(username, password, (ack: any) => {
-        if (ack.err) {
-          reject(new Error(`User creation failed: ${ack.err}`));
+      gun.user().create(username, password, (ack: unknown) => {
+        if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
+          reject(new Error(`User creation failed: ${String(ack.err)}`));
         } else {
           resolve();
         }
@@ -332,9 +353,9 @@ class GunService {
 
     return new Promise<void>((resolve, reject) => {
       const gun = this.gun!;
-      gun.user().auth(username, password, (ack: any) => {
-        if (ack.err) {
-          reject(new Error(`Authentication failed: ${ack.err}`));
+      gun.user().auth(username, password, (ack: unknown) => {
+        if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
+          reject(new Error(`Authentication failed: ${String(ack.err)}`));
         } else {
           resolve();
         }
@@ -348,19 +369,19 @@ class GunService {
    * @param username - Username to search for
    * @returns Promise resolving to array of discovered user profiles
    */
-  async discoverUsers(username: string): Promise<any[]> {
+  async discoverUsers(username: string): Promise<DiscoveredUser[]> {
     const gun = this.getGun();
-    return new Promise<any[]>(resolve => {
-      const collectedProfiles: any[] = [];
+    return new Promise<DiscoveredUser[]>(resolve => {
+      const collectedProfiles: DiscoveredUser[] = [];
       setTimeout(() => resolve(collectedProfiles), 500);
 
       gun
         .get(`~@${username}`)
         .map()
-        .once((data: any, pub: string) => {
+        .once((data: unknown, pub: string) => {
           if (!data) return;
           const cleanPub = pub.startsWith('~') ? pub.slice(1) : pub;
-          gun.get(`~${cleanPub}`).once((userNode: any) => {
+          gun.get(`~${cleanPub}`).once((userNode: unknown) => {
             collectedProfiles.push({ pub: cleanPub, data, userNode });
           });
         });
@@ -375,10 +396,10 @@ class GunService {
   async listItems(
     nodePath: string[],
     startNode?: GunNodeRef | IGunUserInstance
-  ): Promise<any[]> {
+  ): Promise<ListItemResult[]> {
     const gun = this.getGun();
-    return new Promise<any[]>(resolve => {
-      const collectedItems: any[] = [];
+    return new Promise<ListItemResult[]>(resolve => {
+      const collectedItems: ListItemResult[] = [];
       setTimeout(() => resolve(collectedItems), 500);
 
       const node = nodePath.reduce(
@@ -386,11 +407,13 @@ class GunService {
         startNode ?? gun
       ) as GunNodeRef;
 
-      node.map().once((data: any, soul: string) => {
+      node.map().once((data: unknown, soul: string) => {
         if (!data) return;
         const cleanSoul = soul.startsWith('~') ? soul.slice(1) : soul;
-        gun.get(`~${cleanSoul}`).once((node: any) => {
-          collectedItems.push({ soul: cleanSoul, data, node });
+        gun.get(`~${cleanSoul}`).once((node: unknown) => {
+          const typedData: string | Record<string, unknown> =
+            typeof data === 'string' ? data : (data as Record<string, unknown>);
+          collectedItems.push({ soul: cleanSoul, data: typedData, node });
         });
       });
     });
@@ -401,7 +424,7 @@ class GunService {
    * @param nodePath - the path to the node
    * @returns Promise resolving to array of nodes
    */
-  async listUserItems(nodePath: string[]): Promise<any[]> {
+  async listUserItems(nodePath: string[]): Promise<ListItemResult[]> {
     return await this.listItems(nodePath, this.getGun().user());
   }
 
@@ -417,8 +440,14 @@ class GunService {
       throw new Error('SEA not available');
     }
     const gun = this.getGun();
-    const user = gun.user();
-    const sea = (user as any)._?.sea;
+    const userNode = gun.user();
+    const userState = userNode.is;
+
+    if (!userState || !('sea' in userState) || !userState.sea) {
+      throw new Error('User cryptographic keypair not available');
+    }
+
+    const sea = userState.sea as ISEAPair;
     const result = await SEA.work(plainPath, sea);
     if (!result) {
       throw new Error('Failed to hash path part');
@@ -452,18 +481,23 @@ class GunService {
     const gun = this.getGun();
     const privatePath = await this.getPrivatePath(plainPath);
     const user = gun.user();
-    let node: any = user;
+
+    let node: unknown = user;
     for (const part of privatePath) {
-      node = node.get(part);
+      const getNode = (node as Record<string, unknown>).get as (
+        key: string
+      ) => unknown;
+      node = getNode(part);
     }
 
     return new Promise<void>(async (resolve, reject) => {
-      const sea = (user as any)._?.sea;
-      if (!sea) {
+      const userState = user.is;
+      if (!userState || !('sea' in userState) || !userState.sea) {
         reject(new Error('User cryptographic keypair not available'));
         return;
       }
 
+      const sea = userState.sea as ISEAPair;
       const SEA = Gun.SEA;
       const ciphertext = await SEA?.encrypt(plaintext, sea);
       if (!ciphertext) {
@@ -471,9 +505,12 @@ class GunService {
         return;
       }
 
-      node.put(ciphertext, (ack: any) => {
-        if (ack && ack.err) {
-          reject(new Error(`Failed to write private data: ${ack.err}`));
+      const putNode = node as {
+        put: (data: unknown, cb?: (ack: unknown) => void) => void;
+      };
+      putNode.put(ciphertext, (ack: unknown) => {
+        if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
+          reject(new Error(`Failed to write private data: ${String(ack.err)}`));
         } else {
           resolve();
         }
@@ -495,19 +532,29 @@ class GunService {
     const gun = this.getGun();
     const path = hashedPath || (await this.getPrivatePath(plainPath));
     const user = gun.user();
-    let node: any = user;
+    let node: unknown = user;
     for (const part of path) {
-      node = node.get(part);
+      const getNode = (node as Record<string, unknown>).get as (
+        key: string
+      ) => unknown;
+      node = getNode(part);
     }
 
     return await new Promise<string>((resolve, reject) => {
-      node.once(async (ciphertext: any) => {
+      const userState = user.is;
+      if (!userState || !('sea' in userState) || !userState.sea) {
+        reject(new Error('User cryptographic keypair not available'));
+        return;
+      }
+
+      const sea = userState.sea as ISEAPair;
+      const onceNode = node as { once: (cb: (data: unknown) => void) => void };
+      onceNode.once(async (ciphertext: unknown) => {
         if (ciphertext === undefined) {
           reject(new Error('Private data not found or could not be decrypted'));
         } else {
           const SEA = Gun.SEA;
-          const sea = (user as any)._?.sea;
-          const plaintext = await SEA?.decrypt(ciphertext, sea);
+          const plaintext = await SEA?.decrypt(ciphertext as string, sea);
           resolve(plaintext);
         }
       });
@@ -528,16 +575,22 @@ class GunService {
     const gun = this.getGun();
     const privatePath = await this.getPrivatePath(plainPath);
     const user = gun.user();
-    let privateNode: any = user;
+    let privateNode: unknown = user;
     for (const part of privatePath) {
-      privateNode = privateNode.get(part);
+      const getNode = (privateNode as Record<string, unknown>).get as (
+        key: string
+      ) => unknown;
+      privateNode = getNode(part);
     }
 
     const keys: string[] = await new Promise<string[]>(resolve => {
       const collectedKeys: string[] = [];
       setTimeout(() => resolve(collectedKeys), 500);
 
-      privateNode.map().once((_data: any, key: string) => {
+      const mapNode = privateNode as {
+        map: () => { once: (cb: (data: unknown, key: string) => void) => void };
+      };
+      mapNode.map().once((_data: unknown, key: string) => {
         if (key) {
           collectedKeys.push(key);
         }
@@ -587,9 +640,9 @@ class GunService {
 
     return new Promise<SEAUser>((resolve, reject) => {
       // Authenticate user with SEA
-      this.gun!.user().auth(username, password, async (ack: any) => {
+      this.gun!.user().auth(username, password, async (ack: unknown) => {
         // Check for explicit error from GunDB
-        if (ack.err) {
+        if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
           reject({
             code: GunErrorCode.SYNC_ERROR,
             message: 'Invalid username or password',
@@ -600,19 +653,25 @@ class GunService {
 
         // Check if user is already authenticated
         const user = this.gun!.user();
+        const userState = user.is;
 
         // If user.is is set with a pub key, authentication succeeded
         // no idea why it needs two different success cases, but it breaks without them both
-        if (user.is && user.is.pub) {
+        if (userState && 'pub' in userState && userState.pub) {
           const userData: SEAUser = {
             alias: username,
-            pub: user.is.pub as string,
+            pub: userState.pub as string,
           };
           resolve(userData);
         }
 
         // If ack.ok !== undefined, login succeeded
-        if (ack.ok !== undefined) {
+        if (
+          ack &&
+          typeof ack === 'object' &&
+          'ok' in ack &&
+          ack.ok !== undefined
+        ) {
           this.waitForUserState()
             .then(pub => {
               // Authentication actually succeeded despite ok: 0

@@ -5,13 +5,36 @@
  */
 
 import { gunService, GunService } from '../services/gunService';
-import type { GunError } from '../types/gun';
+import type { GunError, GunAck } from '../types/gun';
 import { GunErrorCode } from '../types/gun';
 import {
   TestRunner,
   printTestSummary,
   type TestSuiteResult,
 } from '../utils/testRunner';
+
+/**
+ * Test GunDB Service initialization
+ */
+
+/**
+ * Type guard for objects with epub property
+ */
+function hasEpub(data: unknown): data is { epub: string } {
+  return typeof data === 'object' && data !== null && 'epub' in data;
+}
+
+/**
+ * Type guard for GunError
+ */
+function isGunError(error: unknown): error is GunError {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    'message' in error
+  );
+}
 
 /**
  * Test GunDB Service initialization
@@ -69,14 +92,16 @@ async function testUserOperations(): Promise<TestSuiteResult> {
     await gunService.writeProfile();
     await new Promise(resolve => setTimeout(resolve, 500));
     const users = await gunService.discoverUsers(testUsername);
-    if (users.length > 0 && users[0].data.epub) {
+    if (users.length > 0 && hasEpub(users[0].data)) {
       const epub = users[0].data.epub;
       console.log(`  Ephemeral pubkey retrieved: ${epub.substring(0, 20)}...`);
     } else {
       throw new Error('  Ephemeral pubkey retrieval failed');
     }
-    testUserPub = (gunService.getGun()?.user().is as any)?.pub;
-    if (!testUserPub) {
+    const userState = gunService.getGun()?.user().is;
+    if (userState && 'pub' in userState && userState.pub) {
+      testUserPub = userState.pub;
+    } else {
       throw new Error('Failed to get user pub key');
     }
     console.log(
@@ -146,7 +171,10 @@ async function testListItems(): Promise<TestSuiteResult> {
         console.error(`Malformed item: ${JSON.stringify(item)}`);
         throw new Error('Item missing required properties');
       }
-      if (![item1, item2, item3].includes(item.data)) {
+      if (
+        typeof item.data === 'string' &&
+        ![item1, item2, item3].includes(item.data)
+      ) {
         console.error(`Unexpected item.data: ${item.data}`);
       }
     }
@@ -163,13 +191,13 @@ async function testListItems(): Promise<TestSuiteResult> {
         .user()
         .get('private')
         .get('item1')
-        .put({ content: userItem1 }, (_ack: any) => {
+        .put({ content: userItem1 }, (_ack: GunAck) => {
           // Success - continue
           gun
             .user()
             .get('private')
             .get('item2')
-            .put({ content: userItem2 }, (_ack: any) => {
+            .put({ content: userItem2 }, (_ack: GunAck) => {
               // Success - continue
               resolve();
             });
@@ -192,7 +220,15 @@ async function testListItems(): Promise<TestSuiteResult> {
         console.error(`Malformed item: ${JSON.stringify(item)}`);
         throw new Error('User item missing required properties');
       }
-      if (!item.data.content) {
+      if (
+        typeof item.data === 'object' &&
+        item.data !== null &&
+        'content' in item.data
+      ) {
+        if (!item.data.content) {
+          throw new Error('User item data missing content property');
+        }
+      } else {
         throw new Error('User item data missing content property');
       }
     }
@@ -237,10 +273,12 @@ async function testErrorHandling(): Promise<TestSuiteResult> {
       await uninitializedService.discoverUsers('test-id');
       throw new Error('Operation should have failed');
     } catch (error) {
-      const gunError = error as GunError;
-      if (gunError.code !== GunErrorCode.CONNECTION_FAILED) {
+      if (!isGunError(error)) {
+        throw new Error('Error is not a GunError');
+      }
+      if (error.code !== GunErrorCode.CONNECTION_FAILED) {
         throw new Error(
-          `Expected CONNECTION_FAILED error, got: ${gunError.message}`
+          `Expected CONNECTION_FAILED error, got: ${error.message}`
         );
       }
     }

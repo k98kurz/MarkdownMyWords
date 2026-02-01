@@ -145,7 +145,14 @@ async function testKeySharing(): Promise<TestSuiteResult> {
       // Bob gets Alice's epub from discovered users
       const aliceUsers = await gunService.discoverUsers(aliceUsername);
       assert(aliceUsers.length > 0, "Failed to discover Alice's profile");
-      const aliceEpub = aliceUsers[0].data.epub;
+      assert(
+        typeof aliceUsers[0].data === 'object' &&
+          aliceUsers[0].data !== null &&
+          'epub' in aliceUsers[0].data,
+        "Failed to get Alice's data from profile"
+      );
+      const aliceEpub = (aliceUsers[0].data as Record<string, unknown>)
+        .epub as string;
       assert(aliceEpub, "Failed to get Alice's epub from profiles");
       console.log(
         `Bob retrieved Alice's epub: ${aliceEpub.substring(0, 20)}...`
@@ -170,7 +177,14 @@ async function testKeySharing(): Promise<TestSuiteResult> {
       // Alice gets Bob's epub from discovered users
       const bobUsers = await gunService.discoverUsers(bobUsername);
       assert(bobUsers.length > 0, "Failed to discover Bob's profile");
-      const bobEpub = bobUsers[0].data.epub;
+      assert(
+        typeof bobUsers[0].data === 'object' &&
+          bobUsers[0].data !== null &&
+          'epub' in bobUsers[0].data,
+        "Failed to get Bob's data from profile"
+      );
+      const bobEpub = (bobUsers[0].data as Record<string, unknown>)
+        .epub as string;
       assert(bobEpub, "Failed to get Bob's epub from profiles");
       console.log(`Alice retrieved Bob's epub: ${bobEpub.substring(0, 20)}...`);
 

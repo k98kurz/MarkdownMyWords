@@ -103,3 +103,43 @@ export type UserCallback = (user: User | null) => void;
  * Unsubscribe function returned by subscription methods
  */
 export type Unsubscribe = () => void;
+
+/**
+ * GunDB acknowledgment from put/set operations
+ */
+export interface GunAck {
+  err?: string | null;
+  ok?: number | Record<string, number> | null;
+  v?: number | null;
+}
+
+/**
+ * GunDB user session state (gun.user().is)
+ */
+export interface GunUserSession {
+  alias?: string;
+  pub?: string;
+  epub?: string;
+  sea?: unknown;
+}
+
+/**
+ * GunDB user node with session state
+ */
+export interface GunUserNode {
+  is: GunUserSession;
+  get: (path: string) => GunNodeRef;
+  put: (data: unknown, callback?: (ack: GunAck) => void) => void;
+  once: (callback: (data: unknown, key?: string) => void) => void;
+  auth: (
+    alias: string,
+    password: string,
+    callback?: (ack: GunAck) => void
+  ) => void;
+  create: (
+    alias: string,
+    password: string,
+    callback?: (ack: GunAck) => void
+  ) => void;
+  leave: () => void;
+}
