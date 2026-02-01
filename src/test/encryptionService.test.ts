@@ -12,7 +12,7 @@ import {
 } from '../utils/testRunner';
 // import { retryWithBackoff } from '../../utils/retryHelper'
 
-const assert = (condition: any, message: string) => {
+const assert = (condition: unknown, message: string) => {
   if (!condition) {
     throw new Error(message);
   }
