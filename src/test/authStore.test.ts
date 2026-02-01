@@ -2,13 +2,26 @@
  * Auth Store Browser Tests
  *
  * Tests for authentication state management that can be run from the browser console.
- * This follows the established TestRunner pattern from gunService.test.ts.
+ *
+ * IMPORTANT: Dual Error Handling Pattern
+ * --------------------------------------
+ * authStore methods use a dual error handling approach:
+ *
+ * 1. Thrown Errors: AuthError objects with structure:
+ *    { type: string, message: string, originalError?: unknown }
+ *
+ * 2. Store State: User-friendly messages in state.error (string | null)
+ *
+ * Tests should verify BOTH:
+ * - Thrown AuthError objects have correct type and originalError
+ * - Store state contains user-friendly messages for UI display
  */
 
 import { useAuthStore } from '../stores/authStore'
 import { gunService } from '../services/gunService'
 import { TestRunner, type TestSuiteResult, sleep } from '../utils/testRunner'
-import { tryCatch } from '../utils/tryCatch'
+import { tryCatch, isFailure } from '../utils/functionalResult'
+import type { AuthError } from '../stores/authStore'
 
 /**
  * Cleanup authStore state between tests
@@ -39,44 +52,58 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 /**
+ * Type guard to check if error is AuthError
+ */
+function isAuthError(error: unknown): error is AuthError {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'message' in error &&
+    typeof error.message === 'string' &&
+    'type' in error &&
+    typeof error.type === 'string'
+  )
+}
+
+/**
  * Test input validation
  */
 async function testInputValidation(runner: TestRunner): Promise<void> {
-  // Test register validation
   await runner.run('Register with empty username', async () => {
-    const result = await tryCatch(useAuthStore.getState().register('', 'password123'))
-    assert(result.error !== null, 'Should fail with empty username')
-    assert(
-      result.error?.toString().includes('Username is required'),
-      'Should validate empty username'
-    )
+    const result = await tryCatch(async () => useAuthStore.getState().register('', 'password123'))
+    assert(isFailure(result), 'Should fail with empty username')
+    assert(isAuthError(result.error), 'Should throw AuthError object')
+    assert(result.error?.type === 'VALIDATION_ERROR', 'Error type should be VALIDATION_ERROR')
+    assert(result.error?.message === 'Username is required', 'Error message should match exactly')
   })
 
   await runner.run('Register with short password', async () => {
-    const result = await tryCatch(useAuthStore.getState().register('user', '123'))
-    assert(result.error !== null, 'Should fail with short password')
+    const result = await tryCatch(async () => useAuthStore.getState().register('user', '123'))
+    assert(isFailure(result), 'Should fail with short password')
+    assert(isAuthError(result.error), 'Should throw AuthError object')
+    assert(result.error?.type === 'VALIDATION_ERROR', 'Error type should be VALIDATION_ERROR')
     assert(
-      result.error?.toString().includes('at least 6 characters'),
-      'Should validate password length'
+      result.error?.message === 'Password must be at least 6 characters',
+      'Error message should match exactly'
     )
   })
 
-  // Test login validation
   await runner.run('Login with empty username', async () => {
-    const result = await tryCatch(useAuthStore.getState().login('', 'password123'))
-    assert(result.error !== null, 'Should fail with empty username')
-    assert(
-      result.error?.toString().includes('Username is required'),
-      'Should validate empty username'
-    )
+    const result = await tryCatch(async () => useAuthStore.getState().login('', 'password123'))
+    assert(isFailure(result), 'Should fail with empty username')
+    assert(isAuthError(result.error), 'Should throw AuthError object')
+    assert(result.error?.type === 'VALIDATION_ERROR', 'Error type should be VALIDATION_ERROR')
+    assert(result.error?.message === 'Username is required', 'Error message should match exactly')
   })
 
   await runner.run('Login with empty password', async () => {
-    const result = await tryCatch(useAuthStore.getState().login('user', ''))
-    assert(result.error !== null, 'Should fail with empty password')
+    const result = await tryCatch(async () => useAuthStore.getState().login('user', ''))
+    assert(isFailure(result), 'Should fail with empty password')
+    assert(isAuthError(result.error), 'Should throw AuthError object')
+    assert(result.error?.type === 'VALIDATION_ERROR', 'Error type should be VALIDATION_ERROR')
     assert(
-      result.error?.toString().includes('Password is required'),
-      'Should validate empty password'
+      result.error?.message === 'Password must be at least 6 characters',
+      'Error message should match exactly'
     )
   })
 }
@@ -89,25 +116,27 @@ async function testBasicOperations(runner: TestRunner): Promise<void> {
     const username = generateTestUsername('_auth_regression')
     const password = 'testpass123'
 
-    // First, create the user
-    const registerResult = await tryCatch(useAuthStore.getState().register(username, password))
-    if (registerResult.error) {
+    const registerResult = await tryCatch<void, AuthError>(() =>
+      useAuthStore.getState().register(username, password)
+    )
+    if (isFailure(registerResult)) {
       throw registerResult.error
     }
 
-    // Logout to test authentication
     useAuthStore.getState().logout()
 
-    // Now try to authenticate
-    const loginResult = await tryCatch(useAuthStore.getState().login(username, password))
-    assert(loginResult.error === null, `Login should not error: ${loginResult.error?.toString()}`)
+    const loginResult = await tryCatch<void, AuthError>(() =>
+      useAuthStore.getState().login(username, password)
+    )
+    assert(
+      !isFailure(loginResult),
+      `Login should not error: ${isFailure(loginResult) ? loginResult.error.message : 'none'}`
+    )
 
-    // Verify user was authenticated successfully
     const { user, isAuthenticated } = useAuthStore.getState()
     assert(isAuthenticated, 'Should be authenticated')
     assert(user !== null, 'Should have user object')
 
-    // Verify user.is is actually set in GunDB
     const gun = gunService.getGun()
     assert(gun !== null, 'GunDB should be initialized')
     const gunUser = gun.user()
@@ -121,31 +150,128 @@ async function testBasicOperations(runner: TestRunner): Promise<void> {
     const username = generateTestUsername('_creation_regression')
     const password = 'testpass123'
 
-    // First, create the user
-    const registerResult = await tryCatch(useAuthStore.getState().register(username, password))
-    if (registerResult.error) {
-      throw registerResult.error
-    }
+    const registerResult = await tryCatch<void, AuthError>(() =>
+      useAuthStore.getState().register(username, password)
+    )
+    assert(registerResult.success, JSON.stringify(registerResult))
 
-    // Verify user was created successfully
     const { user, isAuthenticated } = useAuthStore.getState()
     assert(isAuthenticated, 'Should be authenticated')
     assert(user !== null, 'Should have user object')
 
-    // Now try to create the same user again
-    const result = await tryCatch(useAuthStore.getState().register(username, password))
-
-    // Should receive a user creation error
-    assert(result.error !== null, 'Should error when creating existing user')
-    assert(
-      result.error?.toString().includes('User already created'),
-      `Should indicate user already exists; observed: ${result.error?.toString()}`
+    const result = await tryCatch<void, AuthError>(() =>
+      useAuthStore.getState().register(username, password)
     )
 
-    // AuthStore state should have user-friendly error
+    assert(isFailure(result), 'Should error when creating existing user')
+    assert(isAuthError(result.error), 'Should throw AuthError object')
+    assert(result.error?.type === 'USER_EXISTS', 'Error type should be USER_EXISTS')
+    assert(
+      result.error?.message === 'Could not create account. Username may already be taken.',
+      `Should show user-friendly message; observed: ${result.error?.message || 'unknown error'}`
+    )
+
     const state = useAuthStore.getState()
     assert(
-      state.error?.includes('Could not create account. Username may already be taken'),
+      state.error === 'Could not create account. Username may already be taken.',
+      `Should show user-friendly error message; observed: ${state.error}`
+    )
+
+    console.log(`  User creation correctly rejected existing user`)
+  })
+
+  await runner.run('Duplicate registration should error', async () => {
+    const username = generateTestUsername('_creation_regression')
+    const password = 'testpass123'
+
+    const registerResult = await tryCatch<void, AuthError>(() =>
+      useAuthStore.getState().register(username, password)
+    )
+    assert(registerResult.success, JSON.stringify(registerResult))
+
+    const { user, isAuthenticated } = useAuthStore.getState()
+    assert(isAuthenticated, 'Should be authenticated')
+    assert(user !== null, 'Should have user object')
+
+    const result = await tryCatch<void, AuthError>(() =>
+      useAuthStore.getState().register(username, password)
+    )
+
+    assert(isFailure(result), 'Should error when creating existing user')
+    assert(isAuthError(result.error), 'Should throw AuthError object')
+    assert(result.error?.type === 'USER_EXISTS', 'Error type should be USER_EXISTS')
+    assert(
+      result.error?.message === 'Could not create account. Username may already be taken.',
+      `Should show user-friendly message; observed: ${result.error?.message || 'unknown error'}`
+    )
+
+    const state = useAuthStore.getState()
+    assert(
+      state.error === 'Could not create account. Username may already be taken.',
+      `Should show user-friendly error message; observed: ${state.error}`
+    )
+
+    console.log(`  User creation correctly rejected existing user`)
+  })
+
+  await runner.run('Duplicate registration should error', async () => {
+    const username = generateTestUsername('_creation_regression')
+    const password = 'testpass123'
+
+    const registerResult = await tryCatch(() =>
+      useAuthStore.getState().register(username, password)
+    )
+    assert(registerResult.success, JSON.stringify(registerResult))
+
+    const { user, isAuthenticated } = useAuthStore.getState()
+    assert(isAuthenticated, 'Should be authenticated')
+    assert(user !== null, 'Should have user object')
+
+    const result = await tryCatch(() => useAuthStore.getState().register(username, password))
+
+    assert(isFailure(result), 'Should error when creating existing user')
+    assert(isAuthError(result.error), 'Should throw AuthError object')
+    assert(result.error?.type === 'USER_EXISTS', 'Error type should be USER_EXISTS')
+    assert(
+      result.error?.message === 'Could not create account. Username may already be taken.',
+      `Should show user-friendly message; observed: ${result.error?.message || 'unknown error'}`
+    )
+
+    const state = useAuthStore.getState()
+    assert(
+      state.error === 'Could not create account. Username may already be taken.',
+      `Should show user-friendly error message; observed: ${state.error}`
+    )
+
+    console.log(`  User creation correctly rejected existing user`)
+  })
+
+  await runner.run('Duplicate registration should error', async () => {
+    const username = generateTestUsername('_creation_regression')
+    const password = 'testpass123'
+
+    const registerResult = await tryCatch(async () =>
+      useAuthStore.getState().register(username, password)
+    )
+    assert(registerResult.success, JSON.stringify(registerResult))
+
+    const { user, isAuthenticated } = useAuthStore.getState()
+    assert(isAuthenticated, 'Should be authenticated')
+    assert(user !== null, 'Should have user object')
+
+    const result = await tryCatch(async () => useAuthStore.getState().register(username, password))
+
+    assert(isFailure(result), 'Should error when creating existing user')
+    assert(isAuthError(result.error), 'Should throw AuthError object')
+    assert(result.error?.type === 'USER_EXISTS', 'Error type should be USER_EXISTS')
+    assert(
+      result.error?.message === 'Could not create account. Username may already be taken.',
+      `Should show user-friendly message; observed: ${result.error?.message || 'unknown error'}`
+    )
+
+    const state = useAuthStore.getState()
+    assert(
+      state.error === 'Could not create account. Username may already be taken.',
       `Should show user-friendly error message; observed: ${state.error}`
     )
 
@@ -172,12 +298,10 @@ async function testBasicOperations(runner: TestRunner): Promise<void> {
   })
 
   await runner.run('Clear error works correctly', async () => {
-    // Trigger an error first
-    await tryCatch(useAuthStore.getState().register('', ''))
+    await tryCatch<void, AuthError>(() => useAuthStore.getState().register('', ''))
     let state = useAuthStore.getState()
     assert(state.error !== null, 'Should have error after failed validation')
 
-    // Clear error
     useAuthStore.getState().clearError()
     state = useAuthStore.getState()
     assert(state.error === null, 'Should have no error after clearError')
@@ -206,15 +330,16 @@ async function testStateTransitions(runner: TestRunner): Promise<void> {
   })
 
   await runner.run('State cleanup on register failure', async () => {
-    // Use existing username to trigger failure
     const username = generateTestUsername('_cleanup')
     await useAuthStore.getState().register(username, 'password123')
     await useAuthStore.getState().logout()
 
-    const result = await tryCatch(useAuthStore.getState().register(username, 'password123'))
+    const result = await tryCatch<void, AuthError>(() =>
+      useAuthStore.getState().register(username, 'password123')
+    )
     const finalState = useAuthStore.getState()
 
-    assert(result.error !== null, 'Should fail to register existing user')
+    assert(isFailure(result), 'Should fail to register existing user')
     assert(!finalState.isLoading, 'Should not be loading after failure')
     assert(!finalState.isAuthenticated, 'Should not be authenticated after failure')
     assert(finalState.error !== null, 'Should have error message')
@@ -230,37 +355,50 @@ async function testErrorHandling(runner: TestRunner): Promise<void> {
     await useAuthStore.getState().register(username, 'password123')
     await useAuthStore.getState().logout()
 
-    // Try to create the same user again - should fail gracefully
-    const result = await tryCatch(useAuthStore.getState().register(username, 'password123'))
+    const result = await tryCatch<void, AuthError>(() =>
+      useAuthStore.getState().register(username, 'password123')
+    )
     const state = useAuthStore.getState()
 
-    // The thrown error should contain the original message
+    assert(isFailure(result), 'Should fail when registering existing user')
+    assert(isAuthError(result.error), 'Error should be AuthError type')
+    assert(result.error?.type === 'USER_EXISTS', 'Error type should be USER_EXISTS')
     assert(
-      result.error?.toString().includes('User already created'),
-      'Should throw original error with "User already created"'
+      result.error?.message === 'Could not create account. Username may already be taken.',
+      'Error message should be user-friendly'
     )
-
-    // But the authStore state should show friendly message
     assert(
-      state.error?.includes('Could not create account. Username may already be taken'),
+      result.error?.originalError instanceof Error,
+      'Original error should be preserved as Error instance'
+    )
+    if (result.error?.originalError instanceof Error) {
+      assert(
+        result.error.originalError.message.includes('User creation failed'),
+        'Original error should contain gunService message'
+      )
+    }
+
+    assert(
+      state.error === 'Could not create account. Username may already be taken.',
       'Should show user-friendly error for existing username'
     )
   })
 
-  await runner.run('Unexpected errors show validation not modal', async () => {
+  await runner.run('Unexpected errors show validation hint not modal', async () => {
     const username = generateTestUsername('_unexpected')
 
-    const result = await tryCatch(useAuthStore.getState().register(username, ''))
-    // Empty password should trigger validation error (not global modal)
+    const result = await tryCatch<void, AuthError>(() =>
+      useAuthStore.getState().register(username, '')
+    )
+    assert(isFailure(result), 'Should fail with validation error')
     assert(
-      result.error?.toString().includes('Password must be at least 6 characters'),
+      result.error?.message === 'Password must be at least 6 characters',
       'Should show validation error for empty password'
     )
 
-    // The authStore state should show the validation error
     const state = useAuthStore.getState()
     assert(
-      state.error?.includes('Password must be at least 6 characters'),
+      state.error === 'Password must be at least 6 characters',
       'Should have validation error in state'
     )
   })
@@ -296,6 +434,97 @@ async function testSessionManagement(runner: TestRunner): Promise<void> {
 }
 
 /**
+ * Test error transformation from various error types
+ */
+async function testErrorTransformation(runner: TestRunner): Promise<void> {
+  await runner.run('Transform USER_EXISTS error from gunService', async () => {
+    const username = generateTestUsername('_transform_user_exists')
+    await useAuthStore.getState().register(username, 'password123')
+    await useAuthStore.getState().logout()
+
+    const result = await tryCatch<void, AuthError>(() =>
+      useAuthStore.getState().register(username, 'password123')
+    )
+
+    assert(isFailure(result), 'Should fail when registering existing user')
+    assert(isAuthError(result.error), 'Error should be AuthError type')
+    assert(result.error?.type === 'USER_EXISTS', 'Should transform to USER_EXISTS')
+    assert(
+      result.error?.message === 'Could not create account. Username may already be taken.',
+      'Should show user-friendly message'
+    )
+    assert(result.error?.originalError instanceof Error, 'Original error should be preserved')
+  })
+
+  await runner.run('Transform AUTH_FAILED error', async () => {
+    const result = await tryCatch<void, AuthError>(() =>
+      useAuthStore.getState().login(generateTestUsername('_nonexistent'), 'wrongpass')
+    )
+
+    assert(isFailure(result), 'Should fail with authentication error')
+    assert(isAuthError(result.error), 'Error should be AuthError type')
+    assert(result.error?.type === 'AUTH_FAILED', 'Should be AUTH_FAILED type')
+    assert(
+      result.error?.message === 'Invalid username or password',
+      'Should show user-friendly message'
+    )
+  })
+
+  await runner.run('Transform VALIDATION_ERROR', async () => {
+    const result = await tryCatch<void, AuthError>(() =>
+      useAuthStore.getState().register('', 'password123')
+    )
+
+    assert(isFailure(result), 'Should fail with validation error')
+    assert(isAuthError(result.error), 'Error should be AuthError type')
+    assert(result.error?.type === 'VALIDATION_ERROR', 'Should be VALIDATION_ERROR type')
+    assert(result.error?.message === 'Username is required', 'Should show validation error')
+  })
+
+  await runner.run('Original error is preserved in AuthError', async () => {
+    const username = generateTestUsername('_original_error')
+    await useAuthStore.getState().register(username, 'password123')
+    await useAuthStore.getState().logout()
+
+    const result = await tryCatch<void, AuthError>(() =>
+      useAuthStore.getState().register(username, 'password123')
+    )
+
+    assert(isFailure(result), 'Should fail when registering existing user')
+    assert(isAuthError(result.error), 'Error should be AuthError type')
+    assert(result.error?.originalError !== undefined, 'Original error should be preserved')
+
+    if (result.error?.originalError instanceof Error) {
+      assert(
+        result.error.originalError.message.includes('User creation failed'),
+        'Original error should contain gunService message'
+      )
+    }
+  })
+}
+
+/**
+ * Test session timeout behavior
+ */
+async function testSessionTimeout(runner: TestRunner): Promise<void> {
+  await runner.run('Session check handles timeout gracefully', async () => {
+    await cleanupAuthStore()
+
+    const initialState = useAuthStore.getState()
+    assert(!initialState.isLoading, 'Should not be loading initially')
+    assert(!initialState.isAuthenticated, 'Should not be authenticated before test')
+    assert(initialState.user === null, 'Should have no user before test')
+
+    const checkPromise = useAuthStore.getState().checkSession()
+
+    await checkPromise
+    const finalState = useAuthStore.getState()
+    assert(!finalState.isLoading, 'Should not be loading after session check')
+    assert(finalState.error === null, 'Should not have error after timeout')
+  })
+}
+
+/**
  * Run all AuthStore tests
  */
 export async function testAuthStore(): Promise<TestSuiteResult> {
@@ -313,6 +542,8 @@ export async function testAuthStore(): Promise<TestSuiteResult> {
   await testStateTransitions(runner)
   await testErrorHandling(runner)
   await testSessionManagement(runner)
+  await testErrorTransformation(runner)
+  await testSessionTimeout(runner)
 
   console.log('\n✅ AuthStore tests complete!')
   runner.printResults()
