@@ -2,7 +2,7 @@
 
 ## Process Notes
 
-1. Do not run `npm run dev` or `npm test`. They are not functional for agentic code development.
+1. Do not run `npm run dev` or `npm test`. They are not functional/safe for agentic code development. A human will test manually.
 2. Use `npm run build` and linting to check for syntax errors.
 
 ## Core Principles
@@ -185,8 +185,7 @@ When reviewing code or AI agent output, ask:
 ### STOP REMOVING SEMICOLONS
 
 - **DO NOT** remove existing semicolons from code
-- If semicolons are present in the codebase, keep them
-- Only add semicolons if they were removed accidentally
+- **ALWAYS USE SEMICOLONS** at the end of every line of TypeScript/JavaScript
 - Preserve the existing code formatting style
 
 ### NEVER USE "any" TYPE OR "as any" ASSERTIONS

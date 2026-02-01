@@ -4,7 +4,7 @@
  * Tests that AES-256-GCM encryption/decryption works correctly with documents of various sizes.
  */
 
-import { encryptionService } from '../services/encryptionService'
+import { encryptionService } from '../services/encryptionService';
 
 /**
  * Generate test content of specified size
@@ -42,7 +42,8 @@ export async function testVariousDocumentSizes(): Promise<void> {
       const decrypted = await encryptionService.decrypt(encrypted!, docKey);
       const decryptTime = performance.now() - decryptStart;
 
-      const success = decrypted === content && decrypted.length === testSize.bytes;
+      const success =
+        decrypted === content && decrypted.length === testSize.bytes;
 
       if (success) {
         const encryptSpeed = Math.round((testSize.bytes * 1000) / encryptTime);
@@ -54,7 +55,8 @@ export async function testVariousDocumentSizes(): Promise<void> {
         console.log(`  ❌ Failed - Content mismatch or wrong length`);
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       console.log(`  ❌ Error: ${errorMessage}`);
     }
   }

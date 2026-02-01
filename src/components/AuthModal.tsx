@@ -14,7 +14,11 @@ interface AuthModalProps {
   defaultTab?: 'login' | 'register';
 }
 
-export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalProps) {
+export function AuthModal({
+  isOpen,
+  onClose,
+  defaultTab = 'login',
+}: AuthModalProps) {
   const [activeTab, setActiveTab] = useState<'login' | 'register'>(defaultTab);
 
   if (!isOpen) {
@@ -30,9 +34,13 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
 
   return (
     <div className="auth-modal-overlay" onClick={onClose || undefined}>
-      <div className="auth-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="auth-modal" onClick={e => e.stopPropagation()}>
         {onClose && (
-          <button className="auth-modal-close" onClick={onClose} aria-label="Close">
+          <button
+            className="auth-modal-close"
+            onClick={onClose}
+            aria-label="Close"
+          >
             ×
           </button>
         )}

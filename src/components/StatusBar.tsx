@@ -1,5 +1,5 @@
-import React from 'react'
-import { useConnectionStore } from '../stores/connectionStore'
+import React from 'react';
+import { useConnectionStore } from '../stores/connectionStore';
 
 /**
  * StatusBar Component
@@ -7,23 +7,23 @@ import { useConnectionStore } from '../stores/connectionStore'
  * Displays the current connection status to the GunDB relay.
  */
 export const StatusBar: React.FC = () => {
-  const { status, relayUrl } = useConnectionStore()
+  const { status, relayUrl } = useConnectionStore();
 
   // Get status text and color based on connection state
   const getStatusInfo = () => {
     switch (status) {
       case 'connected':
-        return { text: 'Connected', color: 'green' }
+        return { text: 'Connected', color: 'green' };
       case 'connecting':
-        return { text: 'Connecting...', color: 'yellow' }
+        return { text: 'Connecting...', color: 'yellow' };
       case 'disconnected':
-        return { text: 'Disconnected', color: 'red' }
+        return { text: 'Disconnected', color: 'red' };
       default:
-        return { text: 'Unknown', color: 'gray' }
+        return { text: 'Unknown', color: 'gray' };
     }
-  }
+  };
 
-  const statusInfo = getStatusInfo()
+  const statusInfo = getStatusInfo();
 
   return (
     <div className="status-bar">
@@ -34,5 +34,5 @@ export const StatusBar: React.FC = () => {
         </span>
       </div>
     </div>
-  )
-}
+  );
+};

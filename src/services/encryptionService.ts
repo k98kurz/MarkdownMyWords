@@ -53,7 +53,9 @@ class EncryptionService {
       // Get GunDB instance from gunService
       const gunInstance = gunService.getGun();
       if (!gunInstance) {
-        throw new Error('GunDB not initialized. Call gunService.initialize() first.');
+        throw new Error(
+          'GunDB not initialized. Call gunService.initialize() first.'
+        );
       }
 
       this.gun = gunInstance;
@@ -137,9 +139,9 @@ class EncryptionService {
    * @param key - string for encryption
    * @returns Promise resolving to string
    */
-  async encrypt(content: string, key: string): Promise<string|undefined> {
+  async encrypt(content: string, key: string): Promise<string | undefined> {
     try {
-      return await this.sea?.encrypt(content, key)
+      return await this.sea?.encrypt(content, key);
     } catch (error) {
       throw {
         code: 'ENCRYPTION_FAILED',
@@ -155,9 +157,9 @@ class EncryptionService {
    * @param key - string for decryption
    * @returns Promise resolving to decrypted string
    */
-  async decrypt(encrypted: string, key: string): Promise<string|undefined> {
+  async decrypt(encrypted: string, key: string): Promise<string | undefined> {
     try {
-      return this.sea?.decrypt(encrypted, key)
+      return this.sea?.decrypt(encrypted, key);
     } catch (error) {
       throw {
         code: 'DECRYPTION_FAILED',
@@ -197,7 +199,10 @@ class EncryptionService {
       }
 
       // Derive shared secret using ECDH with recipient's epub
-      const sharedSecret = await this.sea.secret({ epub: recipientEpub }, userPair);
+      const sharedSecret = await this.sea.secret(
+        { epub: recipientEpub },
+        userPair
+      );
 
       if (!sharedSecret) {
         throw new Error('Failed to derive shared secret');
@@ -224,7 +229,8 @@ class EncryptionService {
    * @returns Promise resolving to string
    */
   async decryptECDH(
-    encryptedData: string, senderEpub: string
+    encryptedData: string,
+    senderEpub: string
   ): Promise<string | undefined> {
     this.checkInitialized();
 
@@ -248,7 +254,10 @@ class EncryptionService {
       }
 
       // Derive shared secret using ECDH with sender's epub
-      const sharedSecret = await this.sea.secret({ epub: senderEpub }, userPair);
+      const sharedSecret = await this.sea.secret(
+        { epub: senderEpub },
+        userPair
+      );
 
       if (!sharedSecret) {
         throw new Error('Failed to derive shared secret');

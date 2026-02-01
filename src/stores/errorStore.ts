@@ -35,7 +35,7 @@ interface ErrorState {
  *
  * Manages global error state for error modal display.
  */
-export const useErrorStore = create<ErrorState>((set) => ({
+export const useErrorStore = create<ErrorState>(set => ({
   // Initial state
   error: null,
   isOpen: false,

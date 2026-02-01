@@ -91,7 +91,7 @@ export function ErrorModal() {
 
   return (
     <div className="error-modal-overlay" onClick={closeModal}>
-      <div className="error-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="error-modal" onClick={e => e.stopPropagation()}>
         <div className="error-modal-header">
           <h2>⚠️ Error</h2>
           <button
@@ -131,7 +131,9 @@ export function ErrorModal() {
           </div>
 
           <div className="error-timestamp">
-            <small>Error occurred at: {new Date(error.timestamp).toLocaleString()}</small>
+            <small>
+              Error occurred at: {new Date(error.timestamp).toLocaleString()}
+            </small>
           </div>
         </div>
 

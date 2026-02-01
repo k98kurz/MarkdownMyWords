@@ -1,8 +1,8 @@
 export interface RetryOptions {
-  maxAttempts: number
-  baseDelay: number
-  backoffMultiplier: number
-  retryableErrors?: string[]
+  maxAttempts: number;
+  baseDelay: number;
+  backoffMultiplier: number;
+  retryableErrors?: string[];
 }
 
 /**
@@ -11,34 +11,42 @@ export interface RetryOptions {
  */
 export async function retryWithBackoff<T>(
   operation: (attempt: number) => Promise<T>,
-  options: RetryOptions = { maxAttempts: 9, baseDelay: 50, backoffMultiplier: 1.5 }
+  options: RetryOptions = {
+    maxAttempts: 9,
+    baseDelay: 50,
+    backoffMultiplier: 1.5,
+  }
 ): Promise<T | never> {
   for (let attempt = 1; attempt <= options.maxAttempts; attempt++) {
     try {
-      return await operation(attempt)
+      return await operation(attempt);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error)
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
 
       if (attempt < options.maxAttempts) {
         if (options.retryableErrors && options.retryableErrors.length > 0) {
           const shouldRetryError = options.retryableErrors.some(retryableErr =>
             errorMessage.includes(retryableErr)
-          )
+          );
           if (!shouldRetryError) {
-            throw error
+            throw error;
           }
         }
-        const delay = options.baseDelay * Math.pow(options.backoffMultiplier, attempt - 1)
-        console.warn(`Attempt ${attempt} failed, retrying in ${delay}ms...`)
-        await new Promise(resolve => setTimeout(resolve, delay))
-        continue
+        const delay =
+          options.baseDelay * Math.pow(options.backoffMultiplier, attempt - 1);
+        console.warn(`Attempt ${attempt} failed, retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
       }
 
-      throw error
+      throw error;
     }
   }
 
   // This should never be reached - operation either returns successfully in the try block
   // or throws an error after exhausting retries
-  throw new Error('retryWithBackoff: Unexpected state - function should have returned or thrown')
+  throw new Error(
+    'retryWithBackoff: Unexpected state - function should have returned or thrown'
+  );
 }

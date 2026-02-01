@@ -4,63 +4,65 @@
  * Form for user login with validation.
  */
 
-import { useState, FormEvent } from 'react'
-import { useAuthStore } from '../stores/authStore'
+import { useState, FormEvent } from 'react';
+import { useAuthStore } from '../stores/authStore';
 
 interface LoginFormProps {
-  onSuccess?: () => void
-  onSwitchToRegister?: () => void
+  onSuccess?: () => void;
+  onSwitchToRegister?: () => void;
 }
 
 export function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormProps) {
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
-  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({})
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [validationErrors, setValidationErrors] = useState<
+    Record<string, string>
+  >({});
 
-  const { login, isLoading, error, clearError } = useAuthStore()
+  const { login, isLoading, error, clearError } = useAuthStore();
 
   /**
    * Validate form inputs
    */
   const validate = (): boolean => {
-    const errors: Record<string, string> = {}
+    const errors: Record<string, string> = {};
 
     // Username validation
     if (!username || username.trim().length === 0) {
-      errors.username = 'Username is required'
+      errors.username = 'Username is required';
     }
 
     // Password validation
     if (!password || password.length === 0) {
-      errors.password = 'Password is required'
+      errors.password = 'Password is required';
     }
 
-    setValidationErrors(errors)
-    return Object.keys(errors).length === 0
-  }
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
 
   /**
    * Handle form submission
    */
   const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault()
-    clearError()
+    e.preventDefault();
+    clearError();
 
     if (!validate()) {
-      return
+      return;
     }
 
     try {
-      await login(username, password)
+      await login(username, password);
       if (onSuccess) {
-        onSuccess()
+        onSuccess();
       }
     } catch (err) {
       // Error is handled by the auth store (shows inline error message)
       // Prevent error from bubbling up to global error handlers
-      console.error('Login error:', err)
+      console.error('Login error:', err);
     }
-  }
+  };
 
   return (
     <form onSubmit={handleSubmit} className="login-form">
@@ -81,13 +83,13 @@ export function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormProps) {
             type="text"
             value={username}
             onChange={e => {
-              setUsername(e.target.value)
+              setUsername(e.target.value);
               if (validationErrors.username) {
                 setValidationErrors(prev => {
-                  const next = { ...prev }
-                  delete next.username
-                  return next
-                })
+                  const next = { ...prev };
+                  delete next.username;
+                  return next;
+                });
               }
             }}
             disabled={isLoading}
@@ -106,13 +108,13 @@ export function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormProps) {
             type="password"
             value={password}
             onChange={e => {
-              setPassword(e.target.value)
+              setPassword(e.target.value);
               if (validationErrors.password) {
                 setValidationErrors(prev => {
-                  const next = { ...prev }
-                  delete next.password
-                  return next
-                })
+                  const next = { ...prev };
+                  delete next.password;
+                  return next;
+                });
               }
             }}
             disabled={isLoading}
@@ -154,5 +156,5 @@ export function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormProps) {
         )}
       </div>
     </form>
-  )
+  );
 }

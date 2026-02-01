@@ -23,12 +23,14 @@ import { useAuthStore } from '../stores/authStore';
  * @param options.clearSessionStorage - Whether to clear sessionStorage (default: true)
  * @returns Promise that resolves when clearing is complete
  */
-export async function clearGunDBLocalStorage(options: {
-  logout?: boolean;
-  clearIndexedDB?: boolean;
-  clearLocalStorage?: boolean;
-  clearSessionStorage?: boolean;
-} = {}): Promise<void> {
+export async function clearGunDBLocalStorage(
+  options: {
+    logout?: boolean;
+    clearIndexedDB?: boolean;
+    clearLocalStorage?: boolean;
+    clearSessionStorage?: boolean;
+  } = {}
+): Promise<void> {
   const {
     logout = true,
     clearIndexedDB = true,
@@ -94,7 +96,7 @@ export async function clearGunDBLocalStorage(options: {
 
       for (const dbName of dbNames) {
         deletePromises.push(
-          new Promise<void>((resolve) => {
+          new Promise<void>(resolve => {
             const deleteRequest = indexedDB.deleteDatabase(dbName);
             deleteRequest.onsuccess = () => {
               console.log(`✅ Deleted IndexedDB database: ${dbName}`);
@@ -106,7 +108,9 @@ export async function clearGunDBLocalStorage(options: {
             };
             deleteRequest.onblocked = () => {
               // Database is in use, try to close connections
-              console.warn(`⚠️ IndexedDB database ${dbName} is blocked, may need page reload`);
+              console.warn(
+                `⚠️ IndexedDB database ${dbName} is blocked, may need page reload`
+              );
               resolve();
             };
           })
@@ -120,6 +124,7 @@ export async function clearGunDBLocalStorage(options: {
   }
 
   console.log('✅ Local GunDB storage cleared successfully');
-  console.log('💡 You may need to reload the page for changes to take full effect');
+  console.log(
+    '💡 You may need to reload the page for changes to take full effect'
+  );
 }
-

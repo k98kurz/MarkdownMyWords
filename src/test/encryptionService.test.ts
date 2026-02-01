@@ -2,162 +2,206 @@
  * Encryption Service Tests
  */
 
-import { encryptionService } from '../services/encryptionService'
-import { gunService } from '../services/gunService'
-import { TestRunner, printTestSummary, type TestSuiteResult, sleep } from '../utils/testRunner'
+import { encryptionService } from '../services/encryptionService';
+import { gunService } from '../services/gunService';
+import {
+  TestRunner,
+  printTestSummary,
+  type TestSuiteResult,
+  sleep,
+} from '../utils/testRunner';
 // import { retryWithBackoff } from '../../utils/retryHelper'
 
 const assert = (condition: any, message: string) => {
   if (!condition) {
-    throw new Error(message)
+    throw new Error(message);
   }
-}
+};
 
 async function testDocumentEncryption(): Promise<TestSuiteResult> {
-  console.log('🧪 Testing Document Encryption (SEA.encrypt/SEA.decrypt)...\n')
+  console.log('🧪 Testing Document Encryption (SEA.encrypt/SEA.decrypt)...\n');
 
-  const runner = new TestRunner('Document Encryption')
+  const runner = new TestRunner('Document Encryption');
 
   await runner.run('should generate document-specific keys', async () => {
-    const key = await encryptionService.generateKey()
-    assert(key, 'key not generated')
-  })
+    const key = await encryptionService.generateKey();
+    assert(key, 'key not generated');
+  });
 
   await runner.run('should encrypt document', async () => {
-    const key = await encryptionService.generateKey()
-    const content = 'test document content'
-    const encrypted = await encryptionService.encrypt(content, key)
-    assert(encrypted, 'document encryption failed')
-  })
+    const key = await encryptionService.generateKey();
+    const content = 'test document content';
+    const encrypted = await encryptionService.encrypt(content, key);
+    assert(encrypted, 'document encryption failed');
+  });
 
   await runner.run('should decrypt document', async () => {
-    const key = await encryptionService.generateKey()
-    const content = 'test document content'
-    const encrypted = await encryptionService.encrypt(content, key)
-    assert(typeof encrypted === 'string', 'encryption failed')
-    const decrypted = await encryptionService.decrypt(encrypted!, key)
+    const key = await encryptionService.generateKey();
+    const content = 'test document content';
+    const encrypted = await encryptionService.encrypt(content, key);
+    assert(typeof encrypted === 'string', 'encryption failed');
+    const decrypted = await encryptionService.decrypt(encrypted!, key);
     assert(
       decrypted == content,
       `Decrypted content mismatch. Expected "${content}", got "${decrypted}"`
-    )
-  })
+    );
+  });
 
-  await runner.run('should encrypt and decrypt different content correctly', async () => {
-    const key = await encryptionService.generateKey()
-    const content1 = 'First document'
-    const content2 = 'Second document'
+  await runner.run(
+    'should encrypt and decrypt different content correctly',
+    async () => {
+      const key = await encryptionService.generateKey();
+      const content1 = 'First document';
+      const content2 = 'Second document';
 
-    const encrypted1 = await encryptionService.encrypt(content1, key)
-    const encrypted2 = await encryptionService.encrypt(content2, key)
+      const encrypted1 = await encryptionService.encrypt(content1, key);
+      const encrypted2 = await encryptionService.encrypt(content2, key);
 
-    if (encrypted1 === encrypted2) {
-      throw new Error('Different content should encrypt to different ciphertexts')
+      if (encrypted1 === encrypted2) {
+        throw new Error(
+          'Different content should encrypt to different ciphertexts'
+        );
+      }
+
+      const decrypted1 = await encryptionService.decrypt(encrypted1!, key);
+      const decrypted2 = await encryptionService.decrypt(encrypted2!, key);
+
+      if (decrypted1 !== content1 || decrypted2 !== content2) {
+        throw new Error('Decrypted content mismatch');
+      }
     }
+  );
 
-    const decrypted1 = await encryptionService.decrypt(encrypted1!, key)
-    const decrypted2 = await encryptionService.decrypt(encrypted2!, key)
-
-    if (decrypted1 !== content1 || decrypted2 !== content2) {
-      throw new Error('Decrypted content mismatch')
-    }
-  })
-
-  runner.printResults()
-  return runner.getResults()
+  runner.printResults();
+  return runner.getResults();
 }
 
 async function testKeySharing(): Promise<TestSuiteResult> {
-  console.log('🧪 Testing Key Sharing (SEA ECDH)...\n')
+  console.log('🧪 Testing Key Sharing (SEA ECDH)...\n');
 
-  const runner = new TestRunner('Key Sharing (ECDH)')
-  const gun = gunService.getGun()
+  const runner = new TestRunner('Key Sharing (ECDH)');
+  const gun = gunService.getGun();
 
   if (!gun) {
-    throw new Error('GunDB not initialized - cannot test ECDH key sharing')
+    throw new Error('GunDB not initialized - cannot test ECDH key sharing');
   }
 
   await runner.run(
     'SEA ECDHE sanity check: it should work without persistent key pairs',
     async () => {
-      const pair1 = await encryptionService.sea?.pair()
-      const pair2 = await encryptionService.sea?.pair()
-      const sharedKey1 = await encryptionService.sea?.secret(pair2!.epub, pair1!)
-      const sharedKey2 = await encryptionService.sea?.secret(pair1!.epub, pair2!)
+      const pair1 = await encryptionService.sea?.pair();
+      const pair2 = await encryptionService.sea?.pair();
+      const sharedKey1 = await encryptionService.sea?.secret(
+        pair2!.epub,
+        pair1!
+      );
+      const sharedKey2 = await encryptionService.sea?.secret(
+        pair1!.epub,
+        pair2!
+      );
       assert(
         sharedKey1 == sharedKey2,
         `shared key derivation failed: ${sharedKey1} != ${sharedKey2}`
-      )
-      const plaintext = 'test 1234'
-      const encrypted = await encryptionService.sea?.encrypt(plaintext, sharedKey1!)
-      const decrypted = await encryptionService.sea?.decrypt(encrypted!, sharedKey2!)
-      assert(decrypted == plaintext, `decryption failed: "${decrypted}" != "${plaintext}"`)
+      );
+      const plaintext = 'test 1234';
+      const encrypted = await encryptionService.sea?.encrypt(
+        plaintext,
+        sharedKey1!
+      );
+      const decrypted = await encryptionService.sea?.decrypt(
+        encrypted!,
+        sharedKey2!
+      );
+      assert(
+        decrypted == plaintext,
+        `decryption failed: "${decrypted}" != "${plaintext}"`
+      );
     }
-  )
+  );
 
-  await runner.run('encrypt and decrypt docKey with SEA ECDH between two users', async () => {
-    // encryption flow: Bob -> Alice
-    const timestamp = Date.now()
-    const aliceUsername = `alice_test_ecdh_${timestamp}`
-    const bobUsername = `bob_test_ecdh_${timestamp}`
-    const alicePass = 'password123!Alice'
-    const bobPass = 'password123!Bob'
+  await runner.run(
+    'encrypt and decrypt docKey with SEA ECDH between two users',
+    async () => {
+      // encryption flow: Bob -> Alice
+      const timestamp = Date.now();
+      const aliceUsername = `alice_test_ecdh_${timestamp}`;
+      const bobUsername = `bob_test_ecdh_${timestamp}`;
+      const alicePass = 'password123!Alice';
+      const bobPass = 'password123!Bob';
 
-    // create Alice user (profile auto-stored in GunDB profiles directory)
-    await gunService.createUser(aliceUsername, alicePass)
-    await gunService.authenticateUser(aliceUsername, alicePass)
-    await gunService.writeProfile()
-    console.log('Alice user created')
-    await gunService.logoutAndWait()
+      // create Alice user (profile auto-stored in GunDB profiles directory)
+      await gunService.createUser(aliceUsername, alicePass);
+      await gunService.authenticateUser(aliceUsername, alicePass);
+      await gunService.writeProfile();
+      console.log('Alice user created');
+      await gunService.logoutAndWait();
 
-    // create Bob user (profile auto-stored in GunDB profiles directory)
-    await gunService.createUser(bobUsername, bobPass)
-    await gunService.authenticateUser(bobUsername, bobPass)
-    await gunService.writeProfile()
-    console.log('Bob user created')
+      // create Bob user (profile auto-stored in GunDB profiles directory)
+      await gunService.createUser(bobUsername, bobPass);
+      await gunService.authenticateUser(bobUsername, bobPass);
+      await gunService.writeProfile();
+      console.log('Bob user created');
 
-    // Bob gets Alice's epub from discovered users
-    const aliceUsers = await gunService.discoverUsers(aliceUsername)
-    assert(aliceUsers.length > 0, "Failed to discover Alice's profile")
-    const aliceEpub = aliceUsers[0].data.epub
-    assert(aliceEpub, "Failed to get Alice's epub from profiles")
-    console.log(`Bob retrieved Alice's epub: ${aliceEpub.substring(0, 20)}...`)
+      // Bob gets Alice's epub from discovered users
+      const aliceUsers = await gunService.discoverUsers(aliceUsername);
+      assert(aliceUsers.length > 0, "Failed to discover Alice's profile");
+      const aliceEpub = aliceUsers[0].data.epub;
+      assert(aliceEpub, "Failed to get Alice's epub from profiles");
+      console.log(
+        `Bob retrieved Alice's epub: ${aliceEpub.substring(0, 20)}...`
+      );
 
-    // Bob encrypts document key for Alice (Bob is authenticated)
-    const docKey = await encryptionService.generateKey()
-    const encryptedKey = await encryptionService.encryptECDH(docKey, aliceEpub)
-    console.log('Bob encrypted key for Alice')
+      // Bob encrypts document key for Alice (Bob is authenticated)
+      const docKey = await encryptionService.generateKey();
+      const encryptedKey = await encryptionService.encryptECDH(
+        docKey,
+        aliceEpub
+      );
+      console.log('Bob encrypted key for Alice');
 
-    if (!encryptedKey) {
-      throw new Error('Encryption failed - missing encrypted key')
+      if (!encryptedKey) {
+        throw new Error('Encryption failed - missing encrypted key');
+      }
+
+      // switch to Alice
+      await gunService.logoutAndWait();
+      await gunService.authenticateUser(aliceUsername, alicePass);
+
+      // Alice gets Bob's epub from discovered users
+      const bobUsers = await gunService.discoverUsers(bobUsername);
+      assert(bobUsers.length > 0, "Failed to discover Bob's profile");
+      const bobEpub = bobUsers[0].data.epub;
+      assert(bobEpub, "Failed to get Bob's epub from profiles");
+      console.log(`Alice retrieved Bob's epub: ${bobEpub.substring(0, 20)}...`);
+
+      // Alice decrypts from Bob (Alice is authenticated)
+      const decryptedKey = await encryptionService.decryptECDH(
+        encryptedKey,
+        bobEpub
+      );
+      console.log('Alice decrypted key from Bob');
+      assert(
+        docKey == decryptedKey,
+        `key decryption failed: ${docKey} != ${decryptedKey}`
+      );
+
+      const content = 'test document for ECDH key sharing';
+      const encrypted = await encryptionService.encrypt(content, docKey);
+      const decrypted = await encryptionService.decrypt(
+        encrypted!,
+        decryptedKey!
+      );
+
+      if (decrypted !== content) {
+        throw new Error(
+          'ECDH key sharing failed - decrypted document mismatch'
+        );
+      }
     }
+  );
 
-    // switch to Alice
-    await gunService.logoutAndWait()
-    await gunService.authenticateUser(aliceUsername, alicePass)
-
-    // Alice gets Bob's epub from discovered users
-    const bobUsers = await gunService.discoverUsers(bobUsername)
-    assert(bobUsers.length > 0, "Failed to discover Bob's profile")
-    const bobEpub = bobUsers[0].data.epub
-    assert(bobEpub, "Failed to get Bob's epub from profiles")
-    console.log(`Alice retrieved Bob's epub: ${bobEpub.substring(0, 20)}...`)
-
-    // Alice decrypts from Bob (Alice is authenticated)
-    const decryptedKey = await encryptionService.decryptECDH(encryptedKey, bobEpub)
-    console.log('Alice decrypted key from Bob')
-    assert(docKey == decryptedKey, `key decryption failed: ${docKey} != ${decryptedKey}`)
-
-    const content = 'test document for ECDH key sharing'
-    const encrypted = await encryptionService.encrypt(content, docKey)
-    const decrypted = await encryptionService.decrypt(encrypted!, decryptedKey!)
-
-    if (decrypted !== content) {
-      throw new Error('ECDH key sharing failed - decrypted document mismatch')
-    }
-  })
-
-  runner.printResults()
-  return runner.getResults()
+  runner.printResults();
+  return runner.getResults();
 }
 
 // async function testErrorHandling(): Promise<TestSuiteResult> {
@@ -248,55 +292,55 @@ async function testKeySharing(): Promise<TestSuiteResult> {
 // }
 
 export async function testEncryptionService(): Promise<void> {
-  console.log('🚀 Starting Encryption Service Tests\n')
-  console.log('='.repeat(60))
+  console.log('🚀 Starting Encryption Service Tests\n');
+  console.log('='.repeat(60));
 
-  const gun = gunService.getGun()
+  const gun = gunService.getGun();
   if (gun) {
-    const currentUser = gun.user()
+    const currentUser = gun.user();
     if (currentUser.is && currentUser.is.pub) {
       console.log(
         `\n📝 Pre-test: User already logged in (${currentUser.is.pub.substring(0, 20)}...), logging out...`
-      )
-      gun.user().leave()
-      await sleep(800)
-      console.log('   ✅ Logged out and waited 800ms\n')
+      );
+      gun.user().leave();
+      await sleep(800);
+      console.log('   ✅ Logged out and waited 800ms\n');
     }
   }
 
   // Ensure GunDB is properly initialized for tests
   if (!gunService.isReady()) {
-    console.log('\n📝 Pre-test: GunDB not ready, initializing...\n')
-    gunService.initialize()
-    await sleep(1000)
-    console.log('   ✅ GunDB initialized and waited 1s\n')
+    console.log('\n📝 Pre-test: GunDB not ready, initializing...\n');
+    gunService.initialize();
+    await sleep(1000);
+    console.log('   ✅ GunDB initialized and waited 1s\n');
   } else {
-    console.log('\n📝 Pre-test: GunDB already ready\n')
+    console.log('\n📝 Pre-test: GunDB already ready\n');
   }
 
-  const suiteResults: TestSuiteResult[] = []
+  const suiteResults: TestSuiteResult[] = [];
 
-  const docEncResult = await testDocumentEncryption()
-  suiteResults.push(docEncResult)
-  console.log('\n' + '='.repeat(60) + '\n')
+  const docEncResult = await testDocumentEncryption();
+  suiteResults.push(docEncResult);
+  console.log('\n' + '='.repeat(60) + '\n');
 
-  const keyShareResult = await testKeySharing()
-  suiteResults.push(keyShareResult)
-  console.log('\n' + '='.repeat(60) + '\n')
+  const keyShareResult = await testKeySharing();
+  suiteResults.push(keyShareResult);
+  console.log('\n' + '='.repeat(60) + '\n');
 
   // const errorResult = await testErrorHandling()
   // suiteResults.push(errorResult)
   // console.log('\n' + '='.repeat(60))
 
   if (gun) {
-    const finalUser = gun.user()
+    const finalUser = gun.user();
     if (finalUser.is && finalUser.is.pub) {
-      console.log('\n📝 Cleanup: Logging out test user')
-      gun.user().leave()
-      await sleep(800)
-      console.log('   ✅ Logged out and waited 800ms')
+      console.log('\n📝 Cleanup: Logging out test user');
+      gun.user().leave();
+      await sleep(800);
+      console.log('   ✅ Logged out and waited 800ms');
     }
   }
 
-  printTestSummary(suiteResults)
+  printTestSummary(suiteResults);
 }
