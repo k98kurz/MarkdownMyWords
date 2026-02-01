@@ -15,7 +15,9 @@
 
 import Gun from 'gun';
 import 'gun/sea';
+import type { ISEAPair } from 'gun/types';
 import { gunService } from '../services/gunService';
+import type { GunAck, GunInstance, GunNodeRef } from '../types/gun';
 import { TestRunner, type TestSuiteResult } from '../utils/testRunner';
 
 /**
@@ -25,6 +27,24 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+/**
+ * Helper to safely access user's SEA key pair
+ * GunDB stores SEA key pair in user._.sea, NOT in user.is
+ */
+function getUserSEA(user: unknown): ISEAPair | undefined {
+  if (
+    user &&
+    typeof user === 'object' &&
+    '_' in user &&
+    user._ &&
+    typeof user._ === 'object' &&
+    'sea' in user._
+  ) {
+    return user._.sea as ISEAPair;
+  }
+  return undefined;
 }
 
 /**
@@ -38,9 +58,13 @@ function wait(ms: number): Promise<void> {
 // CORE IMPLEMENTATION FUNCTIONS FROM code_references/gundb.md
 // =============================================================================
 
-async function createUser(gun: any, username: string, password: string) {
+async function createUser(
+  gun: GunInstance,
+  username: string,
+  password: string
+) {
   return new Promise<void>((resolve, reject) => {
-    gun.user().create(username, password, (ack: any) => {
+    gun.user().create(username, password, (ack: GunAck) => {
       if (ack.err) {
         reject(new Error(`User creation failed: ${ack.err}`));
       }
@@ -49,11 +73,15 @@ async function createUser(gun: any, username: string, password: string) {
   });
 }
 
-async function authenticateUser(gun: any, username: string, password: string) {
+async function authenticateUser(
+  gun: GunInstance,
+  username: string,
+  password: string
+) {
   return new Promise<void>(resolve => {
-    gun.user().auth(username, password, (ack: any) => {
-      if (ack.err) {
-        throw new Error(`Authentication failed: ${ack.err}`);
+    gun.user().auth(username, password, (ack: unknown) => {
+      if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
+        throw new Error(`Authentication failed: ${String(ack.err)}`);
       }
       console.log(`Auth for ${username} succeeded.`);
       resolve();
@@ -65,14 +93,18 @@ async function authenticateUser(gun: any, username: string, password: string) {
  * Hash a single path part for private node naming
  */
 async function getPrivatePathPart(
-  gun: any,
+  gun: GunInstance,
   plainPath: string
 ): Promise<string> {
   const SEA = Gun.SEA;
   if (!SEA) {
     throw new Error('SEA not available');
   }
-  const result = await SEA.work(plainPath, gun.user()._.sea);
+  const seaPair = getUserSEA(gun.user());
+  if (!seaPair) {
+    throw new Error('User cryptographic keypair not available');
+  }
+  const result = await SEA.work(plainPath, seaPair);
   if (!result) {
     throw new Error('Failed to hash path part');
   }
@@ -83,7 +115,7 @@ async function getPrivatePathPart(
  * Hash an array of path parts for private node naming
  */
 async function getPrivatePath(
-  gun: any,
+  gun: GunInstance,
   plainPath: string[]
 ): Promise<string[]> {
   return await Promise.all(
@@ -95,24 +127,31 @@ async function getPrivatePath(
  * Write private data using hashed path and .secret() encryption
  */
 async function writePrivateData(
-  gun: any,
+  gun: GunInstance,
   plainPath: string[],
   plaintext: string
 ): Promise<void> {
   const privatePath = await getPrivatePath(gun, plainPath);
-  const node = privatePath.reduce((path, part) => path.get(part), gun.user());
+  const node = privatePath.reduce(
+    (path: unknown, part) => (path as GunNodeRef).get(part),
+    gun.user()
+  ) as GunNodeRef;
   assert(!!node, 'no node!?!?');
   await new Promise<void>(async (resolve, reject) => {
-    if (!gun.user()._.sea) {
+    const seaPair = getUserSEA(gun.user());
+    if (!seaPair) {
       reject(new Error('user cryptographic keypair not available'));
     }
-    const ciphertext = await gun.sea?.encrypt(plaintext, gun.user()._.sea);
+    const ciphertext = await (gun as { sea?: typeof Gun.SEA }).sea?.encrypt(
+      plaintext,
+      seaPair as ISEAPair
+    );
     if (!ciphertext) {
       reject(new Error('sea.encrypt failed: returned undefined'));
     }
-    node.put(ciphertext, (ack: any) => {
-      if (ack && ack.err) {
-        reject(new Error(`Failed to write private data: ${ack.err}`));
+    node.put(ciphertext, (ack: unknown) => {
+      if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
+        reject(new Error(`Failed to write private data: ${String(ack.err)}`));
       } else {
         resolve();
       }
@@ -125,18 +164,45 @@ async function writePrivateData(
  * If hashedPath is provided, use it directly instead of hashing plainPath parts
  */
 async function readPrivateData(
-  gun: any,
+  gun: GunInstance,
   plainPath: string[],
   hashedPath?: string[]
 ): Promise<string> {
   const path = hashedPath || (await getPrivatePath(gun, plainPath));
-  const node = path.reduce((p, part) => p.get(part), gun.user());
+  const node = path.reduce(
+    (p: unknown, part) => (p as GunNodeRef).get(part),
+    gun.user()
+  ) as GunNodeRef;
   return await new Promise<string>((resolve, reject) => {
-    node.once(async (ciphertext: any) => {
+    node.once(async (ciphertext: unknown) => {
       if (ciphertext === undefined) {
         reject(new Error('Private data not found or could not be decrypted'));
       } else {
-        const plaintext = await gun.sea?.decrypt(ciphertext, gun.user()._.sea);
+        const seaPair = getUserSEA(gun.user());
+        if (!seaPair) {
+          reject(new Error('User cryptographic keypair not available'));
+        }
+        const sea = Gun.SEA;
+        if (!sea) {
+          reject(new Error('SEA not available'));
+          return;
+        }
+        const plaintext = await sea.decrypt(
+          ciphertext as string,
+          seaPair as { epriv: string }
+        );
+        if (plaintext === null || plaintext === undefined) {
+          reject(new Error('Decryption returned null or undefined'));
+          return;
+        }
+        if (typeof plaintext !== 'string') {
+          reject(
+            new Error(
+              `Decryption returned unexpected type: ${typeof plaintext}`
+            )
+          );
+          return;
+        }
         resolve(plaintext);
       }
     });
@@ -150,22 +216,22 @@ async function readPrivateData(
  * 2. Then access each field at plainPath + [key] + [fieldName]
  */
 async function readPrivateMap(
-  gun: any,
+  gun: GunInstance,
   plainPath: string[],
   fields: string[]
 ): Promise<Record<string, string>[]> {
   const privatePath = await getPrivatePath(gun, plainPath);
   const privateNode = privatePath.reduce(
-    (path, part) => path.get(part),
+    (path: unknown, part) => (path as GunNodeRef).get(part),
     gun.user()
-  );
+  ) as GunNodeRef;
 
-  // First, collect all keys from the map
+  // First, collect all keys from map
   const keys: string[] = await new Promise<string[]>(resolve => {
     const collectedKeys: string[] = [];
     setTimeout(() => resolve(collectedKeys), 500);
 
-    privateNode.map().once((data: any, key: string) => {
+    privateNode.map().once((data: unknown, key: string) => {
       if (key) {
         collectedKeys.push(key);
       }
@@ -187,19 +253,26 @@ async function readPrivateMap(
       if (Object.keys(record).length > 0) {
         results.push(record);
       }
-    } catch (error: Error) {
-      console.error(`Failed to read contact for key ${key}:`, error.message);
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      console.error(`Failed to read contact for key ${key}:`, errorMessage);
     }
   }
 
   return results;
 }
 
-async function writeProfile(gun: any): Promise<void> {
+async function writeProfile(gun: GunInstance): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    gun.user().put({ epub: gun.user().is.epub }, (ack: any) => {
-      if (ack.err) {
-        reject(new Error(`Profile storage failed: ${ack.err}`));
+    const userSession = gun.user().is;
+    if (!userSession?.epub) {
+      reject(new Error('User session not available or ephemeral key missing'));
+      return;
+    }
+    gun.user().put({ epub: userSession.epub }, (ack: unknown) => {
+      if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
+        reject(new Error(`Profile storage failed: ${String(ack.err)}`));
       } else {
         resolve();
       }
@@ -207,19 +280,26 @@ async function writeProfile(gun: any): Promise<void> {
   });
 }
 
-async function discoverUsers(gun: any, username: string) {
-  return new Promise<any[]>(resolve => {
-    const collectedProfiles: any[] = [];
+async function discoverUsers(
+  gun: GunInstance,
+  username: string
+): Promise<{ pub: string; data: unknown; userNode: unknown }[]> {
+  return new Promise(resolve => {
+    const collectedProfiles: {
+      pub: string;
+      data: unknown;
+      userNode: unknown;
+    }[] = [];
     // wait 500 ms to read them all from the local db
     setTimeout(() => resolve(collectedProfiles), 500);
 
     gun
       .get(`~@${username}`)
       .map()
-      .once((data: any, pub: string) => {
+      .once((data: unknown, pub: string) => {
         if (!data) return;
         const cleanPub = pub.startsWith('~') ? pub.slice(1) : pub;
-        gun.get(`~${cleanPub}`).once((userNode: any) => {
+        gun.get(`~${cleanPub}`).once((userNode: unknown) => {
           collectedProfiles.push({ pub: cleanPub, data, userNode });
         });
       });
@@ -233,7 +313,9 @@ async function discoverUsers(gun: any, username: string) {
 /**
  * Scenario 1: Test user creation and profile storage, then profile discovery
  */
-async function testUserCreationAndProfileStorage(gun: any): Promise<void> {
+async function testUserCreationAndProfileStorage(
+  gun: GunInstance
+): Promise<void> {
   console.log('\n📝 Testing User Creation & Profile Storage...');
 
   // Check for existing user and logout
@@ -258,11 +340,15 @@ async function testUserCreationAndProfileStorage(gun: any): Promise<void> {
 
   // Store profile using ~@username approach
   const user = gun.user();
-  const pair = (user as any)._.sea;
+  const pair = getUserSEA(user);
   assert(pair && pair.epub, 'User SEA pair not available');
+  const userSession = user.is;
+  if (!userSession || !userSession.alias || !userSession.pub) {
+    throw new Error('User session not available');
+  }
   assert(
-    user.is.alias == username,
-    `Alias issue: ${user.is.alias} != ${username}`
+    userSession.alias == username,
+    `Alias issue: ${userSession.alias} != ${username}`
   );
 
   console.log(`   Storing profile in ~@${username}...`);
@@ -277,9 +363,14 @@ async function testUserCreationAndProfileStorage(gun: any): Promise<void> {
   console.log(`   Collected ${profileData.length} profile(s)`);
 
   assert(profileData.length > 0, 'No profile data found');
-  const currentUserProfile = profileData.find(
-    (p: any) => p.data.epub === pair.epub
-  );
+  const currentUserProfile = profileData.find(p => {
+    return (
+      typeof p.data === 'object' &&
+      p.data !== null &&
+      'epub' in p.data &&
+      (p.data as { epub?: string }).epub === pair.epub
+    );
+  });
   assert(
     currentUserProfile,
     'Current user profile not found in collected data'
@@ -290,7 +381,7 @@ async function testUserCreationAndProfileStorage(gun: any): Promise<void> {
 /**
  * Scenario 2: Test private data storage with hashed paths
  */
-async function testPrivateDataStorage(gun: any): Promise<void> {
+async function testPrivateDataStorage(gun: GunInstance): Promise<void> {
   console.log('\n📝 Testing Private Data Storage...');
 
   const testData = 'confidential_secret_data_123';
@@ -353,7 +444,7 @@ async function testPrivateDataStorage(gun: any): Promise<void> {
 /**
  * Scenario 3: Contact system with two users
  */
-async function testEndToEndWorkflow(gun: any): Promise<void> {
+async function testEndToEndWorkflow(gun: GunInstance): Promise<void> {
   console.log('\n📝 Testing contact system test with two users...');
 
   // Cleanup any existing user
@@ -370,9 +461,13 @@ async function testEndToEndWorkflow(gun: any): Promise<void> {
   await authenticateUser(gun, aliceUsername, alicePassword);
   console.log('writing Alice profile');
   await writeProfile(gun);
-  const aliceEpub = gun.user().is.epub;
+  const aliceSession = gun.user().is;
+  if (!aliceSession || !aliceSession.epub || !aliceSession.pub) {
+    throw new Error('Alice session not available');
+  }
+  const aliceEpub = aliceSession.epub;
   console.log(
-    `   ✅ Alice created with pub: ${gun.user().is.pub.substring(0, 20)}...`
+    `   ✅ Alice created with pub: ${aliceSession.pub.substring(0, 20)}...`
   );
 
   // Logout Alice
@@ -387,8 +482,12 @@ async function testEndToEndWorkflow(gun: any): Promise<void> {
   await authenticateUser(gun, bobUsername, bobPassword);
   console.log('writing Bob profile');
   await writeProfile(gun);
+  const bobSession = gun.user().is;
+  if (!bobSession || !bobSession.pub) {
+    throw new Error('Bob session not available');
+  }
   console.log(
-    `   ✅ Bob created with pub: ${gun.user().is.pub.substring(0, 20)}...`
+    `   ✅ Bob created with pub: ${bobSession.pub.substring(0, 20)}...`
   );
 
   // Discover Alice
@@ -397,10 +496,16 @@ async function testEndToEndWorkflow(gun: any): Promise<void> {
   console.log(`results: ${JSON.stringify(discovered)}`);
 
   assert(discovered.length == 1, `discovered.length ${discovered.length})`);
-  assert(discovered[0].data.epub, 'Alice missing epub');
-  assert(discovered[0].data.epub == aliceEpub, 'mismatch');
+  assert(
+    discovered[0].data &&
+      typeof discovered[0].data === 'object' &&
+      'epub' in discovered[0].data,
+    'Alice missing epub'
+  );
+  const discoveredData = discovered[0].data as { epub?: string };
+  assert(discoveredData.epub == aliceEpub, 'mismatch');
   console.log(
-    `✅ Bob discovered Alice with epub: ${discovered[0].data.epub.substring(0, 20)}...`
+    `✅ Bob discovered Alice with epub: ${discoveredData.epub.substring(0, 20)}...`
   );
 
   // Bob adds Alice as a contact
@@ -417,7 +522,7 @@ async function testEndToEndWorkflow(gun: any): Promise<void> {
   await writePrivateData(
     gun,
     ['contacts', aliceUsername, 'epub'],
-    discovered[0].data.epub
+    discoveredData.epub
   );
 
   console.log(`   ✅ Bob added Alice as contact`);
@@ -462,8 +567,9 @@ async function testEndToEndWorkflow(gun: any): Promise<void> {
     if (shouldBeScrambled == aliceUsername) {
       throw new Error('XXX SECURITY BREACH');
     }
-  } catch (error: Error) {
-    if (error.message == 'XXX SECURITY BREACH') throw error;
+  } catch (error: unknown) {
+    if (error instanceof Error && error.message == 'XXX SECURITY BREACH')
+      throw error;
     // Expected: Bob shouldn't have Alice's contacts
     console.log(`   ✅ Alice's contacts remain private from Bob`);
   }
@@ -476,7 +582,9 @@ async function testEndToEndWorkflow(gun: any): Promise<void> {
 /**
  * Security Test 1: Profile impersonation prevention
  */
-async function testProfileImpersonationPrevention(gun: any): Promise<void> {
+async function testProfileImpersonationPrevention(
+  gun: GunInstance
+): Promise<void> {
   console.log('\n🔒 Testing Profile Impersonation Prevention...');
 
   const username = `impersonation_test_${Date.now()}`;
@@ -487,7 +595,8 @@ async function testProfileImpersonationPrevention(gun: any): Promise<void> {
   console.log(`Creating first user with ${username}, ${password1}`);
   await createUser(gun, username, password1);
   await authenticateUser(gun, username, password1);
-  const user1Pair = (gun.user() as any)._.sea;
+  const user1Pair = getUserSEA(gun.user());
+  assert(user1Pair && user1Pair.epub, 'User1 SEA pair not available');
   await writeProfile(gun);
 
   console.log(
@@ -507,7 +616,8 @@ async function testProfileImpersonationPrevention(gun: any): Promise<void> {
     return;
   }
   await authenticateUser(gun, username, password2);
-  const user2Pair = (gun.user() as any)._.sea;
+  const user2Pair = getUserSEA(gun.user());
+  assert(user2Pair && user2Pair.epub, 'User2 SEA pair not available');
   await writeProfile(gun);
 
   console.log(
@@ -522,11 +632,23 @@ async function testProfileImpersonationPrevention(gun: any): Promise<void> {
     'Should have 2 users claiming the same username'
   );
   assert(
-    allUsers.some(u => u.data.epub === user1Pair.epub),
+    allUsers.some(
+      u =>
+        typeof u.data === 'object' &&
+        u.data !== null &&
+        'epub' in u.data &&
+        (u.data as { epub?: string }).epub === user1Pair.epub
+    ),
     'First user not found'
   );
   assert(
-    allUsers.some(u => u.data.epub === user2Pair.epub),
+    allUsers.some(
+      u =>
+        typeof u.data === 'object' &&
+        u.data !== null &&
+        'epub' in u.data &&
+        (u.data as { epub?: string }).epub === user2Pair.epub
+    ),
     'Second user not found'
   );
 
@@ -538,7 +660,9 @@ async function testProfileImpersonationPrevention(gun: any): Promise<void> {
 /**
  * Security Test 2: Private data encryption validation
  */
-async function testPrivateDataEncryptionValidation(gun: any): Promise<void> {
+async function testPrivateDataEncryptionValidation(
+  gun: GunInstance
+): Promise<void> {
   console.log('\n🔒 Testing Private Data Encryption Validation...');
 
   const username = `impersonation_test_${Date.now()}`;
@@ -547,7 +671,8 @@ async function testPrivateDataEncryptionValidation(gun: any): Promise<void> {
   // Create first user with username
   await createUser(gun, username, password1);
   await authenticateUser(gun, username, password1);
-  const user1Pair = (gun.user() as any)._.sea;
+  const user1Pair = getUserSEA(gun.user());
+  assert(user1Pair && user1Pair.epub, 'User1 SEA pair not available');
   await writeProfile(gun);
 
   console.log(
@@ -565,9 +690,12 @@ async function testPrivateDataEncryptionValidation(gun: any): Promise<void> {
   console.log(`   Hashed path: ${hashedPath.join(' -> ')}`);
 
   // Try to read raw encrypted data without decryption
-  const rawNode = hashedPath.reduce((node, part) => node.get(part), gun.user());
-  const rawData = await new Promise<any>(resolve => {
-    rawNode.once((data: any) => resolve(data));
+  const rawNode = hashedPath.reduce(
+    (node: unknown, part) => (node as GunNodeRef).get(part),
+    gun.user()
+  ) as GunNodeRef;
+  const rawData = await new Promise(resolve => {
+    rawNode.once((data: unknown) => resolve(data));
   });
 
   console.log(`   Raw data: ${JSON.stringify(rawData)}`);
@@ -615,7 +743,7 @@ export async function testNewGunSEAScheme(): Promise<TestSuiteResult> {
   }
 
   // monkey patch for testing
-  gun.sea = Gun.SEA;
+  (gun as { sea?: unknown }).sea = Gun.SEA;
 
   try {
     // Core functionality tests

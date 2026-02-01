@@ -10,7 +10,7 @@ import { testAuthStore } from './test/authStore.test';
 import { testEncryptionService } from './test/encryptionService.test';
 import { testFunctionalResult } from './test/functionalResult.test';
 import { printTestSummary, type TestSuiteResult } from './utils/testRunner';
-//import { testNewGunSEAScheme } from './test/testNewGunSEAScheme'
+import { testNewGunSEAScheme } from './test/testNewGunSEAScheme';
 import { clearGunDBLocalStorage } from './utils/clearGunDB';
 import { useConnectionStore } from './stores/connectionStore';
 
@@ -102,7 +102,7 @@ if (typeof window !== 'undefined') {
   (window as any).testAuthStore = testAuthStore;
   (window as any).testEncryptionService = testEncryptionService;
   (window as any).testFunctionalResult = testFunctionalResult;
-  //(window as any).testNewGunSEAScheme = testNewGunSEAScheme;
+  (window as any).testNewGunSEAScheme = testNewGunSEAScheme;
   (window as any).runAllTests = runAllTests;
   (window as any).clearGunDB = clearGunDBLocalStorage;
   (window as any).gunService = gunService;
