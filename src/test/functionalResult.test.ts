@@ -2,11 +2,7 @@
  * Functional Result Utility Tests
  */
 
-import {
-  TestRunner,
-  printTestSummary,
-  type TestSuiteResult,
-} from '../utils/testRunner';
+import { TestRunner, type TestSuiteResult } from '../utils/testRunner';
 import {
   success,
   failure,
@@ -772,7 +768,7 @@ async function testEdgeCases(): Promise<TestSuiteResult> {
   return runner.getResults();
 }
 
-export async function testFunctionalResult(): Promise<void> {
+export async function testFunctionalResult(): Promise<TestSuiteResult[]> {
   console.log('🚀 Starting Functional Result Utility Tests\n');
   console.log('='.repeat(60));
 
@@ -806,5 +802,5 @@ export async function testFunctionalResult(): Promise<void> {
   suiteResults.push(edgeCasesResult);
   console.log('\n' + '='.repeat(60) + '\n');
 
-  printTestSummary(suiteResults);
+  return suiteResults;
 }

@@ -4,12 +4,7 @@
 
 import { encryptionService } from '../services/encryptionService';
 import { gunService } from '../services/gunService';
-import {
-  TestRunner,
-  printTestSummary,
-  type TestSuiteResult,
-  sleep,
-} from '../utils/testRunner';
+import { TestRunner, type TestSuiteResult, sleep } from '../utils/testRunner';
 // import { retryWithBackoff } from '../../utils/retryHelper'
 
 const assert = (condition: unknown, message: string) => {
@@ -305,7 +300,7 @@ async function testKeySharing(): Promise<TestSuiteResult> {
 //   return runner.getResults()
 // }
 
-export async function testEncryptionService(): Promise<void> {
+export async function testEncryptionService(): Promise<TestSuiteResult[]> {
   console.log('🚀 Starting Encryption Service Tests\n');
   console.log('='.repeat(60));
 
@@ -356,5 +351,5 @@ export async function testEncryptionService(): Promise<void> {
     }
   }
 
-  printTestSummary(suiteResults);
+  return suiteResults;
 }
