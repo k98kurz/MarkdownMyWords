@@ -1,6 +1,6 @@
 import Gun from 'gun';
 import 'gun/sea';
-import type { IGunInstance } from 'gun/types';
+import type { IGunInstance, ISEAPair } from 'gun/types';
 import { gunService } from './gunService';
 
 /**
@@ -24,6 +24,32 @@ export interface EncryptionError {
   code: string;
   message: string;
   details?: unknown;
+}
+
+function createEncryptionError(
+  code: string,
+  message: string,
+  details?: unknown
+): EncryptionError {
+  return {
+    code,
+    message,
+    details,
+  };
+}
+
+function getUserSEA(user: unknown): ISEAPair | undefined {
+  if (
+    user &&
+    typeof user === 'object' &&
+    '_' in user &&
+    user._ &&
+    typeof user._ === 'object' &&
+    'sea' in user._
+  ) {
+    return user._.sea as ISEAPair;
+  }
+  return undefined;
 }
 
 /**
@@ -68,12 +94,11 @@ class EncryptionService {
       this.isInitialized = true;
       console.log('SEA initialized successfully');
     } catch (error) {
-      const encryptionError: EncryptionError = {
-        code: 'SEA_INIT_FAILED',
-        message: 'Failed to initialize SEA',
-        details: error,
-      };
-      throw encryptionError;
+      throw createEncryptionError(
+        'SEA_INIT_FAILED',
+        'Failed to initialize SEA',
+        error
+      );
     }
   }
 
@@ -82,10 +107,10 @@ class EncryptionService {
    */
   private checkInitialized(): void {
     if (!this.isInitialized || !this.sea || !this.gun) {
-      throw {
-        code: 'SEA_NOT_INITIALIZED',
-        message: 'SEA not initialized. Call initializeSEA() first.',
-      } as EncryptionError;
+      throw createEncryptionError(
+        'SEA_NOT_INITIALIZED',
+        'SEA not initialized. Call initializeSEA() first.'
+      );
     }
   }
 
@@ -105,11 +130,11 @@ class EncryptionService {
       );
       return this.exportKey(key);
     } catch (error) {
-      throw {
-        code: 'KEY_GENERATION_FAILED',
-        message: 'Failed to generate encryption key',
-        details: error,
-      } as EncryptionError;
+      throw createEncryptionError(
+        'KEY_GENERATION_FAILED',
+        'Failed to generate encryption key',
+        error
+      );
     }
   }
 
@@ -125,11 +150,11 @@ class EncryptionService {
       const keyBase64 = btoa(String.fromCharCode(...keyArray));
       return keyBase64;
     } catch (error) {
-      throw {
-        code: 'KEY_EXPORT_FAILED',
-        message: 'Failed to export key',
-        details: error,
-      } as EncryptionError;
+      throw createEncryptionError(
+        'KEY_EXPORT_FAILED',
+        'Failed to export key',
+        error
+      );
     }
   }
 
@@ -143,11 +168,11 @@ class EncryptionService {
     try {
       return await this.sea?.encrypt(content, key);
     } catch (error) {
-      throw {
-        code: 'ENCRYPTION_FAILED',
-        message: 'Failed to encrypt content',
-        details: error,
-      } as EncryptionError;
+      throw createEncryptionError(
+        'ENCRYPTION_FAILED',
+        'Failed to encrypt content',
+        error
+      );
     }
   }
 
@@ -161,11 +186,11 @@ class EncryptionService {
     try {
       return this.sea?.decrypt(encrypted, key);
     } catch (error) {
-      throw {
-        code: 'DECRYPTION_FAILED',
-        message: 'Failed to decrypt document',
-        details: error,
-      } as EncryptionError;
+      throw createEncryptionError(
+        'DECRYPTION_FAILED',
+        'Failed to decrypt document',
+        error
+      );
     }
   }
 
@@ -180,22 +205,18 @@ class EncryptionService {
     this.checkInitialized();
 
     if (!this.sea) {
-      throw {
-        code: 'SEA_NOT_INITIALIZED',
-        message: 'SEA not initialized',
-      } as EncryptionError;
+      throw createEncryptionError('SEA_NOT_INITIALIZED', 'SEA not initialized');
     }
 
     try {
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
-      const userPair = this.gun?.user()._?.sea;
+      const userNode = this.gun!.user();
+      const userPair = getUserSEA(userNode);
 
       if (!userPair || !userPair.epriv || !userPair.epub) {
-        throw {
-          code: 'NO_USER_PAIR',
-          message: 'User must be authenticated to encrypt data',
-        } as EncryptionError;
+        throw createEncryptionError(
+          'NO_USER_PAIR',
+          'User must be authenticated to encrypt data'
+        );
       }
 
       // Derive shared secret using ECDH with recipient's epub
@@ -214,11 +235,11 @@ class EncryptionService {
       // Return encrypted data
       return encrypted;
     } catch (error) {
-      throw {
-        code: 'ECDH_ENCRYPTION_FAILED',
-        message: 'Failed to encrypt data with ECDH',
-        details: error,
-      } as EncryptionError;
+      throw createEncryptionError(
+        'ECDH_ENCRYPTION_FAILED',
+        'Failed to encrypt data with ECDH',
+        error
+      );
     }
   }
 
@@ -235,22 +256,18 @@ class EncryptionService {
     this.checkInitialized();
 
     if (!this.sea || !this.gun) {
-      throw {
-        code: 'SEA_NOT_INITIALIZED',
-        message: 'SEA not initialized',
-      } as EncryptionError;
+      throw createEncryptionError('SEA_NOT_INITIALIZED', 'SEA not initialized');
     }
 
     try {
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
-      const userPair = this.gun.user()._?.sea;
+      const userNode = this.gun!.user();
+      const userPair = getUserSEA(userNode);
 
       if (!userPair || !userPair.epriv || !userPair.epub) {
-        throw {
-          code: 'NO_KEY_PAIR',
-          message: 'User must be authenticated to decrypt data',
-        } as EncryptionError;
+        throw createEncryptionError(
+          'NO_KEY_PAIR',
+          'User must be authenticated to decrypt data'
+        );
       }
 
       // Derive shared secret using ECDH with sender's epub
@@ -266,11 +283,11 @@ class EncryptionService {
       // Decrypt data with shared secret
       return await this.sea.decrypt(encryptedData, sharedSecret);
     } catch (error) {
-      throw {
-        code: 'ECDH_DECRYPTION_FAILED',
-        message: 'Failed to decrypt ciphertext with ECDH',
-        details: error,
-      } as EncryptionError;
+      throw createEncryptionError(
+        'ECDH_DECRYPTION_FAILED',
+        'Failed to decrypt ciphertext with ECDH',
+        error
+      );
     }
   }
 }
