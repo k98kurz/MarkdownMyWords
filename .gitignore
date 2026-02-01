@@ -36,3 +36,11 @@ build
 
 # GunDB local storage (radisk)
 radata*
+
+# Artifacts from agentic development
+*.md
+!readme.md
+!AGENTS.md
+.ralph/
+.research/
+.old/
