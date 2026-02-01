@@ -321,7 +321,7 @@ async function testConnectionState(): Promise<TestSuiteResult> {
 /**
  * Run all GunDB Service tests
  */
-export async function testGunService(): Promise<void> {
+export async function testGunService(): Promise<TestSuiteResult[]> {
   console.log('🚀 Starting GunDB Service Tests\n');
   console.log('='.repeat(60));
 
@@ -373,4 +373,6 @@ export async function testGunService(): Promise<void> {
 
   // Print summary
   printTestSummary(suiteResults);
+
+  return suiteResults;
 }

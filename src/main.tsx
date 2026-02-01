@@ -9,6 +9,7 @@ import { testGunService } from './test/gunService.test';
 import { testAuthStore } from './test/authStore.test';
 import { testEncryptionService } from './test/encryptionService.test';
 import { testFunctionalResult } from './test/functionalResult.test';
+import { printTestSummary, type TestSuiteResult } from './utils/testRunner';
 //import { testNewGunSEAScheme } from './test/testNewGunSEAScheme'
 import { clearGunDBLocalStorage } from './utils/clearGunDB';
 import { useConnectionStore } from './stores/connectionStore';
@@ -49,30 +50,45 @@ async function runAllTests(): Promise<void> {
   console.log('='.repeat(60));
 
   try {
+    const allSuiteResults: TestSuiteResult[] = [];
+
     // Test 1: Document encryption sizes
     console.log('\n📦 Test Suite 1: Document Encryption Sizes\n');
-    await testVariousDocumentSizes();
+    const docSizesResult = await testVariousDocumentSizes();
+    allSuiteResults.push(docSizesResult);
 
     console.log('\n' + '='.repeat(60));
 
     // Test 2: GunDB Service
     console.log('\n📦 Test Suite 2: GunDB Service\n');
-    await testGunService();
+    const gunResults = await testGunService();
+    allSuiteResults.push(...gunResults);
 
     console.log('\n' + '='.repeat(60));
 
     // Test 3: Auth Store
     console.log('\n📦 Test Suite 3: Auth Store\n');
-    await testAuthStore();
+    const authResult = await testAuthStore();
+    allSuiteResults.push(authResult);
 
     console.log('\n' + '='.repeat(60));
 
     // Test 4: Encryption Service
     console.log('\n📦 Test Suite 4: Encryption Service\n');
-    await testEncryptionService();
+    const encResults = await testEncryptionService();
+    allSuiteResults.push(...encResults);
 
     console.log('\n' + '='.repeat(60));
-    console.log('\n✅ All test suites complete!');
+
+    // Test 5: Functional Result
+    console.log('\n📦 Test Suite 5: Functional Result\n');
+    const funcResults = await testFunctionalResult();
+    allSuiteResults.push(...funcResults);
+
+    console.log('\n' + '='.repeat(60));
+
+    // Print overall summary
+    printTestSummary(allSuiteResults);
   } catch (error) {
     console.error('\n❌ Error running tests:', error);
     throw error;

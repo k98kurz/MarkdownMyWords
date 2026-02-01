@@ -5,6 +5,7 @@
  */
 
 import { encryptionService } from '../services/encryptionService';
+import { TestRunner, type TestSuiteResult } from '../utils/testRunner';
 
 /**
  * Generate test content of specified size
@@ -15,11 +16,13 @@ function generateTestContent(sizeInBytes: number): string {
 }
 
 /**
- * Test encryption/decryption with various document sizes in the browser console
+ * Test encryption/decryption with various document sizes in browser console
  * @returns Promise that resolves when tests complete
  */
-export async function testVariousDocumentSizes(): Promise<void> {
+export async function testVariousDocumentSizes(): Promise<TestSuiteResult> {
   console.log('🧪 Testing SEA encryption with various document sizes...\n');
+
+  const runner = new TestRunner('Document Encryption Sizes');
 
   const testSizes = [
     { name: '1 KB', bytes: 1024 },
@@ -28,9 +31,7 @@ export async function testVariousDocumentSizes(): Promise<void> {
   ];
 
   for (const testSize of testSizes) {
-    console.log(`Testing ${testSize.name} (${testSize.bytes} bytes)...`);
-
-    try {
+    await runner.run(`${testSize.name} encryption/decryption`, async () => {
       const content = generateTestContent(testSize.bytes);
       const docKey = await encryptionService.generateKey();
 
@@ -42,24 +43,22 @@ export async function testVariousDocumentSizes(): Promise<void> {
       const decrypted = await encryptionService.decrypt(encrypted!, docKey);
       const decryptTime = performance.now() - decryptStart;
 
-      const success =
-        decrypted === content && decrypted.length === testSize.bytes;
-
-      if (success) {
-        const encryptSpeed = Math.round((testSize.bytes * 1000) / encryptTime);
-        const decryptSpeed = Math.round((testSize.bytes * 1000) / decryptTime);
-        console.log(
-          `  ✅ Success - Encrypt: ${Math.round(encryptTime)}ms (${encryptSpeed.toLocaleString()} bytes/s), Decrypt: ${Math.round(decryptTime)}ms (${decryptSpeed.toLocaleString()} bytes/s)`
-        );
-      } else {
-        console.log(`  ❌ Failed - Content mismatch or wrong length`);
+      if (!encrypted || !decrypted) {
+        throw new Error('Encryption or decryption returned undefined');
       }
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      console.log(`  ❌ Error: ${errorMessage}`);
-    }
+
+      if (decrypted !== content || decrypted.length !== testSize.bytes) {
+        throw new Error('Content mismatch or wrong length');
+      }
+
+      const encryptSpeed = Math.round((testSize.bytes * 1000) / encryptTime);
+      const decryptSpeed = Math.round((testSize.bytes * 1000) / decryptTime);
+      console.log(
+        `  ✅ ${testSize.name} - Encrypt: ${Math.round(encryptTime)}ms (${encryptSpeed.toLocaleString()} bytes/s), Decrypt: ${Math.round(decryptTime)}ms (${decryptSpeed.toLocaleString()} bytes/s)`
+      );
+    });
   }
 
-  console.log('\n✅ Tests complete!');
+  runner.printResults();
+  return runner.getResults();
 }
