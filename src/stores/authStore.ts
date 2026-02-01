@@ -6,7 +6,16 @@
 
 import { create } from 'zustand'
 import { gunService } from '../services/gunService'
-import { success, failure, match, tryCatch, type Result } from '../utils/functionalResult'
+import {
+  success,
+  failure,
+  match,
+  chain,
+  pipe,
+  tryCatch,
+  isFailure,
+  type Result,
+} from '../utils/functionalResult'
 import type { IGunUserInstance } from 'gun/types'
 
 // Replace all 'any' types with discriminated union
@@ -134,20 +143,30 @@ const getAuthenticatedUser = (): Result<AuthenticatedUser, AuthError> => {
   }
 }
 
+// Type guard for AuthenticatedUser
+const isAuthenticatedUser = (data: unknown): data is AuthenticatedUser => {
+  return typeof data === 'object' && data !== null && 'user' in data && 'pub' in data
+}
+
 // Unified result handler (eliminates state update duplication)
 // CRITICAL: Never calls global error modal - preserves current behavior
-const handleAuthResult = (
-  result: Result<AuthenticatedUser, AuthError>,
+// Generic to handle both Result<void, AuthError> (validation) and Result<AuthenticatedUser, AuthError> (auth)
+const handleAuthResult = <T>(
+  result: Result<T, AuthError>,
   set: (state: Partial<AuthState>) => void
 ): void => {
   const handleResult = match(
-    (user: AuthenticatedUser) => {
-      set({
-        user: user.user,
-        isAuthenticated: true,
-        isLoading: false,
-        error: null,
-      })
+    (data: T) => {
+      // Only set user if we have AuthenticatedUser data
+      // If T is void (validation success), state will be set by subsequent operations
+      if (isAuthenticatedUser(data)) {
+        set({
+          user: data.user,
+          isAuthenticated: true,
+          isLoading: false,
+          error: null,
+        })
+      }
     },
     (error: AuthError) => {
       set({
@@ -184,32 +203,29 @@ export const useAuthStore = create<AuthState>(set => ({
   register: async (username: string, password: string) => {
     set({ isLoading: true, error: null })
 
-    const validationResult = validateAuthInput(username, password)
-    if (!validationResult.success) {
-      const error = validationResult.error
-      handleAuthResult(validationResult, set)
-      throw error
-    }
+    // Compose all operations in single pipeline
+    const result = await pipe(
+      // Step 1: Validate input
+      validateAuthInput(username, password),
+      // Step 2: Create user, authenticate, and write profile (async operation)
+      async validationResult => {
+        if (isFailure(validationResult)) return validationResult
+        return await tryCatch(async () => {
+          await gunService.createUser(username.trim(), password)
+          await gunService.authenticateUser(username.trim(), password)
+          await gunService.writeProfile()
+        }, transformAuthError)
+      },
+      // Step 3: Get authenticated user
+      chain(() => getAuthenticatedUser())
+    )
 
-    const createResult = await tryCatch(async () => {
-      await gunService.createUser(username.trim(), password)
-      await gunService.authenticateUser(username.trim(), password)
-      await gunService.writeProfile()
-      return undefined
-    }, transformAuthError)
+    // Handle final result (validation or auth errors both go here)
+    handleAuthResult(result, set)
 
-    if (!createResult.success) {
-      const createError = createResult.error
-      handleAuthResult(createResult, set)
-      throw createError
-    }
-
-    const userResult = getAuthenticatedUser()
-    handleAuthResult(userResult, set)
-
-    if (!userResult.success) {
-      const userError = userResult.error
-      throw userError
+    // Throw error if any step failed
+    if (isFailure(result)) {
+      throw result.error
     }
   },
 
@@ -219,29 +235,28 @@ export const useAuthStore = create<AuthState>(set => ({
   login: async (username: string, password: string) => {
     set({ isLoading: true, error: null })
 
-    const validationResult = validateAuthInput(username, password)
-    if (!validationResult.success) {
-      const validationError = validationResult.error
-      handleAuthResult(validationResult, set)
-      throw validationError
-    }
-
-    const authResult = await tryCatch(
-      () => gunService.authenticateUser(username.trim(), password),
-      transformAuthError
+    // Compose all operations in single pipeline
+    const result = await pipe(
+      // Step 1: Validate input
+      validateAuthInput(username, password),
+      // Step 2: Authenticate user (async operation)
+      async validationResult => {
+        if (isFailure(validationResult)) return validationResult
+        return await tryCatch(
+          () => gunService.authenticateUser(username.trim(), password),
+          transformAuthError
+        )
+      },
+      // Step 3: Get authenticated user
+      chain(() => getAuthenticatedUser())
     )
-    if (!authResult.success) {
-      const loginError = authResult.error
-      handleAuthResult(authResult, set)
-      throw loginError
-    }
 
-    const userResult = getAuthenticatedUser()
-    handleAuthResult(userResult, set)
+    // Handle final result (validation or auth errors both go here)
+    handleAuthResult(result, set)
 
-    if (!userResult.success) {
-      const finalError = userResult.error
-      throw finalError
+    // Throw error if any step failed
+    if (isFailure(result)) {
+      throw result.error
     }
   },
 

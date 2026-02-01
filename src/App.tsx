@@ -74,7 +74,6 @@ function App() {
         isOpen={showAuthModal}
         onClose={isAuthenticated ? () => setShowAuthModal(false) : undefined}
         defaultTab="login"
-        isLoading={isLoading}
       />
 
       <ErrorModal />
