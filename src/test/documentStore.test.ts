@@ -1,0 +1,401 @@
+/**
+ * Document Store Browser Tests - createDocument()
+ *
+ * Tests for document creation that can be run from browser console.
+ *
+ * IMPORTANT: Error Handling Pattern
+ * --------------------------------
+ * documentStore methods return Result<Document, DocumentError> objects.
+ *
+ * Tests should verify:
+ * - Result.success is true/false based on operation outcome
+ * - Result.data contains the created Document on success
+ * - Result.error contains DocumentError with proper code and message on failure
+ * - Store state is updated correctly (currentDocument, status, error)
+ */
+
+import { useDocumentStore } from '../stores/documentStore';
+import { useAuthStore } from '../stores/authStore';
+import { TestRunner, type TestSuiteResult, sleep } from '../utils/testRunner';
+import { isFailure, isSuccess } from '../utils/functionalResult';
+import type { DocumentError } from '../types/document';
+
+/**
+ * Cleanup documentStore state between tests
+ */
+async function cleanupDocumentStore(): Promise<void> {
+  const { currentDocument, documentList } = useDocumentStore.getState();
+
+  // Note: We can't delete documents without getDocument implemented
+  // So we just clear state for now
+  useDocumentStore.setState({
+    currentDocument: null,
+    documentList: [],
+    status: 'READY',
+    error: null,
+  });
+
+  await sleep(100);
+}
+
+/**
+ * Generate unique test document title
+ */
+function generateTestTitle(suffix: string = ''): string {
+  return `Test Doc ${Date.now()}_${Math.random().toString(36).substring(7)}${suffix}`;
+}
+
+/**
+ * Assert helper that works with browser tests
+ */
+function assert(condition: unknown, message: string): asserts condition {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+/**
+ * Type guard to check if error is DocumentError
+ */
+function isDocumentError(error: unknown): error is DocumentError {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    typeof error.code === 'string' &&
+    'message' in error &&
+    typeof error.message === 'string'
+  );
+}
+
+/**
+ * Test input validation for createDocument
+ */
+async function testInputValidation(runner: TestRunner): Promise<void> {
+  await runner.run('Create document with empty title', async () => {
+    const result = await useDocumentStore
+      .getState()
+      .createDocument('', 'content');
+
+    assert(isFailure(result), 'Should fail with empty title');
+    assert(isDocumentError(result.error), 'Should return DocumentError');
+    assert(
+      result.error?.code === 'VALIDATION_ERROR',
+      'Error code should be VALIDATION_ERROR'
+    );
+    assert(
+      result.error?.message === 'Title is required',
+      'Error message should match exactly'
+    );
+
+    const state = useDocumentStore.getState();
+    assert(state.currentDocument === null, 'Should not set currentDocument');
+    assert(state.status === 'READY', 'Status should be READY');
+    assert(state.error === 'Title is required', 'State error should match');
+  });
+
+  await runner.run('Create document with null content', async () => {
+    const result = await useDocumentStore
+      .getState()
+      .createDocument('title', null as unknown as string);
+
+    assert(isFailure(result), 'Should fail with null content');
+    assert(isDocumentError(result.error), 'Should return DocumentError');
+    assert(
+      result.error?.code === 'VALIDATION_ERROR',
+      'Error code should be VALIDATION_ERROR'
+    );
+    assert(
+      result.error?.message === 'Content is required',
+      'Error message should match exactly'
+    );
+  });
+
+  await runner.run('Create document with undefined content', async () => {
+    const result = await useDocumentStore
+      .getState()
+      .createDocument('title', undefined as unknown as string);
+
+    assert(isFailure(result), 'Should fail with undefined content');
+    assert(isDocumentError(result.error), 'Should return DocumentError');
+    assert(
+      result.error?.code === 'VALIDATION_ERROR',
+      'Error code should be VALIDATION_ERROR'
+    );
+    assert(
+      result.error?.message === 'Content is required',
+      'Error message should match exactly'
+    );
+  });
+}
+
+/**
+ * Test basic createDocument operations
+ */
+async function testBasicOperations(runner: TestRunner): Promise<void> {
+  await runner.run('Create public document successfully', async () => {
+    const title = generateTestTitle('_public');
+    const content = 'Test content';
+    const tags = ['tag1', 'tag2'];
+
+    const result = await useDocumentStore.getState().createDocument(
+      title,
+      content,
+      tags,
+      true // isPublic
+    );
+
+    assert(isSuccess(result), 'Should succeed creating public document');
+    assert(result.data !== undefined, 'Should have document data');
+
+    const doc = result.data!;
+    assert(typeof doc.id === 'string', 'Document should have id');
+    assert(doc.id.length > 0, 'Document id should not be empty');
+    assert(doc.title === title, 'Title should match (not encrypted)');
+    assert(doc.content === content, 'Content should match (not encrypted)');
+    assert(
+      JSON.stringify(doc.tags) === JSON.stringify(tags),
+      'Tags should match (not encrypted)'
+    );
+    assert(doc.isPublic === true, 'isPublic should be true');
+    assert(doc.createdAt > 0, 'Should have createdAt timestamp');
+    assert(doc.updatedAt > 0, 'Should have updatedAt timestamp');
+    assert(Array.isArray(doc.access), 'Should have access array');
+    assert(doc.access.length === 0, 'Access array should be empty');
+
+    const state = useDocumentStore.getState();
+    assert(state.currentDocument?.id === doc.id, 'Should set currentDocument');
+    assert(state.status === 'READY', 'Status should be READY');
+    assert(state.error === null, 'Should have no error');
+
+    console.log(`  Created public document: ${doc.id}`);
+  });
+
+  await runner.run('Create private document successfully', async () => {
+    const title = generateTestTitle('_private');
+    const content = 'Secret content';
+
+    const result = await useDocumentStore.getState().createDocument(
+      title,
+      content,
+      undefined,
+      false // isPublic (default)
+    );
+
+    assert(isSuccess(result), 'Should succeed creating private document');
+    assert(result.data !== undefined, 'Should have document data');
+
+    const doc = result.data!;
+    assert(typeof doc.id === 'string', 'Document should have id');
+    assert(
+      doc.title !== title,
+      'Title should be encrypted (different from input)'
+    );
+    assert(
+      doc.content !== content,
+      'Content should be encrypted (different from input)'
+    );
+    assert(doc.isPublic === false, 'isPublic should be false');
+
+    const state = useDocumentStore.getState();
+    assert(state.currentDocument?.id === doc.id, 'Should set currentDocument');
+    assert(state.status === 'READY', 'Status should be READY');
+    assert(state.error === null, 'Should have no error');
+
+    console.log(`  Created private document: ${doc.id}`);
+  });
+
+  await runner.run('Create document with no tags', async () => {
+    const title = generateTestTitle('_no_tags');
+    const content = 'Test content';
+
+    const result = await useDocumentStore
+      .getState()
+      .createDocument(title, content);
+
+    assert(isSuccess(result), 'Should succeed creating document without tags');
+    assert(result.data !== undefined, 'Should have document data');
+
+    const doc = result.data!;
+    assert(doc.tags === undefined, 'Tags should be undefined');
+
+    console.log(`  Created document without tags: ${doc.id}`);
+  });
+
+  await runner.run('Create document with empty tags array', async () => {
+    const title = generateTestTitle('_empty_tags');
+    const content = 'Test content';
+
+    const result = await useDocumentStore
+      .getState()
+      .createDocument(title, content, []);
+
+    assert(
+      isSuccess(result),
+      'Should succeed creating document with empty tags'
+    );
+    assert(result.data !== undefined, 'Should have document data');
+
+    const doc = result.data!;
+    assert(Array.isArray(doc.tags), 'Tags should be an array');
+    assert(doc.tags.length === 0, 'Tags array should be empty');
+
+    console.log(`  Created document with empty tags: ${doc.id}`);
+  });
+}
+
+/**
+ * Test state transitions during createDocument
+ */
+async function testStateTransitions(runner: TestRunner): Promise<void> {
+  await runner.run('Loading state during creation', async () => {
+    const title = generateTestTitle('_loading');
+
+    const initialState = useDocumentStore.getState();
+    assert(initialState.status === 'READY', 'Should not be loading initially');
+
+    const createPromise = useDocumentStore
+      .getState()
+      .createDocument(title, 'content');
+
+    const loadingState = useDocumentStore.getState();
+    assert(
+      loadingState.status === 'LOADING',
+      'Should be loading during creation'
+    );
+
+    await createPromise;
+
+    const finalState = useDocumentStore.getState();
+    assert(
+      finalState.status === 'READY',
+      'Should not be loading after success'
+    );
+    assert(finalState.error === null, 'Should have no error after success');
+    assert(finalState.currentDocument !== null, 'Should have currentDocument');
+  });
+
+  await runner.run('State cleanup on validation failure', async () => {
+    const initialState = useDocumentStore.getState();
+    assert(initialState.status === 'READY', 'Should not be loading initially');
+
+    await useDocumentStore.getState().createDocument('', 'content');
+
+    const finalState = useDocumentStore.getState();
+    assert(
+      finalState.status === 'READY',
+      'Should not be loading after failure'
+    );
+    assert(finalState.error !== null, 'Should have error message');
+    assert(
+      finalState.currentDocument === null,
+      'Should not set currentDocument'
+    );
+  });
+}
+
+/**
+ * Test document properties
+ */
+async function testDocumentProperties(runner: TestRunner): Promise<void> {
+  await runner.run('Document has unique ID', async () => {
+    const title1 = generateTestTitle('_id1');
+    const title2 = generateTestTitle('_id2');
+
+    const result1 = await useDocumentStore
+      .getState()
+      .createDocument(title1, 'content1');
+    const result2 = await useDocumentStore
+      .getState()
+      .createDocument(title2, 'content2');
+
+    assert(isSuccess(result1), 'First document should succeed');
+    assert(isSuccess(result2), 'Second document should succeed');
+
+    const doc1 = result1.data!;
+    const doc2 = result2.data!;
+
+    assert(doc1.id !== doc2.id, 'Documents should have unique IDs');
+
+    console.log(`  Unique IDs: ${doc1.id} != ${doc2.id}`);
+  });
+
+  await runner.run('Timestamps are set correctly', async () => {
+    const title = generateTestTitle('_timestamps');
+    const beforeCreation = Date.now();
+
+    const result = await useDocumentStore
+      .getState()
+      .createDocument(title, 'content');
+
+    const afterCreation = Date.now();
+
+    assert(isSuccess(result), 'Should succeed');
+
+    const doc = result.data!;
+    assert(
+      doc.createdAt >= beforeCreation,
+      `createdAt (${doc.createdAt}) should be >= before (${beforeCreation})`
+    );
+    assert(
+      doc.createdAt <= afterCreation,
+      `createdAt (${doc.createdAt}) should be <= after (${afterCreation})`
+    );
+    assert(
+      doc.updatedAt >= beforeCreation,
+      `updatedAt (${doc.updatedAt}) should be >= before (${beforeCreation})`
+    );
+    assert(
+      doc.updatedAt <= afterCreation,
+      `updatedAt (${doc.updatedAt}) should be <= after (${afterCreation})`
+    );
+    assert(
+      doc.updatedAt === doc.createdAt,
+      'updatedAt should equal createdAt initially'
+    );
+
+    console.log(
+      `  Timestamps: createdAt=${doc.createdAt}, updatedAt=${doc.updatedAt}`
+    );
+  });
+
+  await runner.run('isPublic defaults to false', async () => {
+    const title = generateTestTitle('_default_public');
+
+    const result = await useDocumentStore
+      .getState()
+      .createDocument(title, 'content');
+
+    assert(isSuccess(result), 'Should succeed');
+
+    const doc = result.data!;
+    assert(doc.isPublic === false, 'isPublic should default to false');
+  });
+}
+
+/**
+ * Run all createDocument tests
+ */
+export async function testCreateDocument(): Promise<TestSuiteResult> {
+  console.log('🧪 Testing documentStore.createDocument()...\n');
+  console.log('='.repeat(60));
+
+  // Pre-test cleanup
+  await cleanupDocumentStore();
+
+  const runner = new TestRunner('documentStore.createDocument');
+
+  // Run all test suites
+  await testInputValidation(runner);
+  await testBasicOperations(runner);
+  await testStateTransitions(runner);
+  await testDocumentProperties(runner);
+
+  console.log('\n✅ createDocument tests complete!');
+  runner.printResults();
+
+  // Post-test cleanup
+  await cleanupDocumentStore();
+
+  return runner.getResults();
+}
