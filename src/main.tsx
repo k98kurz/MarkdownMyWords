@@ -11,6 +11,7 @@ import { testEncryptionService } from './test/encryptionService.test';
 import { testFunctionalResult } from './test/functionalResult.test';
 import { printTestSummary, type TestSuiteResult } from './utils/testRunner';
 import { testNewGunSEAScheme } from './test/testNewGunSEAScheme';
+import { testDocumentStore } from './test/documentStore.test';
 import { clearGunDBLocalStorage } from './utils/clearGunDB';
 import { useConnectionStore } from './stores/connectionStore';
 
@@ -87,6 +88,13 @@ async function runAllTests(): Promise<void> {
 
     console.log('\n' + '='.repeat(60));
 
+    // Test 6: Document Store
+    console.log('\n📦 Test Suite 6: Document Store\n');
+    const docStoreResults = await testDocumentStore();
+    allSuiteResults.push(...docStoreResults);
+
+    console.log('\n' + '='.repeat(60));
+
     // Print overall summary
     printTestSummary(allSuiteResults);
   } catch (error) {
@@ -103,6 +111,7 @@ if (typeof window !== 'undefined') {
   (window as any).testEncryptionService = testEncryptionService;
   (window as any).testFunctionalResult = testFunctionalResult;
   (window as any).testNewGunSEAScheme = testNewGunSEAScheme;
+  (window as any).testDocumentStore = testDocumentStore;
   (window as any).runAllTests = runAllTests;
   (window as any).clearGunDB = clearGunDBLocalStorage;
   (window as any).gunService = gunService;
@@ -117,6 +126,9 @@ if (typeof window !== 'undefined') {
   );
   console.log(
     '   - window.testFunctionalResult() - Test functional result utility (comprehensive suite)'
+  );
+  console.log(
+    '   - window.testDocumentStore() - Test document store operations (full test suite)'
   );
   //  console.log('   - window.testNewGunSEAScheme() - Test new GunDB + SEA security scheme');
   console.log('   - window.runAllTests() - Run all test suites');
