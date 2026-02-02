@@ -2513,3 +2513,277 @@ export async function testShareDocumentSuite(): Promise<TestSuiteResult> {
 
   return runner.getResults();
 }
+
+/**
+ * Test unshareDocument
+ *
+ * NOTE: These tests require a recipient user to exist in GunDB.
+ * For manual testing:
+ * 1. Create a recipient user: useAuthStore.getState().register('recipient', 'password123')
+ * 2. Verify recipient has epub: gunService.getGun().user().is.epub
+ * 3. Run these tests from the sender's account
+ */
+async function testUnshareDocument(runner: TestRunner): Promise<void> {
+  await runner.run('Unshare public document from user', async () => {
+    await cleanupDocumentStore();
+
+    const title = generateTestTitle('_unshare_public');
+    const content = 'Public content to share';
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, content, undefined, true);
+
+    assert(isSuccess(createResult), 'Should create document first');
+    const docId = createResult.data!.id;
+
+    const shareResult = await useDocumentStore
+      .getState()
+      .shareDocument(docId, 'recipient');
+
+    assert(isSuccess(shareResult), 'Should share document first');
+
+    const unshareResult = await useDocumentStore
+      .getState()
+      .unshareDocument(docId, 'recipient');
+
+    assert(isSuccess(unshareResult), 'Should unshare document successfully');
+    assert(unshareResult.data === undefined, 'Should return void (undefined)');
+
+    const getResult = await useDocumentStore.getState().getDocument(docId);
+
+    assert(isSuccess(getResult), 'Should retrieve document');
+    assert(getResult.data !== null, 'Should return document');
+    const doc = getResult.data!;
+    assert(Array.isArray(doc.access), 'Should have access array');
+    const accessEntry = doc.access.find(
+      (a: DocumentAccessEntry) => a.userId === 'recipient'
+    );
+    assert(
+      accessEntry === undefined,
+      'Should not have recipient in access array'
+    );
+
+    const state = useDocumentStore.getState();
+    assert(state.status === 'READY', 'Status should be READY');
+    assert(state.error === null, 'Should have no error');
+
+    console.log(`  Unshared public document: ${docId}`);
+  });
+
+  await runner.run('Unshare private document from user', async () => {
+    await cleanupDocumentStore();
+
+    const title = generateTestTitle('_unshare_private');
+    const content = 'Private content to share';
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, content, undefined, false);
+
+    assert(isSuccess(createResult), 'Should create private document first');
+    const docId = createResult.data!.id;
+
+    const shareResult = await useDocumentStore
+      .getState()
+      .shareDocument(docId, 'recipient');
+
+    assert(isSuccess(shareResult), 'Should share private document first');
+
+    const unshareResult = await useDocumentStore
+      .getState()
+      .unshareDocument(docId, 'recipient');
+
+    assert(
+      isSuccess(unshareResult),
+      'Should unshare private document successfully'
+    );
+    assert(unshareResult.data === undefined, 'Should return void (undefined)');
+
+    const getResult = await useDocumentStore.getState().getDocument(docId);
+
+    assert(isSuccess(getResult), 'Should retrieve document');
+    assert(getResult.data !== null, 'Should return document');
+    const doc = getResult.data!;
+    assert(Array.isArray(doc.access), 'Should have access array');
+    const accessEntry = doc.access.find(
+      (a: DocumentAccessEntry) => a.userId === 'recipient'
+    );
+    assert(
+      accessEntry === undefined,
+      'Should not have recipient in access array'
+    );
+
+    console.log(`  Unshared private document: ${docId}`);
+  });
+
+  await runner.run('Unshare from non-existent document fails', async () => {
+    await cleanupDocumentStore();
+
+    const nonExistentDocId = 'nonexistent-doc-id';
+
+    const unshareResult = await useDocumentStore
+      .getState()
+      .unshareDocument(nonExistentDocId, 'recipient');
+
+    assert(isFailure(unshareResult), 'Should fail for non-existent document');
+    assert(isDocumentError(unshareResult.error), 'Should return DocumentError');
+    assert(
+      unshareResult.error?.code === 'NOT_FOUND',
+      'Error code should be NOT_FOUND'
+    );
+    assert(
+      unshareResult.error?.message === 'Document not found',
+      'Error message should match'
+    );
+
+    const state = useDocumentStore.getState();
+    assert(state.status === 'READY', 'Status should be READY');
+    assert(state.error !== null, 'Should have error message');
+
+    console.log(
+      `  Non-existent document handled correctly: ${nonExistentDocId}`
+    );
+  });
+
+  await runner.run(
+    'Unshare from user not in access list succeeds',
+    async () => {
+      await cleanupDocumentStore();
+
+      const title = generateTestTitle('_unshare_not_in_access');
+
+      const createResult = await useDocumentStore
+        .getState()
+        .createDocument(title, 'content', undefined, true);
+
+      assert(isSuccess(createResult), 'Should create document first');
+      const docId = createResult.data!.id;
+
+      const unshareResult = await useDocumentStore
+        .getState()
+        .unshareDocument(docId, 'non-recipient');
+
+      assert(isSuccess(unshareResult), 'Should succeed (idempotent)');
+
+      const getResult = await useDocumentStore.getState().getDocument(docId);
+
+      assert(isSuccess(getResult), 'Should retrieve document');
+      const doc = getResult.data!;
+      assert(Array.isArray(doc.access), 'Should have access array');
+      const accessEntry = doc.access.find(
+        (a: DocumentAccessEntry) => a.userId === 'non-recipient'
+      );
+      assert(accessEntry === undefined, 'Should not have user in access array');
+
+      console.log(`  Unshare from non-shared user handled correctly: ${docId}`);
+    }
+  );
+
+  await runner.run('Unshare removes only specified user', async () => {
+    await cleanupDocumentStore();
+
+    const title = generateTestTitle('_unshare_specific_user');
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, 'content', undefined, true);
+
+    assert(isSuccess(createResult), 'Should create document first');
+    const docId = createResult.data!.id;
+
+    const shareResult1 = await useDocumentStore
+      .getState()
+      .shareDocument(docId, 'recipient1');
+
+    assert(isSuccess(shareResult1), 'Should share with first recipient');
+
+    const shareResult2 = await useDocumentStore
+      .getState()
+      .shareDocument(docId, 'recipient2');
+
+    assert(isSuccess(shareResult2), 'Should share with second recipient');
+
+    const unshareResult = await useDocumentStore
+      .getState()
+      .unshareDocument(docId, 'recipient1');
+
+    assert(isSuccess(unshareResult), 'Should unshare first recipient');
+
+    const getResult = await useDocumentStore.getState().getDocument(docId);
+
+    assert(isSuccess(getResult), 'Should retrieve document');
+    const doc = getResult.data!;
+    assert(Array.isArray(doc.access), 'Should have access array');
+    const accessEntry1 = doc.access.find(
+      (a: DocumentAccessEntry) => a.userId === 'recipient1'
+    );
+    assert(accessEntry1 === undefined, 'Should not have first recipient');
+    const accessEntry2 = doc.access.find(
+      (a: DocumentAccessEntry) => a.userId === 'recipient2'
+    );
+    assert(accessEntry2 !== undefined, 'Should still have second recipient');
+
+    console.log(`  Only specified user removed from access: ${docId}`);
+  });
+
+  await runner.run('Loading state during unsharing', async () => {
+    await cleanupDocumentStore();
+
+    const title = generateTestTitle('_loading_unshare');
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, 'content', undefined, true);
+
+    assert(isSuccess(createResult), 'Should create document first');
+    const docId = createResult.data!.id;
+
+    const shareResult = await useDocumentStore
+      .getState()
+      .shareDocument(docId, 'recipient');
+
+    assert(isSuccess(shareResult), 'Should share document first');
+
+    const initialState = useDocumentStore.getState();
+    assert(initialState.status === 'READY', 'Should not be loading initially');
+
+    const unsharePromise = useDocumentStore
+      .getState()
+      .unshareDocument(docId, 'recipient');
+
+    const loadingState = useDocumentStore.getState();
+    assert(
+      loadingState.status === 'SAVING',
+      'Should be saving during unsharing'
+    );
+
+    await unsharePromise;
+
+    const finalState = useDocumentStore.getState();
+    assert(
+      finalState.status === 'READY',
+      'Should not be loading after success'
+    );
+    assert(finalState.error === null, 'Should have no error after success');
+  });
+}
+
+/**
+ * Run all unshareDocument tests
+ */
+export async function testUnshareDocumentSuite(): Promise<TestSuiteResult> {
+  console.log('🧪 Testing documentStore.unshareDocument()...\n');
+  console.log('='.repeat(60));
+
+  const runner = new TestRunner('documentStore.unshareDocument');
+
+  await testUnshareDocument(runner);
+
+  console.log('\n✅ unshareDocument tests complete!');
+  runner.printResults();
+
+  await cleanupDocumentStore();
+
+  return runner.getResults();
+}
