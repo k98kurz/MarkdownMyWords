@@ -2832,11 +2832,12 @@ async function testGetSharedDocuments(runner: TestRunner): Promise<void> {
 
     assert(isSuccess(shareResult), 'Should share document first');
 
-    const sharedResult = await useDocumentStore
-      .getState()
-      .getSharedDocuments();
+    const sharedResult = await useDocumentStore.getState().getSharedDocuments();
 
-    assert(isSuccess(sharedResult), 'Should list shared documents successfully');
+    assert(
+      isSuccess(sharedResult),
+      'Should list shared documents successfully'
+    );
     assert(
       sharedResult.data!.length >= 1,
       'Should have at least 1 shared document'
@@ -2875,11 +2876,12 @@ async function testGetSharedDocuments(runner: TestRunner): Promise<void> {
 
     assert(isSuccess(shareResult), 'Should share private document first');
 
-    const sharedResult = await useDocumentStore
-      .getState()
-      .getSharedDocuments();
+    const sharedResult = await useDocumentStore.getState().getSharedDocuments();
 
-    assert(isSuccess(sharedResult), 'Should list shared documents successfully');
+    assert(
+      isSuccess(sharedResult),
+      'Should list shared documents successfully'
+    );
 
     const sharedDoc = sharedResult.data!.find(d => d.id === docId);
     assert(sharedDoc !== undefined, 'Should find shared document in list');
@@ -2924,17 +2926,21 @@ async function testGetSharedDocuments(runner: TestRunner): Promise<void> {
 
     assert(isSuccess(shareResult), 'Should share first document');
 
-    const sharedResult = await useDocumentStore
-      .getState()
-      .getSharedDocuments();
+    const sharedResult = await useDocumentStore.getState().getSharedDocuments();
 
-    assert(isSuccess(sharedResult), 'Should list shared documents successfully');
+    assert(
+      isSuccess(sharedResult),
+      'Should list shared documents successfully'
+    );
 
     const sharedDoc1 = sharedResult.data!.find(d => d.id === docId1);
     const sharedDoc2 = sharedResult.data!.find(d => d.id === docId2);
 
     assert(sharedDoc1 !== undefined, 'Should find first document in list');
-    assert(sharedDoc2 === undefined, 'Should not find second document (not shared)');
+    assert(
+      sharedDoc2 === undefined,
+      'Should not find second document (not shared)'
+    );
 
     console.log(`  Verified filtering for shared documents`);
   });
@@ -3009,6 +3015,125 @@ export async function testGetSharedDocumentsSuite(): Promise<TestSuiteResult> {
   await testGetSharedDocuments(runner);
 
   console.log('\n✅ getSharedDocuments tests complete!');
+  runner.printResults();
+
+  await cleanupDocumentStore();
+
+  return runner.getResults();
+}
+
+/**
+ * Test getCollaborators
+ */
+async function testGetCollaborators(runner: TestRunner): Promise<void> {
+  await cleanupDocumentStore();
+
+  await runner.run(
+    'Get collaborators for document with no access list',
+    async () => {
+      await cleanupDocumentStore();
+
+      const { createDocument, getCollaborators } = useDocumentStore.getState();
+
+      const createResult = await createDocument('Test Doc', 'content');
+
+      assert(isSuccess(createResult), 'Document should be created');
+      assert(createResult.data !== null, 'Document data should exist');
+
+      const docId = createResult.data.id;
+
+      await sleep(100);
+
+      const result = await getCollaborators(docId);
+
+      assert(isSuccess(result), 'Should get collaborators successfully');
+      assert(result.data !== null, 'Result data should not be null');
+      assert(Array.isArray(result.data), 'Result data should be array');
+      assert(
+        result.data.length === 0,
+        'Should return empty array for no collaborators'
+      );
+
+      const state = useDocumentStore.getState();
+      assert(state.status === 'READY', 'Status should be READY');
+      assert(state.error === null, 'Should have no error');
+    }
+  );
+
+  await runner.run(
+    'Get collaborators for document with collaborators',
+    async () => {
+      await cleanupDocumentStore();
+
+      const { createDocument, shareDocument, getCollaborators } =
+        useDocumentStore.getState();
+
+      const createResult = await createDocument('Shared Doc', 'content');
+
+      assert(isSuccess(createResult), 'Document should be created');
+      assert(createResult.data !== null, 'Document data should exist');
+
+      const docId = createResult.data.id;
+
+      await sleep(100);
+
+      const shareResult = await shareDocument(docId, 'testuser1');
+
+      assert(isSuccess(shareResult), 'Document should be shared');
+
+      await sleep(200);
+
+      const result = await getCollaborators(docId);
+
+      assert(isSuccess(result), 'Should get collaborators successfully');
+      assert(result.data !== null, 'Result data should not be null');
+      assert(Array.isArray(result.data), 'Result data should be array');
+      assert(result.data.length >= 1, 'Should have at least one collaborator');
+
+      const collaborator = result.data[0];
+      assert(
+        collaborator.profile.username === 'testuser1',
+        'Username should match'
+      );
+
+      const state = useDocumentStore.getState();
+      assert(state.status === 'READY', 'Status should be READY');
+      assert(state.error === null, 'Should have no error');
+    }
+  );
+
+  await runner.run('Get collaborators for non-existent document', async () => {
+    await cleanupDocumentStore();
+
+    const { getCollaborators } = useDocumentStore.getState();
+
+    const result = await getCollaborators('nonexistent-doc-id');
+
+    assert(isFailure(result), 'Should fail for non-existent document');
+    assert(isDocumentError(result.error), 'Should return DocumentError');
+    assert(
+      result.error?.code === 'NOT_FOUND',
+      'Error code should be NOT_FOUND'
+    );
+
+    const state = useDocumentStore.getState();
+    assert(state.status === 'READY', 'Status should be READY');
+    assert(state.error !== null, 'Should have error message');
+  });
+}
+
+/**
+ * Run all getCollaborators tests
+ */
+export async function testGetCollaboratorsSuite(): Promise<TestSuiteResult> {
+  console.log('🧪 Testing documentStore.getCollaborators()...\n');
+  console.log('='.repeat(60));
+
+  const runner = new TestRunner('documentStore.getCollaborators');
+
+  await testGetCollaborators(runner);
+
+  console.log('\n✅ getCollaborators tests complete!');
   runner.printResults();
 
   await cleanupDocumentStore();
