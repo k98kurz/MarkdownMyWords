@@ -2787,3 +2787,231 @@ export async function testUnshareDocumentSuite(): Promise<TestSuiteResult> {
 
   return runner.getResults();
 }
+
+/**
+ * Test getSharedDocuments
+ *
+ * NOTE: These tests require setup where documents are shared with current user.
+ * For manual testing:
+ * 1. Create sender user: useAuthStore.getState().register('sender', 'password123')
+ * 2. Create recipient user: useAuthStore.getState().register('recipient', 'password123')
+ * 3. As sender, create and share documents with recipient
+ * 4. Authenticate as recipient and run these tests
+ */
+async function testGetSharedDocuments(runner: TestRunner): Promise<void> {
+  await runner.run('List empty shared documents', async () => {
+    await cleanupDocumentStore();
+
+    const result = await useDocumentStore.getState().getSharedDocuments();
+
+    assert(isSuccess(result), 'Should succeed with empty array');
+    assert(Array.isArray(result.data), 'Result data should be array');
+    assert(result.data!.length === 0, 'Should return empty array');
+
+    const state = useDocumentStore.getState();
+    assert(state.status === 'READY', 'Status should be READY');
+    assert(state.error === null, 'Should have no error after success');
+  });
+
+  await runner.run('List shared public documents', async () => {
+    await cleanupDocumentStore();
+
+    const title = generateTestTitle('_shared_public');
+    const content = 'Public content shared with me';
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, content, undefined, true);
+
+    assert(isSuccess(createResult), 'Should create document first');
+    const docId = createResult.data!.id;
+
+    const shareResult = await useDocumentStore
+      .getState()
+      .shareDocument(docId, 'recipient');
+
+    assert(isSuccess(shareResult), 'Should share document first');
+
+    const sharedResult = await useDocumentStore
+      .getState()
+      .getSharedDocuments();
+
+    assert(isSuccess(sharedResult), 'Should list shared documents successfully');
+    assert(
+      sharedResult.data!.length >= 1,
+      'Should have at least 1 shared document'
+    );
+
+    const sharedDoc = sharedResult.data!.find(d => d.id === docId);
+    assert(sharedDoc !== undefined, 'Should find shared document in list');
+    assert(sharedDoc!.title === title, 'Should have decrypted title');
+    assert(sharedDoc!.content === content, 'Should have decrypted content');
+    assert(sharedDoc!.isPublic === true, 'Should have isPublic=true');
+
+    const state = useDocumentStore.getState();
+    assert(state.status === 'READY', 'Status should be READY');
+    assert(state.error === null, 'Should have no error');
+
+    console.log(`  Listed shared public document: ${docId}`);
+  });
+
+  await runner.run('List shared private documents', async () => {
+    await cleanupDocumentStore();
+
+    const title = generateTestTitle('_shared_private');
+    const content = 'Private content shared with me';
+    const tags = ['shared', 'private'];
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, content, tags, false);
+
+    assert(isSuccess(createResult), 'Should create private document first');
+    const docId = createResult.data!.id;
+
+    const shareResult = await useDocumentStore
+      .getState()
+      .shareDocument(docId, 'recipient');
+
+    assert(isSuccess(shareResult), 'Should share private document first');
+
+    const sharedResult = await useDocumentStore
+      .getState()
+      .getSharedDocuments();
+
+    assert(isSuccess(sharedResult), 'Should list shared documents successfully');
+
+    const sharedDoc = sharedResult.data!.find(d => d.id === docId);
+    assert(sharedDoc !== undefined, 'Should find shared document in list');
+    assert(sharedDoc!.title === title, 'Should have decrypted title');
+    assert(sharedDoc!.content === content, 'Should have decrypted content');
+    assert(
+      JSON.stringify(sharedDoc!.tags) === JSON.stringify(tags),
+      'Should have decrypted tags'
+    );
+    assert(sharedDoc!.isPublic === false, 'Should have isPublic=false');
+
+    const state = useDocumentStore.getState();
+    assert(state.status === 'READY', 'Status should be READY');
+    assert(state.error === null, 'Should have no error');
+
+    console.log(`  Listed shared private document: ${docId}`);
+  });
+
+  await runner.run('Documents not shared with user excluded', async () => {
+    await cleanupDocumentStore();
+
+    const title1 = generateTestTitle('_shared');
+    const title2 = generateTestTitle('_not_shared');
+
+    const createResult1 = await useDocumentStore
+      .getState()
+      .createDocument(title1, 'content1', undefined, true);
+
+    assert(isSuccess(createResult1), 'Should create first document');
+    const docId1 = createResult1.data!.id;
+
+    const createResult2 = await useDocumentStore
+      .getState()
+      .createDocument(title2, 'content2', undefined, true);
+
+    assert(isSuccess(createResult2), 'Should create second document');
+    const docId2 = createResult2.data!.id;
+
+    const shareResult = await useDocumentStore
+      .getState()
+      .shareDocument(docId1, 'recipient');
+
+    assert(isSuccess(shareResult), 'Should share first document');
+
+    const sharedResult = await useDocumentStore
+      .getState()
+      .getSharedDocuments();
+
+    assert(isSuccess(sharedResult), 'Should list shared documents successfully');
+
+    const sharedDoc1 = sharedResult.data!.find(d => d.id === docId1);
+    const sharedDoc2 = sharedResult.data!.find(d => d.id === docId2);
+
+    assert(sharedDoc1 !== undefined, 'Should find first document in list');
+    assert(sharedDoc2 === undefined, 'Should not find second document (not shared)');
+
+    console.log(`  Verified filtering for shared documents`);
+  });
+
+  await runner.run('Loading state during listing', async () => {
+    await cleanupDocumentStore();
+
+    const title = generateTestTitle('_loading_shared');
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, 'content', undefined, true);
+
+    assert(isSuccess(createResult), 'Should create document first');
+    const docId = createResult.data!.id;
+
+    await useDocumentStore.getState().shareDocument(docId, 'recipient');
+
+    const initialState = useDocumentStore.getState();
+    assert(initialState.status === 'READY', 'Should not be loading initially');
+
+    const listPromise = useDocumentStore.getState().getSharedDocuments();
+
+    const loadingState = useDocumentStore.getState();
+    assert(
+      loadingState.status === 'LOADING',
+      'Should be loading during listing'
+    );
+
+    await listPromise;
+
+    const finalState = useDocumentStore.getState();
+    assert(
+      finalState.status === 'READY',
+      'Should not be loading after success'
+    );
+    assert(finalState.error === null, 'Should have no error after success');
+  });
+
+  await runner.run('User not authenticated returns error', async () => {
+    await cleanupDocumentStore();
+
+    const gun = gunService.getGun();
+    gun.user().leave();
+
+    await sleep(200);
+
+    const result = await useDocumentStore.getState().getSharedDocuments();
+
+    assert(isFailure(result), 'Should fail when not authenticated');
+    assert(isDocumentError(result.error), 'Should return DocumentError');
+    assert(
+      result.error?.code === 'PERMISSION_DENIED',
+      'Error code should be PERMISSION_DENIED'
+    );
+
+    const state = useDocumentStore.getState();
+    assert(state.status === 'READY', 'Status should be READY');
+    assert(state.error !== null, 'Should have error message');
+  });
+}
+
+/**
+ * Run all getSharedDocuments tests
+ */
+export async function testGetSharedDocumentsSuite(): Promise<TestSuiteResult> {
+  console.log('🧪 Testing documentStore.getSharedDocuments()...\n');
+  console.log('='.repeat(60));
+
+  const runner = new TestRunner('documentStore.getSharedDocuments');
+
+  await testGetSharedDocuments(runner);
+
+  console.log('\n✅ getSharedDocuments tests complete!');
+  runner.printResults();
+
+  await cleanupDocumentStore();
+
+  return runner.getResults();
+}

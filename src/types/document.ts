@@ -26,6 +26,7 @@ export interface DocumentError {
 export interface DocumentAccessEntry {
   userId: string;
   docKey: string;
+  senderEpub: string;
 }
 
 /**
