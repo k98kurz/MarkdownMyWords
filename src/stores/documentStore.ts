@@ -1139,14 +1139,172 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       return result;
     },
 
-    getBranch: async (_branchId: string) => {
-      return {
-        success: false,
-        error: {
+    getBranch: async (branchId: string) => {
+      set({ status: 'LOADING', error: null });
+
+      const transformError = (error: unknown): DocumentError => {
+        if (error instanceof Error) {
+          if (error.message.includes('decryption')) {
+            return {
+              code: 'ENCRYPTION_ERROR',
+              message: 'Failed to decrypt branch',
+              details: error,
+            };
+          }
+          if (
+            error.message.includes('not found') ||
+            error.message.includes('could not be decrypted') ||
+            error.message.includes('Not a branch')
+          ) {
+            return {
+              code: 'NOT_FOUND',
+              message: 'Branch not found',
+              details: error,
+            };
+          }
+          if (
+            error.message.includes('docKey') ||
+            error.message.includes('permission')
+          ) {
+            return {
+              code: 'PERMISSION_DENIED',
+              message: 'Document key not found',
+              details: error,
+            };
+          }
+          if (
+            error.message.includes('GunDB') ||
+            error.message.includes('Failed to read')
+          ) {
+            return {
+              code: 'NETWORK_ERROR',
+              message: 'Failed to retrieve branch',
+              details: error,
+            };
+          }
+          return {
+            code: 'NETWORK_ERROR',
+            message: error.message,
+            details: error,
+          };
+        }
+        return {
           code: 'NETWORK_ERROR',
-          message: 'Not implemented',
-        },
+          message: 'An unexpected error occurred',
+          details: error,
+        };
       };
+
+      const result = await pipe(
+        tryCatch(async () => {
+          const gun = gunService.getGun();
+          const userNode = gun.user();
+          const branchNode = userNode.get('docs').get(branchId);
+
+          const branchData = await new Promise<unknown>((resolve, reject) => {
+            branchNode.once((data: unknown) => {
+              if (data === null || data === undefined) {
+                reject(new Error('Branch not found'));
+              } else {
+                resolve(data);
+              }
+            });
+          });
+
+          if (!branchData || typeof branchData !== 'object') {
+            throw new Error('Branch not found');
+          }
+
+          const branch = branchData as Partial<Document>;
+          if (!branch.id) {
+            throw new Error('Branch not found');
+          }
+
+          if (!branch.parent) {
+            throw new Error('Not a branch document');
+          }
+
+          let docKey: string | undefined;
+          if (!branch.isPublic) {
+            try {
+              docKey = await gunService.readPrivateData([
+                'docKeys',
+                branch.parent,
+              ]);
+            } catch {
+              throw new Error('Document key not found');
+            }
+          }
+
+          let decryptedTitle = branch.title ?? '';
+          let decryptedContent = branch.content ?? '';
+          let decryptedTags = branch.tags;
+
+          if (docKey && !branch.isPublic) {
+            decryptedTitle =
+              (await encryptionService.decrypt(branch.title ?? '', docKey)) ??
+              branch.title ??
+              '';
+            decryptedContent =
+              (await encryptionService.decrypt(branch.content ?? '', docKey)) ??
+              branch.content ??
+              '';
+            if (branch.tags) {
+              decryptedTags = await Promise.all(
+                branch.tags.map(
+                  async (tag: string) =>
+                    (await encryptionService.decrypt(tag, docKey!)) ?? tag
+                )
+              );
+            }
+          }
+
+          const document: Document = {
+            id: branch.id,
+            title: decryptedTitle,
+            content: decryptedContent,
+            tags: decryptedTags,
+            createdAt: branch.createdAt ?? Date.now(),
+            updatedAt: branch.updatedAt ?? Date.now(),
+            isPublic: branch.isPublic ?? false,
+            access: branch.access ?? [],
+            parent: branch.parent,
+            original: branch.original,
+          };
+
+          return document;
+        }, transformError)
+      );
+
+      match(
+        (doc: Document | null) => {
+          set({
+            currentDocument: doc,
+            status: 'READY',
+            error: null,
+          });
+        },
+        (error: DocumentError) => {
+          if (error.code === 'NOT_FOUND') {
+            set({
+              currentDocument: null,
+              status: 'READY',
+              error: null,
+            });
+          } else {
+            set({
+              status: 'READY',
+              error: error.message,
+            });
+          }
+        }
+      )(result);
+
+      if (!result.success && result.error.code === 'NOT_FOUND') {
+        return { success: true, data: null };
+      }
+
+      return result;
     },
 
     listBranches: async (_docId: string) => {
