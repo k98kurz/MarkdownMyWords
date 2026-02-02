@@ -919,6 +919,203 @@ async function testListDocuments(runner: TestRunner): Promise<void> {
 }
 
 /**
+ * Test getDocumentMetadata
+ */
+async function testGetDocumentMetadata(runner: TestRunner): Promise<void> {
+  await runner.run('Get metadata for public document', async () => {
+    await cleanupDocumentStore();
+
+    const title = generateTestTitle('_public_metadata');
+    const tags = ['tag1', 'tag2'];
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, 'content', tags, true);
+
+    assert(isSuccess(createResult), 'Should create document first');
+    const docId = createResult.data!.id;
+
+    const metadataResult = await useDocumentStore
+      .getState()
+      .getDocumentMetadata(docId);
+
+    assert(isSuccess(metadataResult), 'Should get metadata successfully');
+    assert(
+      metadataResult.data!.title === title,
+      'Should return correct title for public doc'
+    );
+    assert(
+      Array.isArray(metadataResult.data!.tags),
+      'Should return tags array'
+    );
+    assert(
+      metadataResult.data!.tags!.length === tags.length,
+      'Should return all tags'
+    );
+    assert(metadataResult.data!.tags![0] === tags[0], 'First tag should match');
+
+    const state = useDocumentStore.getState();
+    assert(state.status === 'READY', 'Status should be READY');
+    assert(state.error === null, 'Should have no error');
+  });
+
+  await runner.run('Get metadata for private document', async () => {
+    await cleanupDocumentStore();
+
+    const title = generateTestTitle('_private_metadata');
+    const tags = ['private', 'secret'];
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, 'content', tags, false);
+
+    assert(isSuccess(createResult), 'Should create private document first');
+    const docId = createResult.data!.id;
+
+    const metadataResult = await useDocumentStore
+      .getState()
+      .getDocumentMetadata(docId);
+
+    assert(isSuccess(metadataResult), 'Should get metadata successfully');
+    assert(
+      metadataResult.data!.title === title,
+      'Should decrypt and return correct title'
+    );
+    assert(
+      Array.isArray(metadataResult.data!.tags),
+      'Should return decrypted tags array'
+    );
+    assert(
+      metadataResult.data!.tags!.length === tags.length,
+      'Should decrypt all tags'
+    );
+    assert(
+      metadataResult.data!.tags![0] === tags[0],
+      'First tag should be decrypted correctly'
+    );
+
+    const state = useDocumentStore.getState();
+    assert(state.status === 'READY', 'Status should be READY');
+    assert(state.error === null, 'Should have no error');
+  });
+
+  await runner.run('Get metadata for non-existent document', async () => {
+    await cleanupDocumentStore();
+
+    const fakeDocId = gunService.newId();
+
+    const metadataResult = await useDocumentStore
+      .getState()
+      .getDocumentMetadata(fakeDocId);
+
+    assert(isFailure(metadataResult), 'Should fail for non-existent document');
+    assert(
+      isDocumentError(metadataResult.error),
+      'Should return DocumentError'
+    );
+    assert(
+      metadataResult.error?.code === 'NOT_FOUND',
+      'Error code should be NOT_FOUND'
+    );
+
+    const state = useDocumentStore.getState();
+    assert(state.status === 'READY', 'Status should be READY');
+    assert(state.error !== null, 'Should have error message');
+  });
+
+  await runner.run('Metadata does not include content', async () => {
+    await cleanupDocumentStore();
+
+    const title = generateTestTitle('_no_content');
+    const content = 'This content should not be in metadata';
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, content, undefined, true);
+
+    assert(isSuccess(createResult), 'Should create document first');
+    const docId = createResult.data!.id;
+
+    const metadataResult = await useDocumentStore
+      .getState()
+      .getDocumentMetadata(docId);
+
+    assert(isSuccess(metadataResult), 'Should get metadata successfully');
+    assert(
+      'content' in metadataResult.data! === false,
+      'Metadata should not include content field'
+    );
+    assert(
+      'title' in metadataResult.data!,
+      'Metadata should include title field'
+    );
+    assert(
+      'tags' in metadataResult.data!,
+      'Metadata should include tags field'
+    );
+  });
+
+  await runner.run('Document without tags', async () => {
+    await cleanupDocumentStore();
+
+    const title = generateTestTitle('_no_tags');
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, 'content', undefined, true);
+
+    assert(isSuccess(createResult), 'Should create document first');
+    const docId = createResult.data!.id;
+
+    const metadataResult = await useDocumentStore
+      .getState()
+      .getDocumentMetadata(docId);
+
+    assert(isSuccess(metadataResult), 'Should get metadata successfully');
+    assert(metadataResult.data!.title === title, 'Should return title');
+    assert(
+      metadataResult.data!.tags === undefined,
+      'Tags should be undefined if not provided'
+    );
+  });
+
+  await runner.run('Loading state during metadata retrieval', async () => {
+    await cleanupDocumentStore();
+
+    const title = generateTestTitle('_loading_metadata');
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, 'content', undefined, true);
+
+    assert(isSuccess(createResult), 'Should create document first');
+    const docId = createResult.data!.id;
+
+    const initialState = useDocumentStore.getState();
+    assert(initialState.status === 'READY', 'Should not be loading initially');
+
+    const metadataPromise = useDocumentStore
+      .getState()
+      .getDocumentMetadata(docId);
+
+    const loadingState = useDocumentStore.getState();
+    assert(
+      loadingState.status === 'LOADING',
+      'Should be loading during metadata retrieval'
+    );
+
+    await metadataPromise;
+
+    const finalState = useDocumentStore.getState();
+    assert(
+      finalState.status === 'READY',
+      'Should not be loading after success'
+    );
+    assert(finalState.error === null, 'Should have no error after success');
+  });
+}
+
+/**
  * Run all listDocuments tests
  */
 export async function testListDocumentsSuite(): Promise<TestSuiteResult> {
@@ -930,6 +1127,25 @@ export async function testListDocumentsSuite(): Promise<TestSuiteResult> {
   await testListDocuments(runner);
 
   console.log('\n✅ listDocuments tests complete!');
+  runner.printResults();
+
+  await cleanupDocumentStore();
+
+  return runner.getResults();
+}
+
+/**
+ * Run all getDocumentMetadata tests
+ */
+export async function testGetDocumentMetadataSuite(): Promise<TestSuiteResult> {
+  console.log('🧪 Testing documentStore.getDocumentMetadata()...\n');
+  console.log('='.repeat(60));
+
+  const runner = new TestRunner('documentStore.getDocumentMetadata');
+
+  await testGetDocumentMetadata(runner);
+
+  console.log('\n✅ getDocumentMetadata tests complete!');
   runner.printResults();
 
   await cleanupDocumentStore();
