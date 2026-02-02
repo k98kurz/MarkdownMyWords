@@ -6,6 +6,7 @@ import { AuthComponent } from './components/AuthComponent';
 import { ErrorModal } from './components/ErrorModal';
 import { useErrorStore } from './stores/errorStore';
 import { StatusBar } from './components/StatusBar';
+import { DocumentList } from './components/DocumentList';
 
 function App() {
   const { isAuthenticated, isLoading, checkSession, logout, user } =
@@ -13,7 +14,6 @@ function App() {
   const { setError } = useErrorStore();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const {
-    documentList,
     status: docStatus,
     error: docError,
     listDocuments,
@@ -90,30 +90,6 @@ function App() {
     return null;
   };
 
-  const renderDocuments = () => {
-    if (documentList.length === 0) {
-      return (
-        <p className="empty">No documents yet. Create your first document!</p>
-      );
-    }
-
-    return (
-      <div className="document-list">
-        <h2>Your Documents</h2>
-        <ul>
-          {documentList.map(doc => (
-            <li key={doc.docId}>
-              <strong>{doc.title || 'Untitled'}</strong>
-              <span className="doc-meta">
-                {new Date(doc.updatedAt).toLocaleDateString()}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </div>
-    );
-  };
-
   return (
     <div className="app">
       <header className="app-header">
@@ -127,7 +103,7 @@ function App() {
         ) : isAuthenticated ? (
           <div className="app-content">
             {renderDocumentStatus()}
-            {docStatus === 'READY' && renderDocuments()}
+            {docStatus === 'READY' && <DocumentList />}
           </div>
         ) : (
           <div className="app-content">
