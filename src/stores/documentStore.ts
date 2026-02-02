@@ -1478,14 +1478,111 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       return result;
     },
 
-    deleteBranch: async (_branchId: string) => {
-      return {
-        success: false,
-        error: {
+    deleteBranch: async (branchId: string) => {
+      set({ status: 'LOADING', error: null });
+
+      const transformError = (error: unknown): DocumentError => {
+        if (error instanceof Error) {
+          if (error.message.includes('not found')) {
+            return {
+              code: 'NOT_FOUND',
+              message: 'Branch not found',
+              details: error,
+            };
+          }
+          if (
+            error.message.includes('GunDB') ||
+            error.message.includes('Failed to delete')
+          ) {
+            return {
+              code: 'NETWORK_ERROR',
+              message: 'Failed to delete branch',
+              details: error,
+            };
+          }
+          return {
+            code: 'NETWORK_ERROR',
+            message: error.message,
+            details: error,
+          };
+        }
+        return {
           code: 'NETWORK_ERROR',
-          message: 'Not implemented',
-        },
+          message: 'An unexpected error occurred',
+          details: error,
+        };
       };
+
+      const result = await pipe(
+        tryCatch(async () => {
+          const gun = gunService.getGun();
+          const userNode = gun.user();
+          const branchNode = userNode.get('docs').get(branchId);
+
+          const branchData = await new Promise<unknown>((resolve, reject) => {
+            branchNode.once((data: unknown) => {
+              if (data === null || data === undefined) {
+                reject(new Error('Branch not found'));
+              } else {
+                resolve(data);
+              }
+            });
+          });
+
+          if (!branchData || typeof branchData !== 'object') {
+            throw new Error('Branch not found');
+          }
+
+          const branch = branchData as Partial<Document>;
+          if (!branch.id) {
+            throw new Error('Branch not found');
+          }
+
+          await new Promise<void>((resolve, reject) => {
+            branchNode.put(null, (ack: unknown) => {
+              if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
+                reject(
+                  new Error(`Failed to delete branch: ${String(ack.err)}`)
+                );
+              } else {
+                resolve();
+              }
+            });
+          });
+
+          return undefined;
+        }, transformError)
+      );
+
+      match(
+        () => {
+          const currentDocId = get().currentDocument?.id;
+          if (currentDocId === branchId) {
+            set({
+              currentDocument: null,
+            });
+          }
+
+          const documentList = get().documentList;
+          const updatedList = documentList.filter(
+            item => item.docId !== branchId
+          );
+
+          set({
+            documentList: updatedList,
+            status: 'READY',
+            error: null,
+          });
+        },
+        (error: DocumentError) => {
+          set({
+            status: 'READY',
+            error: error.message,
+          });
+        }
+      )(result);
+
+      return result;
     },
 
     shareDocument: async (_docId: string, _userId: string) => {

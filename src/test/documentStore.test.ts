@@ -1974,6 +1974,278 @@ async function testListBranches(runner: TestRunner): Promise<void> {
 }
 
 /**
+ * Test deleteBranch
+ */
+async function testDeleteBranch(runner: TestRunner): Promise<void> {
+  await runner.run('Delete existing public branch', async () => {
+    await cleanupDocumentStore();
+
+    const title = generateTestTitle('_delete_public_branch');
+    const content = 'Public branch to delete';
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, content, undefined, true);
+
+    assert(isSuccess(createResult), 'Should create parent document first');
+    const parentDocId = createResult.data!.id;
+
+    const branchResult = await useDocumentStore
+      .getState()
+      .createBranch(parentDocId);
+
+    assert(isSuccess(branchResult), 'Should create branch first');
+    const branchId = branchResult.data!;
+
+    const deleteResult = await useDocumentStore
+      .getState()
+      .deleteBranch(branchId);
+
+    assert(isSuccess(deleteResult), 'Should delete existing branch');
+    assert(deleteResult.data === undefined, 'Should return void (undefined)');
+
+    const getBranchResult = await useDocumentStore
+      .getState()
+      .getBranch(branchId);
+
+    assert(isSuccess(getBranchResult), 'getBranch should not throw error');
+    assert(
+      getBranchResult.data === null,
+      'getBranch should return null after deletion'
+    );
+
+    const state = useDocumentStore.getState();
+    assert(state.status === 'READY', 'Status should be READY');
+    assert(state.error === null, 'Should have no error');
+    assert(
+      state.currentDocument === null,
+      'Should clear currentDocument if deleted'
+    );
+
+    console.log(`  Deleted public branch: ${branchId}`);
+  });
+
+  await runner.run('Delete existing private branch', async () => {
+    await cleanupDocumentStore();
+
+    const title = generateTestTitle('_delete_private_branch');
+    const content = 'Private branch to delete';
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, content, undefined, false);
+
+    assert(isSuccess(createResult), 'Should create parent document first');
+    const parentDocId = createResult.data!.id;
+
+    const branchResult = await useDocumentStore
+      .getState()
+      .createBranch(parentDocId);
+
+    assert(isSuccess(branchResult), 'Should create branch first');
+    const branchId = branchResult.data!;
+
+    const deleteResult = await useDocumentStore
+      .getState()
+      .deleteBranch(branchId);
+
+    assert(isSuccess(deleteResult), 'Should delete private branch');
+    assert(deleteResult.data === undefined, 'Should return void (undefined)');
+
+    const getBranchResult = await useDocumentStore
+      .getState()
+      .getBranch(branchId);
+
+    assert(isSuccess(getBranchResult), 'getBranch should not throw error');
+    assert(
+      getBranchResult.data === null,
+      'getBranch should return null after deletion'
+    );
+
+    console.log(`  Deleted private branch: ${branchId}`);
+  });
+
+  await runner.run('Delete non-existent branch', async () => {
+    await cleanupDocumentStore();
+
+    const fakeBranchId = gunService.newId();
+
+    const deleteResult = await useDocumentStore
+      .getState()
+      .deleteBranch(fakeBranchId);
+
+    assert(isFailure(deleteResult), 'Should fail for non-existent branch');
+    assert(isDocumentError(deleteResult.error), 'Should return DocumentError');
+    assert(
+      deleteResult.error?.code === 'NOT_FOUND',
+      'Error code should be NOT_FOUND'
+    );
+
+    const state = useDocumentStore.getState();
+    assert(state.status === 'READY', 'Status should be READY');
+    assert(state.error !== null, 'Should have error message');
+
+    console.log(`  Non-existent branch handled correctly: ${fakeBranchId}`);
+  });
+
+  await runner.run('State cleanup on deletion', async () => {
+    await cleanupDocumentStore();
+
+    const title = generateTestTitle('_state_cleanup_branch');
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, 'content', undefined, true);
+
+    assert(isSuccess(createResult), 'Should create parent first');
+    const parentDocId = createResult.data!.id;
+
+    const branchResult = await useDocumentStore
+      .getState()
+      .createBranch(parentDocId);
+
+    assert(isSuccess(branchResult), 'Should create branch first');
+    const branchId = branchResult.data!;
+
+    const getBranchResult = await useDocumentStore
+      .getState()
+      .getBranch(branchId);
+
+    assert(isSuccess(getBranchResult), 'Should load branch first');
+    assert(getBranchResult.data !== null, 'Should have branch loaded');
+
+    const initialState = useDocumentStore.getState();
+    assert(
+      initialState.currentDocument?.id === branchId,
+      'Should have branch in currentDocument'
+    );
+
+    await useDocumentStore.getState().deleteBranch(branchId);
+
+    const finalState = useDocumentStore.getState();
+    assert(finalState.currentDocument === null, 'Should clear currentDocument');
+    assert(finalState.status === 'READY', 'Status should be READY');
+    assert(finalState.error === null, 'Should have no error after success');
+  });
+
+  await runner.run('Branch removed from documentList', async () => {
+    await cleanupDocumentStore();
+
+    const title = generateTestTitle('_list_removal_branch');
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, 'content', undefined, true);
+
+    assert(isSuccess(createResult), 'Should create parent first');
+    const parentDocId = createResult.data!.id;
+
+    const branchResult = await useDocumentStore
+      .getState()
+      .createBranch(parentDocId);
+
+    assert(isSuccess(branchResult), 'Should create branch first');
+    const branchId = branchResult.data!;
+
+    await useDocumentStore.getState().listDocuments();
+
+    const stateBefore = useDocumentStore.getState();
+    const listBefore = stateBefore.documentList;
+    const itemBefore = listBefore.find(item => item.docId === branchId);
+
+    assert(itemBefore !== undefined, 'Branch should be in documentList');
+
+    await useDocumentStore.getState().deleteBranch(branchId);
+
+    const stateAfter = useDocumentStore.getState();
+    const listAfter = stateAfter.documentList;
+    const itemAfter = listAfter.find(item => item.docId === branchId);
+
+    assert(itemAfter === undefined, 'Branch should be removed from list');
+  });
+
+  await runner.run('Loading state during deletion', async () => {
+    await cleanupDocumentStore();
+
+    const title = generateTestTitle('_loading_delete_branch');
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, 'content', undefined, true);
+
+    assert(isSuccess(createResult), 'Should create parent first');
+    const parentDocId = createResult.data!.id;
+
+    const branchResult = await useDocumentStore
+      .getState()
+      .createBranch(parentDocId);
+
+    assert(isSuccess(branchResult), 'Should create branch first');
+    const branchId = branchResult.data!;
+
+    const initialState = useDocumentStore.getState();
+    assert(initialState.status === 'READY', 'Should not be loading initially');
+
+    const deletePromise = useDocumentStore.getState().deleteBranch(branchId);
+
+    const loadingState = useDocumentStore.getState();
+    assert(
+      loadingState.status === 'LOADING',
+      'Should be loading during deletion'
+    );
+
+    await deletePromise;
+
+    const finalState = useDocumentStore.getState();
+    assert(
+      finalState.status === 'READY',
+      'Should not be loading after success'
+    );
+    assert(finalState.error === null, 'Should have no error after success');
+  });
+
+  await runner.run(
+    'Parent docKey not deleted when branch is deleted',
+    async () => {
+      await cleanupDocumentStore();
+
+      const title = generateTestTitle('_preserve_parent_key');
+      const content = 'Content encrypted with parent key';
+
+      const createResult = await useDocumentStore
+        .getState()
+        .createDocument(title, content, undefined, false);
+
+      assert(isSuccess(createResult), 'Should create private parent first');
+      const parentDocId = createResult.data!.id;
+
+      const branchResult = await useDocumentStore
+        .getState()
+        .createBranch(parentDocId);
+
+      assert(isSuccess(branchResult), 'Should create branch first');
+      const branchId = branchResult.data!;
+
+      await useDocumentStore.getState().deleteBranch(branchId);
+
+      const getParentResult = await useDocumentStore
+        .getState()
+        .getDocument(parentDocId);
+
+      assert(isSuccess(getParentResult), 'Should still retrieve parent');
+      assert(
+        getParentResult.data !== null,
+        'Parent should still be accessible'
+      );
+      assert(
+        getParentResult.data!.title === title,
+        'Parent should still be decryptable (docKey not deleted)'
+      );
+    }
+  );
+}
+
+/**
  * Run all listBranches tests
  */
 export async function testListBranchesSuite(): Promise<TestSuiteResult> {
@@ -1985,6 +2257,25 @@ export async function testListBranchesSuite(): Promise<TestSuiteResult> {
   await testListBranches(runner);
 
   console.log('\n✅ listBranches tests complete!');
+  runner.printResults();
+
+  await cleanupDocumentStore();
+
+  return runner.getResults();
+}
+
+/**
+ * Run all deleteBranch tests
+ */
+export async function testDeleteBranchSuite(): Promise<TestSuiteResult> {
+  console.log('🧪 Testing documentStore.deleteBranch()...\n');
+  console.log('='.repeat(60));
+
+  const runner = new TestRunner('documentStore.deleteBranch');
+
+  await testDeleteBranch(runner);
+
+  console.log('\n✅ deleteBranch tests complete!');
   runner.printResults();
 
   await cleanupDocumentStore();
