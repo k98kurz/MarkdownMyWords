@@ -94,7 +94,7 @@ interface DocumentActions {
  * Handles document CRUD, branching, and sharing operations.
  */
 export const useDocumentStore = create<DocumentState & DocumentActions>(
-  set => ({
+  (set, get) => ({
     currentDocument: null,
     documentList: [],
     status: 'READY',
@@ -318,7 +318,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           if (!doc.isPublic) {
             try {
               docKey = await gunService.readPrivateData(['docKeys', docId]);
-            } catch (error: unknown) {
+            } catch {
               throw new Error('Document key not found');
             }
           }
@@ -395,16 +395,233 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
     },
 
     updateDocument: async (
-      _docId: string,
-      _updates: Partial<Pick<Document, 'title' | 'content' | 'tags'>>
+      docId: string,
+      updates: Partial<Pick<Document, 'title' | 'content' | 'tags'>>
     ) => {
-      return {
-        success: false,
-        error: {
+      set({ status: 'SAVING', error: null });
+
+      const transformError = (error: unknown): DocumentError => {
+        if (error instanceof Error) {
+          if (error.message.includes('not found')) {
+            return {
+              code: 'NOT_FOUND',
+              message: 'Document not found',
+              details: error,
+            };
+          }
+          if (
+            error.message.includes('docKey') ||
+            error.message.includes('permission')
+          ) {
+            return {
+              code: 'PERMISSION_DENIED',
+              message: 'Document key not found',
+              details: error,
+            };
+          }
+          if (
+            error.message.includes('encryption') ||
+            error.message.includes('decryption')
+          ) {
+            return {
+              code: 'ENCRYPTION_ERROR',
+              message: 'Failed to encrypt document',
+              details: error,
+            };
+          }
+          if (
+            error.message.includes('GunDB') ||
+            error.message.includes('Failed to update')
+          ) {
+            return {
+              code: 'NETWORK_ERROR',
+              message: 'Failed to update document',
+              details: error,
+            };
+          }
+          if (error.message.includes('validation')) {
+            return {
+              code: 'VALIDATION_ERROR',
+              message: error.message,
+              details: error,
+            };
+          }
+          return {
+            code: 'NETWORK_ERROR',
+            message: error.message,
+            details: error,
+          };
+        }
+        return {
           code: 'NETWORK_ERROR',
-          message: 'Not implemented',
-        },
+          message: 'An unexpected error occurred',
+          details: error,
+        };
       };
+
+      const result = await pipe(
+        tryCatch(async () => {
+          if (!updates || Object.keys(updates).length === 0) {
+            throw new Error('No updates provided');
+          }
+
+          const gun = gunService.getGun();
+          const userNode = gun.user();
+          const docNode = userNode.get('docs').get(docId);
+
+          const docData = await new Promise<unknown>((resolve, reject) => {
+            docNode.once((data: unknown) => {
+              if (data === null || data === undefined) {
+                reject(new Error('Document not found'));
+              } else {
+                resolve(data);
+              }
+            });
+          });
+
+          if (!docData || typeof docData !== 'object') {
+            throw new Error('Document not found');
+          }
+
+          const doc = docData as Partial<Document>;
+          if (!doc.id) {
+            throw new Error('Document not found');
+          }
+
+          let docKey: string | undefined;
+          if (!doc.isPublic) {
+            try {
+              docKey = await gunService.readPrivateData(['docKeys', docId]);
+            } catch {
+              throw new Error('Document key not found');
+            }
+          }
+
+          const currentDoc = get();
+          const isCurrentDoc = currentDoc.currentDocument?.id === docId;
+
+          let updatedDoc: Partial<Document> = { ...doc };
+
+          if (updates.title !== undefined) {
+            if (!updates.title?.trim()) {
+              throw new Error('Title cannot be empty');
+            }
+            if (docKey && !doc.isPublic) {
+              updatedDoc.title =
+                (await encryptionService.encrypt(
+                  updates.title.trim(),
+                  docKey
+                )) ?? updates.title.trim();
+            } else {
+              updatedDoc.title = updates.title.trim();
+            }
+          }
+
+          if (updates.content !== undefined) {
+            if (docKey && !doc.isPublic) {
+              updatedDoc.content =
+                (await encryptionService.encrypt(updates.content, docKey)) ??
+                updates.content;
+            } else {
+              updatedDoc.content = updates.content;
+            }
+          }
+
+          if (updates.tags !== undefined) {
+            if (docKey && !doc.isPublic) {
+              updatedDoc.tags = await Promise.all(
+                updates.tags.map(
+                  async (tag: string) =>
+                    (await encryptionService.encrypt(tag, docKey!)) ?? tag
+                )
+              );
+            } else {
+              updatedDoc.tags = updates.tags;
+            }
+          }
+
+          updatedDoc.updatedAt = Date.now();
+
+          await new Promise<void>((resolve, reject) => {
+            docNode.put(updatedDoc, (ack: unknown) => {
+              if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
+                reject(
+                  new Error(`Failed to update document: ${String(ack.err)}`)
+                );
+              } else {
+                resolve();
+              }
+            });
+          });
+
+          if (isCurrentDoc) {
+            let decryptedTitle = updatedDoc.title ?? '';
+            let decryptedContent = updatedDoc.content ?? '';
+            let decryptedTags = updatedDoc.tags;
+
+            if (docKey && !doc.isPublic) {
+              decryptedTitle =
+                (await encryptionService.decrypt(
+                  updatedDoc.title ?? '',
+                  docKey
+                )) ??
+                updatedDoc.title ??
+                '';
+              decryptedContent =
+                (await encryptionService.decrypt(
+                  updatedDoc.content ?? '',
+                  docKey
+                )) ??
+                updatedDoc.content ??
+                '';
+              if (updatedDoc.tags) {
+                decryptedTags = await Promise.all(
+                  updatedDoc.tags.map(
+                    async (tag: string) =>
+                      (await encryptionService.decrypt(tag, docKey!)) ?? tag
+                  )
+                );
+              }
+            }
+
+            const decryptedDoc: Document = {
+              id: doc.id!,
+              title: decryptedTitle,
+              content: decryptedContent,
+              tags: decryptedTags,
+              createdAt: doc.createdAt ?? Date.now(),
+              updatedAt: updatedDoc.updatedAt ?? Date.now(),
+              isPublic: doc.isPublic ?? false,
+              access: doc.access ?? [],
+              parent: doc.parent,
+              original: doc.original,
+            };
+
+            set({
+              currentDocument: decryptedDoc,
+            });
+          }
+
+          return undefined;
+        }, transformError)
+      );
+
+      match(
+        () => {
+          set({
+            status: 'READY',
+            error: null,
+          });
+        },
+        (error: DocumentError) => {
+          set({
+            status: 'READY',
+            error: error.message,
+          });
+        }
+      )(result);
+
+      return result;
     },
 
     deleteDocument: async (_docId: string) => {
