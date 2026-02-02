@@ -1585,14 +1585,155 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       return result;
     },
 
-    shareDocument: async (_docId: string, _userId: string) => {
-      return {
-        success: false,
-        error: {
+    shareDocument: async (docId: string, userId: string) => {
+      set({ status: 'SAVING', error: null });
+
+      const transformError = (error: unknown): DocumentError => {
+        if (error instanceof Error) {
+          if (error.message.includes('not found')) {
+            return {
+              code: 'NOT_FOUND',
+              message: 'Document or user not found',
+              details: error,
+            };
+          }
+          if (
+            error.message.includes('encryption') ||
+            error.message.includes('ECDH')
+          ) {
+            return {
+              code: 'ENCRYPTION_ERROR',
+              message: 'Failed to share document',
+              details: error,
+            };
+          }
+          if (
+            error.message.includes('GunDB') ||
+            error.message.includes('Failed to share')
+          ) {
+            return {
+              code: 'NETWORK_ERROR',
+              message: 'Failed to share document',
+              details: error,
+            };
+          }
+          return {
+            code: 'NETWORK_ERROR',
+            message: error.message,
+            details: error,
+          };
+        }
+        return {
           code: 'NETWORK_ERROR',
-          message: 'Not implemented',
-        },
+          message: 'An unexpected error occurred',
+          details: error,
+        };
       };
+
+      const result = await pipe(
+        tryCatch(async () => {
+          const gun = gunService.getGun();
+          const userNode = gun.user();
+          const docNode = userNode.get('docs').get(docId);
+
+          const docData = await new Promise<unknown>((resolve, reject) => {
+            docNode.once((data: unknown) => {
+              if (data === null || data === undefined) {
+                reject(new Error('Document not found'));
+              } else {
+                resolve(data);
+              }
+            });
+          });
+
+          if (!docData || typeof docData !== 'object') {
+            throw new Error('Document not found');
+          }
+
+          const doc = docData as Partial<Document>;
+          if (!doc.id) {
+            throw new Error('Document not found');
+          }
+
+          const currentAccess = doc.access ?? [];
+          const existingAccess = currentAccess.find(a => a.userId === userId);
+          if (existingAccess) {
+            return undefined;
+          }
+
+          const currentUser = userNode.is;
+          if (!currentUser || !currentUser.epub) {
+            throw new Error('User not authenticated');
+          }
+
+          const discoveredUsers = await gunService.discoverUsers(userId);
+          if (!discoveredUsers || discoveredUsers.length === 0) {
+            throw new Error('User not found');
+          }
+
+          const discoveredUser = discoveredUsers[0];
+          const userData = discoveredUser.data as { epub?: string } | undefined;
+          const recipientEpub = userData?.epub;
+
+          if (!recipientEpub) {
+            throw new Error('User not found');
+          }
+
+          let encryptedDocKey = '';
+
+          if (!doc.isPublic) {
+            try {
+              const docKey = await gunService.readPrivateData([
+                'docKeys',
+                docId,
+              ]);
+              encryptedDocKey =
+                (await encryptionService.encryptECDH(docKey, recipientEpub)) ??
+                '';
+            } catch {
+              throw new Error('Document key not found');
+            }
+          }
+
+          const newAccessEntry = {
+            userId,
+            docKey: encryptedDocKey,
+          };
+
+          const updatedAccess = [...currentAccess, newAccessEntry];
+
+          await new Promise<void>((resolve, reject) => {
+            docNode.put({ access: updatedAccess }, (ack: unknown) => {
+              if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
+                reject(
+                  new Error(`Failed to share document: ${String(ack.err)}`)
+                );
+              } else {
+                resolve();
+              }
+            });
+          });
+
+          return undefined;
+        }, transformError)
+      );
+
+      match(
+        () => {
+          set({
+            status: 'READY',
+            error: null,
+          });
+        },
+        (error: DocumentError) => {
+          set({
+            status: 'READY',
+            error: error.message,
+          });
+        }
+      )(result);
+
+      return result;
     },
 
     unshareDocument: async (_docId: string, _userId: string) => {
