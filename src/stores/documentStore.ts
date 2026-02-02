@@ -962,14 +962,181 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       return result;
     },
 
-    createBranch: async (_docId: string) => {
-      return {
-        success: false,
-        error: {
+    createBranch: async (docId: string) => {
+      set({ status: 'SAVING', error: null });
+
+      const transformError = (error: unknown): DocumentError => {
+        if (error instanceof Error) {
+          if (error.message.includes('not found')) {
+            return {
+              code: 'NOT_FOUND',
+              message: 'Parent document not found',
+              details: error,
+            };
+          }
+          if (
+            error.message.includes('encryption') ||
+            error.message.includes('decryption')
+          ) {
+            return {
+              code: 'ENCRYPTION_ERROR',
+              message: 'Failed to process document',
+              details: error,
+            };
+          }
+          if (
+            error.message.includes('GunDB') ||
+            error.message.includes('Failed to save')
+          ) {
+            return {
+              code: 'NETWORK_ERROR',
+              message: 'Failed to create branch',
+              details: error,
+            };
+          }
+          return {
+            code: 'NETWORK_ERROR',
+            message: error.message,
+            details: error,
+          };
+        }
+        return {
           code: 'NETWORK_ERROR',
-          message: 'Not implemented',
-        },
+          message: 'An unexpected error occurred',
+          details: error,
+        };
       };
+
+      const result = await pipe(
+        tryCatch(async () => {
+          const gun = gunService.getGun();
+          const userNode = gun.user();
+          const parentDocNode = userNode.get('docs').get(docId);
+
+          const parentDocData = await new Promise<unknown>(
+            (resolve, reject) => {
+              parentDocNode.once((data: unknown) => {
+                if (data === null || data === undefined) {
+                  reject(new Error('Parent document not found'));
+                } else {
+                  resolve(data);
+                }
+              });
+            }
+          );
+
+          if (!parentDocData || typeof parentDocData !== 'object') {
+            throw new Error('Parent document not found');
+          }
+
+          const parentDoc = parentDocData as Partial<Document>;
+          if (!parentDoc.id) {
+            throw new Error('Parent document not found');
+          }
+
+          const branchDocId = gunService.newId();
+          const parentIsPublic = parentDoc.isPublic ?? false;
+
+          let docKey: string | undefined;
+          if (!parentIsPublic) {
+            try {
+              docKey = await gunService.readPrivateData(['docKeys', docId]);
+            } catch {
+              throw new Error('Document key not found');
+            }
+          }
+
+          let branchTitle = parentDoc.title ?? '';
+          let branchContent = parentDoc.content ?? '';
+          let branchTags = parentDoc.tags;
+
+          if (docKey && !parentIsPublic) {
+            branchTitle =
+              (await encryptionService.decrypt(
+                parentDoc.title ?? '',
+                docKey
+              )) ??
+              parentDoc.title ??
+              '';
+            branchContent =
+              (await encryptionService.decrypt(
+                parentDoc.content ?? '',
+                docKey
+              )) ??
+              parentDoc.content ??
+              '';
+            if (parentDoc.tags) {
+              branchTags = await Promise.all(
+                parentDoc.tags.map(
+                  async (tag: string) =>
+                    (await encryptionService.decrypt(tag, docKey)) ?? tag
+                )
+              );
+            }
+
+            branchTitle =
+              (await encryptionService.encrypt(branchTitle, docKey)) ??
+              branchTitle;
+            branchContent =
+              (await encryptionService.encrypt(branchContent, docKey)) ??
+              branchContent;
+            if (branchTags) {
+              branchTags = await Promise.all(
+                branchTags.map(
+                  async (tag: string) =>
+                    (await encryptionService.encrypt(tag, docKey!)) ?? tag
+                )
+              );
+            }
+          }
+
+          const originalSoul = parentDoc.original ?? parentDoc.id;
+          const branchDocNode = userNode.get('docs').get(branchDocId);
+          const branchDocument: Document = {
+            id: branchDocId,
+            title: branchTitle,
+            content: branchContent,
+            tags: branchTags,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            isPublic: parentIsPublic,
+            access: parentDoc.access ?? [],
+            parent: parentDoc.id,
+            original: originalSoul,
+          };
+
+          await new Promise<void>((resolve, reject) => {
+            branchDocNode.put(branchDocument, (ack: unknown) => {
+              if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
+                reject(
+                  new Error(`Failed to create branch: ${String(ack.err)}`)
+                );
+              } else {
+                resolve();
+              }
+            });
+          });
+
+          return branchDocId;
+        }, transformError)
+      );
+
+      match(
+        () => {
+          set({
+            status: 'READY',
+            error: null,
+          });
+        },
+        (error: DocumentError) => {
+          set({
+            status: 'READY',
+            error: error.message,
+          });
+        }
+      )(result);
+
+      return result;
     },
 
     getBranch: async (_branchId: string) => {
