@@ -19,6 +19,7 @@ import { useAuthStore } from '../stores/authStore';
 import { TestRunner, type TestSuiteResult, sleep } from '../utils/testRunner';
 import { isFailure, isSuccess } from '../utils/functionalResult';
 import type { DocumentError } from '../types/document';
+import { gunService } from '../services/gunService';
 
 /**
  * Cleanup documentStore state between tests
@@ -395,6 +396,191 @@ export async function testCreateDocument(): Promise<TestSuiteResult> {
   runner.printResults();
 
   // Post-test cleanup
+  await cleanupDocumentStore();
+
+  return runner.getResults();
+}
+
+/**
+ * Test getDocument operations
+ */
+async function testGetDocument(runner: TestRunner): Promise<void> {
+  await runner.run('Get existing public document', async () => {
+    const title = generateTestTitle('_get_public');
+    const content = 'Public content to retrieve';
+    const tags = ['public', 'test'];
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, content, tags, true);
+
+    assert(isSuccess(createResult), 'Should create document first');
+    const docId = createResult.data!.id;
+
+    await cleanupDocumentStore();
+
+    const getResult = await useDocumentStore.getState().getDocument(docId);
+
+    assert(isSuccess(getResult), 'Should retrieve existing document');
+    assert(getResult.data !== null, 'Should return document (not null)');
+    assert(getResult.data!.id === docId, 'Should have matching id');
+    assert(
+      getResult.data!.title === title,
+      'Should have original title (not encrypted)'
+    );
+    assert(
+      getResult.data!.content === content,
+      'Should have original content (not encrypted)'
+    );
+    assert(
+      JSON.stringify(getResult.data!.tags) === JSON.stringify(tags),
+      'Should have original tags (not encrypted)'
+    );
+    assert(getResult.data!.isPublic === true, 'Should have isPublic=true');
+
+    const state = useDocumentStore.getState();
+    assert(state.currentDocument?.id === docId, 'Should set currentDocument');
+    assert(state.status === 'READY', 'Status should be READY');
+    assert(state.error === null, 'Should have no error');
+
+    console.log(`  Retrieved public document: ${docId}`);
+  });
+
+  await runner.run('Get existing private document', async () => {
+    const title = generateTestTitle('_get_private');
+    const content = 'Private content to retrieve';
+    const tags = ['private', 'secret'];
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, content, tags, false);
+
+    assert(isSuccess(createResult), 'Should create document first');
+    const docId = createResult.data!.id;
+
+    await cleanupDocumentStore();
+
+    const getResult = await useDocumentStore.getState().getDocument(docId);
+
+    assert(isSuccess(getResult), 'Should retrieve existing document');
+    assert(getResult.data !== null, 'Should return document (not null)');
+    assert(getResult.data!.id === docId, 'Should have matching id');
+    assert(getResult.data!.title === title, 'Should have decrypted title');
+    assert(
+      getResult.data!.content === content,
+      'Should have decrypted content'
+    );
+    assert(
+      JSON.stringify(getResult.data!.tags) === JSON.stringify(tags),
+      'Should have decrypted tags'
+    );
+    assert(getResult.data!.isPublic === false, 'Should have isPublic=false');
+
+    const state = useDocumentStore.getState();
+    assert(state.currentDocument?.id === docId, 'Should set currentDocument');
+    assert(state.status === 'READY', 'Status should be READY');
+    assert(state.error === null, 'Should have no error');
+
+    console.log(`  Retrieved private document: ${docId}`);
+  });
+
+  await runner.run(
+    'Get non-existent document returns null (not error)',
+    async () => {
+      const fakeDocId = gunService.newId();
+
+      const getResult = await useDocumentStore
+        .getState()
+        .getDocument(fakeDocId);
+
+      assert(isSuccess(getResult), 'Should succeed (not throw error)');
+      assert(
+        getResult.data === null,
+        'Should return null for non-existent doc'
+      );
+
+      const state = useDocumentStore.getState();
+      assert(state.currentDocument === null, 'Should not set currentDocument');
+      assert(state.status === 'READY', 'Status should be READY');
+      assert(state.error === null, 'Should have no error');
+
+      console.log(`  Non-existent document handled correctly: ${fakeDocId}`);
+    }
+  );
+
+  await runner.run('Get document without title/content defaults', async () => {
+    const title = generateTestTitle('_defaults');
+    const content = 'content';
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, content, undefined, true);
+
+    assert(isSuccess(createResult), 'Should create document first');
+    const docId = createResult.data!.id;
+
+    await cleanupDocumentStore();
+
+    const getResult = await useDocumentStore.getState().getDocument(docId);
+
+    assert(isSuccess(getResult), 'Should retrieve existing document');
+    assert(getResult.data !== null, 'Should return document');
+    assert(getResult.data!.title === title, 'Should have title');
+    assert(getResult.data!.content === content, 'Should have content');
+    assert(getResult.data!.tags === undefined, 'Tags should be undefined');
+
+    console.log(`  Retrieved document with defaults: ${docId}`);
+  });
+
+  await runner.run('Loading state during retrieval', async () => {
+    const title = generateTestTitle('_loading_get');
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, 'content', undefined, true);
+
+    assert(isSuccess(createResult), 'Should create document first');
+    const docId = createResult.data!.id;
+
+    await cleanupDocumentStore();
+
+    const initialState = useDocumentStore.getState();
+    assert(initialState.status === 'READY', 'Should not be loading initially');
+
+    const getPromise = useDocumentStore.getState().getDocument(docId);
+
+    const loadingState = useDocumentStore.getState();
+    assert(
+      loadingState.status === 'LOADING',
+      'Should be loading during retrieval'
+    );
+
+    await getPromise;
+
+    const finalState = useDocumentStore.getState();
+    assert(
+      finalState.status === 'READY',
+      'Should not be loading after success'
+    );
+    assert(finalState.error === null, 'Should have no error after success');
+    assert(finalState.currentDocument !== null, 'Should have currentDocument');
+  });
+}
+
+/**
+ * Run all getDocument tests
+ */
+export async function testGetDocumentSuite(): Promise<TestSuiteResult> {
+  console.log('🧪 Testing documentStore.getDocument()...\n');
+  console.log('='.repeat(60));
+
+  const runner = new TestRunner('documentStore.getDocument');
+
+  await testGetDocument(runner);
+
+  console.log('\n✅ getDocument tests complete!');
+  runner.printResults();
+
   await cleanupDocumentStore();
 
   return runner.getResults();
