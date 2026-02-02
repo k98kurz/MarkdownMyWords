@@ -1,53 +1,118 @@
-import { useEffect, useState } from 'react'
-import { useAuthStore } from './stores/authStore'
-import { AuthModal } from './components/AuthModal'
-import { AuthComponent } from './components/AuthComponent'
-import { ErrorModal } from './components/ErrorModal'
-import { useErrorStore } from './stores/errorStore'
-import { StatusBar } from './components/StatusBar'
+import { useEffect, useState } from 'react';
+import { useAuthStore } from './stores/authStore';
+import { useDocumentStore } from './stores/documentStore';
+import { AuthModal } from './components/AuthModal';
+import { AuthComponent } from './components/AuthComponent';
+import { ErrorModal } from './components/ErrorModal';
+import { useErrorStore } from './stores/errorStore';
+import { StatusBar } from './components/StatusBar';
 
 function App() {
-  const { isAuthenticated, isLoading, checkSession, logout, user } = useAuthStore()
-  const { setError } = useErrorStore()
-  const [showAuthModal, setShowAuthModal] = useState(false)
+  const { isAuthenticated, isLoading, checkSession, logout, user } =
+    useAuthStore();
+  const { setError } = useErrorStore();
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const {
+    documentList,
+    status: docStatus,
+    error: docError,
+    listDocuments,
+    clearError: clearDocError,
+  } = useDocumentStore();
 
   // Set up global error handlers
   useEffect(() => {
-    // Handle unhandled errors
     const handleError = (event: ErrorEvent) => {
-      setError(event.error || event.message)
-    }
+      setError(event.error || event.message);
+    };
 
-    // Handle unhandled promise rejections
     const handleRejection = (event: PromiseRejectionEvent) => {
-      setError(event.reason)
-    }
+      setError(event.reason);
+    };
 
-    window.addEventListener('error', handleError)
-    window.addEventListener('unhandledrejection', handleRejection)
+    window.addEventListener('error', handleError);
+    window.addEventListener('unhandledrejection', handleRejection);
 
     return () => {
-      window.removeEventListener('error', handleError)
-      window.removeEventListener('unhandledrejection', handleRejection)
-    }
-  }, [setError])
+      window.removeEventListener('error', handleError);
+      window.removeEventListener('unhandledrejection', handleRejection);
+    };
+  }, [setError]);
 
   // Check for existing session on mount
   useEffect(() => {
     checkSession().catch(error => {
-      setError(error)
-    })
-  }, [checkSession, setError])
+      setError(error);
+    });
+  }, [checkSession, setError]);
+
+  // Load documents when user authenticates
+  useEffect(() => {
+    if (isAuthenticated) {
+      listDocuments().catch(err => {
+        if (err.code !== 'NETWORK_ERROR') {
+          setError(err.message);
+        }
+      });
+    }
+  }, [isAuthenticated, listDocuments, setError]);
 
   // Show auth modal if not authenticated
   // Keep modal open during loading and only close on successful authentication
   useEffect(() => {
     if (isAuthenticated) {
-      setShowAuthModal(false)
+      setShowAuthModal(false);
     } else {
-      setShowAuthModal(true)
+      setShowAuthModal(true);
     }
-  }, [isAuthenticated])
+  }, [isAuthenticated]);
+
+  const handleRetry = () => {
+    clearDocError();
+    listDocuments();
+  };
+
+  const renderDocumentStatus = () => {
+    if (docStatus === 'LOADING') {
+      return <div className="loading">Loading documents...</div>;
+    }
+    if (docError) {
+      return (
+        <div className="error">
+          <p>{docError}</p>
+          <button onClick={handleRetry}>Retry</button>
+        </div>
+      );
+    }
+    if (docStatus === 'SAVING') {
+      return <div className="saving">Saving...</div>;
+    }
+    return null;
+  };
+
+  const renderDocuments = () => {
+    if (documentList.length === 0) {
+      return (
+        <p className="empty">No documents yet. Create your first document!</p>
+      );
+    }
+
+    return (
+      <div className="document-list">
+        <h2>Your Documents</h2>
+        <ul>
+          {documentList.map(doc => (
+            <li key={doc.docId}>
+              <strong>{doc.title || 'Untitled'}</strong>
+              <span className="doc-meta">
+                {new Date(doc.updatedAt).toLocaleDateString()}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  };
 
   return (
     <div className="app">
@@ -61,7 +126,8 @@ function App() {
           <div className="loading">Loading...</div>
         ) : isAuthenticated ? (
           <div className="app-content">
-            <p>You are logged in! Your documents will appear here.</p>
+            {renderDocumentStatus()}
+            {docStatus === 'READY' && renderDocuments()}
           </div>
         ) : (
           <div className="app-content">
@@ -80,7 +146,7 @@ function App() {
 
       <StatusBar />
     </div>
-  )
+  );
 }
 
-export default App
+export default App;
