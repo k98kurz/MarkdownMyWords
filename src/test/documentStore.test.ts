@@ -1152,3 +1152,243 @@ export async function testGetDocumentMetadataSuite(): Promise<TestSuiteResult> {
 
   return runner.getResults();
 }
+
+/**
+ * Test createBranch
+ */
+async function testCreateBranch(runner: TestRunner): Promise<void> {
+  await runner.run('Create branch from public document', async () => {
+    await cleanupDocumentStore();
+
+    const title = generateTestTitle('_public_parent');
+    const content = 'Public content';
+    const tags = ['tag1', 'tag2'];
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, content, tags, true);
+
+    assert(isSuccess(createResult), 'Should create parent document first');
+    const parentDocId = createResult.data!.id;
+
+    const branchResult = await useDocumentStore
+      .getState()
+      .createBranch(parentDocId);
+
+    assert(isSuccess(branchResult), 'Should create branch successfully');
+    assert(
+      typeof branchResult.data === 'string',
+      'Should return branch docId string'
+    );
+    assert(branchResult.data!.length > 0, 'Branch docId should not be empty');
+
+    const branchId = branchResult.data!;
+    const getBranchResult = await useDocumentStore
+      .getState()
+      .getDocument(branchId);
+
+    assert(isSuccess(getBranchResult), 'Should retrieve branch document');
+    assert(getBranchResult.data !== undefined, 'Should have branch data');
+
+    const branchDoc = getBranchResult.data!;
+    assert(branchDoc.id === branchId, 'Branch id should match');
+    assert(branchDoc.title === title, 'Branch title should match parent');
+    assert(branchDoc.content === content, 'Branch content should match parent');
+    assert(
+      JSON.stringify(branchDoc.tags) === JSON.stringify(tags),
+      'Branch tags should match parent'
+    );
+    assert(branchDoc.isPublic === true, 'Branch should inherit isPublic');
+    assert(branchDoc.parent === parentDocId, 'Branch parent should be set');
+    assert(
+      branchDoc.original === parentDocId,
+      'Branch original should be parent (parent is original)'
+    );
+
+    const state = useDocumentStore.getState();
+    assert(state.status === 'READY', 'Status should be READY');
+    assert(state.error === null, 'Should have no error');
+
+    console.log(`  Created branch from public doc: ${branchId}`);
+  });
+
+  await runner.run('Create branch from private document', async () => {
+    await cleanupDocumentStore();
+
+    const title = generateTestTitle('_private_parent');
+    const content = 'Private content';
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, content, undefined, false);
+
+    assert(isSuccess(createResult), 'Should create private parent document first');
+    const parentDocId = createResult.data!.id;
+
+    const branchResult = await useDocumentStore
+      .getState()
+      .createBranch(parentDocId);
+
+    assert(isSuccess(branchResult), 'Should create branch from private doc');
+    const branchId = branchResult.data!;
+
+    const getBranchResult = await useDocumentStore
+      .getState()
+      .getDocument(branchId);
+
+    assert(isSuccess(getBranchResult), 'Should retrieve branch document');
+    const branchDoc = getBranchResult.data!;
+
+    assert(branchDoc.id === branchId, 'Branch id should match');
+    assert(branchDoc.title === title, 'Branch title should match parent (decrypted)');
+    assert(branchDoc.content === content, 'Branch content should match parent (decrypted)');
+    assert(branchDoc.isPublic === false, 'Branch should inherit isPublic=false');
+    assert(branchDoc.parent === parentDocId, 'Branch parent should be set');
+    assert(branchDoc.original === parentDocId, 'Branch original should be parent');
+
+    console.log(`  Created branch from private doc: ${branchId}`);
+  });
+
+  await runner.run('Branch inherits original from parent branch', async () => {
+    await cleanupDocumentStore();
+
+    const title = generateTestTitle('_nested_parent');
+    const content = 'Nested content';
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, content, undefined, true);
+
+    assert(isSuccess(createResult), 'Should create original document');
+    const originalDocId = createResult.data!.id;
+
+    const firstBranchResult = await useDocumentStore
+      .getState()
+      .createBranch(originalDocId);
+
+    assert(isSuccess(firstBranchResult), 'Should create first branch');
+    const firstBranchId = firstBranchResult.data!;
+
+    const secondBranchResult = await useDocumentStore
+      .getState()
+      .createBranch(firstBranchId);
+
+    assert(isSuccess(secondBranchResult), 'Should create second branch');
+    const secondBranchId = secondBranchResult.data!;
+
+    const getFirstBranchResult = await useDocumentStore
+      .getState()
+      .getDocument(firstBranchId);
+
+    assert(isSuccess(getFirstBranchResult), 'Should retrieve first branch');
+    const firstBranchDoc = getFirstBranchResult.data!;
+    assert(firstBranchDoc.original === originalDocId, 'First branch original should be original');
+
+    const getSecondBranchResult = await useDocumentStore
+      .getState()
+      .getDocument(secondBranchId);
+
+    assert(isSuccess(getSecondBranchResult), 'Should retrieve second branch');
+    const secondBranchDoc = getSecondBranchResult.data!;
+    assert(secondBranchDoc.original === originalDocId, 'Second branch original should be original');
+    assert(secondBranchDoc.parent === firstBranchId, 'Second branch parent should be first branch');
+  });
+
+  await runner.run('Cannot create branch from non-existent document', async () => {
+    await cleanupDocumentStore();
+
+    const result = await useDocumentStore
+      .getState()
+      .createBranch('non-existent-doc-id');
+
+    assert(isFailure(result), 'Should fail for non-existent parent');
+    assert(isDocumentError(result.error), 'Should return DocumentError');
+    assert(
+      result.error?.code === 'NOT_FOUND',
+      'Error code should be NOT_FOUND'
+    );
+    assert(
+      result.error?.message === 'Parent document not found',
+      'Error message should match'
+    );
+
+    const state = useDocumentStore.getState();
+    assert(state.error === 'Parent document not found', 'State error should match');
+  });
+
+  await runner.run('Branch shares docKey with parent (no separate storage)', async () => {
+    await cleanupDocumentStore();
+
+    const title = generateTestTitle('_shared_key');
+    const content = 'Content with shared key';
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, content, undefined, false);
+
+    assert(isSuccess(createResult), 'Should create private parent');
+    const parentDocId = createResult.data!.id;
+
+    const branchResult = await useDocumentStore
+      .getState()
+      .createBranch(parentDocId);
+
+    assert(isSuccess(branchResult), 'Should create branch');
+    const branchId = branchResult.data!;
+
+    const getBranchResult = await useDocumentStore
+      .getState()
+      .getDocument(branchId);
+
+    assert(isSuccess(getBranchResult), 'Should retrieve branch');
+    assert(getBranchResult.data!.title === title, 'Branch should be decryptable with shared key');
+  });
+
+  await runner.run('Loading state during branch creation', async () => {
+    await cleanupDocumentStore();
+
+    const title = generateTestTitle('_loading_branch');
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, 'content', undefined, true);
+
+    assert(isSuccess(createResult), 'Should create parent first');
+    const parentDocId = createResult.data!.id;
+
+    const initialState = useDocumentStore.getState();
+    assert(initialState.status === 'READY', 'Should not be loading initially');
+
+    const branchPromise = useDocumentStore
+      .getState()
+      .createBranch(parentDocId);
+
+    const loadingState = useDocumentStore.getState();
+    assert(loadingState.status === 'SAVING', 'Should be saving during branch creation');
+
+    await branchPromise;
+
+    const finalState = useDocumentStore.getState();
+    assert(finalState.status === 'READY', 'Should not be loading after success');
+    assert(finalState.error === null, 'Should have no error after success');
+  });
+}
+
+/**
+ * Run all createBranch tests
+ */
+export async function testCreateBranchSuite(): Promise<TestSuiteResult> {
+  console.log('🧪 Testing documentStore.createBranch()...\n');
+  console.log('='.repeat(60));
+
+  const runner = new TestRunner('documentStore.createBranch');
+
+  await testCreateBranch(runner);
+
+  console.log('\n✅ createBranch tests complete!');
+  runner.printResults();
+
+  await cleanupDocumentStore();
+
+  return runner.getResults();
+}
