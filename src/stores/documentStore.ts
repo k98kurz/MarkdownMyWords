@@ -828,14 +828,138 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       return result;
     },
 
-    getDocumentMetadata: async (_docId: string) => {
-      return {
-        success: false,
-        error: {
+    getDocumentMetadata: async (docId: string) => {
+      set({ status: 'LOADING', error: null });
+
+      const transformError = (error: unknown): DocumentError => {
+        if (error instanceof Error) {
+          if (error.message.includes('decryption')) {
+            return {
+              code: 'ENCRYPTION_ERROR',
+              message: 'Failed to decrypt document metadata',
+              details: error,
+            };
+          }
+          if (
+            error.message.includes('not found') ||
+            error.message.includes('could not be decrypted')
+          ) {
+            return {
+              code: 'NOT_FOUND',
+              message: 'Document not found',
+              details: error,
+            };
+          }
+          if (
+            error.message.includes('docKey') ||
+            error.message.includes('permission')
+          ) {
+            return {
+              code: 'PERMISSION_DENIED',
+              message: 'Document key not found',
+              details: error,
+            };
+          }
+          if (
+            error.message.includes('GunDB') ||
+            error.message.includes('Failed to read')
+          ) {
+            return {
+              code: 'NETWORK_ERROR',
+              message: 'Failed to retrieve document metadata',
+              details: error,
+            };
+          }
+          return {
+            code: 'NETWORK_ERROR',
+            message: error.message,
+            details: error,
+          };
+        }
+        return {
           code: 'NETWORK_ERROR',
-          message: 'Not implemented',
-        },
+          message: 'An unexpected error occurred',
+          details: error,
+        };
       };
+
+      const result = await pipe(
+        tryCatch(async () => {
+          const gun = gunService.getGun();
+          const userNode = gun.user();
+          const docNode = userNode.get('docs').get(docId);
+
+          const docData = await new Promise<unknown>((resolve, reject) => {
+            docNode.once((data: unknown) => {
+              if (data === null || data === undefined) {
+                reject(new Error('Document not found'));
+              } else {
+                resolve(data);
+              }
+            });
+          });
+
+          if (!docData || typeof docData !== 'object') {
+            throw new Error('Document not found');
+          }
+
+          const doc = docData as Partial<Document>;
+          if (!doc.id) {
+            throw new Error('Document not found');
+          }
+
+          let docKey: string | undefined;
+          if (!doc.isPublic) {
+            try {
+              docKey = await gunService.readPrivateData(['docKeys', docId]);
+            } catch {
+              throw new Error('Document key not found');
+            }
+          }
+
+          let decryptedTitle = doc.title ?? '';
+          let decryptedTags = doc.tags;
+
+          if (docKey && !doc.isPublic) {
+            decryptedTitle =
+              (await encryptionService.decrypt(doc.title ?? '', docKey)) ??
+              doc.title ??
+              '';
+            if (doc.tags) {
+              decryptedTags = await Promise.all(
+                doc.tags.map(
+                  async (tag: string) =>
+                    (await encryptionService.decrypt(tag, docKey!)) ?? tag
+                )
+              );
+            }
+          }
+
+          const metadata: Pick<Document, 'title' | 'tags'> = {
+            title: decryptedTitle,
+            tags: decryptedTags,
+          };
+
+          return metadata;
+        }, transformError)
+      );
+
+      match(
+        () => {
+          set({
+            status: 'READY',
+            error: null,
+          });
+        },
+        (error: DocumentError) => {
+          set({
+            status: 'READY',
+            error: error.message,
+          });
+        }
+      )(result);
+
+      return result;
     },
 
     createBranch: async (_docId: string) => {
