@@ -6,7 +6,7 @@
  */
 
 import { create } from 'zustand';
-import { type Result, pipe, tryCatch, match } from '../utils/functionalResult';
+import { type Result, tryCatch, match } from '../utils/functionalResult';
 import type {
   Document,
   DocumentError,
@@ -207,76 +207,71 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
     ) => {
       set({ status: 'LOADING', error: null });
 
-      const result = await pipe(
-        tryCatch(async () => {
-          if (!title?.trim()) {
-            throw new Error('Title is required');
+      const result = await tryCatch(async () => {
+        if (!title?.trim()) {
+          throw new Error('Title is required');
+        }
+        if (content === undefined || content === null) {
+          throw new Error('Content is required');
+        }
+
+        validateTagsNoCommas(tags);
+
+        const validatedIsPublic = isPublic ?? false;
+        const docId = gunService.newId();
+        const gun = gunService.getGun();
+        const userNode = gun.user();
+
+        let docKey: string | undefined;
+        let encryptedTitle = title.trim();
+        let encryptedContent = content;
+        let encryptedTags = tags;
+
+        if (!validatedIsPublic) {
+          docKey = await encryptionService.generateKey();
+          encryptedTitle =
+            (await encryptionService.encrypt(title.trim(), docKey)) ??
+            title.trim();
+          encryptedContent =
+            (await encryptionService.encrypt(content, docKey)) ?? content;
+          if (tags && tags.length > 0) {
+            encryptedTags = await Promise.all(
+              tags.map(
+                async (tag: string) =>
+                  (await encryptionService.encrypt(tag, docKey!)) ?? tag
+              )
+            );
           }
-          if (content === undefined || content === null) {
-            throw new Error('Content is required');
-          }
 
-          validateTagsNoCommas(tags);
+          await gunService.writePrivateData(['docKeys', docId], docKey);
+        }
 
-          const validatedIsPublic = isPublic ?? false;
-          const docId = gunService.newId();
-          const gun = gunService.getGun();
-          const userNode = gun.user();
+        const docNode = userNode.get('docs').get(docId);
+        const document: Partial<Document> = {
+          id: docId,
+          title: encryptedTitle,
+          content: encryptedContent,
+          tags: encryptedTags,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          isPublic: validatedIsPublic,
+        };
 
-          let docKey: string | undefined;
-          let encryptedTitle = title.trim();
-          let encryptedContent = content;
-          let encryptedTags = tags;
+        const tagsForStorage = arrayToCsv(encryptedTags);
+        const documentForStorage = { ...document, tags: tagsForStorage };
 
-          if (!validatedIsPublic) {
-            docKey = await encryptionService.generateKey();
-            encryptedTitle =
-              (await encryptionService.encrypt(title.trim(), docKey)) ??
-              title.trim();
-            encryptedContent =
-              (await encryptionService.encrypt(content, docKey)) ?? content;
-            if (tags && tags.length > 0) {
-              encryptedTags = await Promise.all(
-                tags.map(
-                  async (tag: string) =>
-                    (await encryptionService.encrypt(tag, docKey!)) ?? tag
-                )
-              );
+        await new Promise<void>((resolve, reject) => {
+          docNode.put(documentForStorage, (ack: unknown) => {
+            if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
+              reject(new Error(`Failed to save document: ${String(ack.err)}`));
+            } else {
+              resolve();
             }
-
-            await gunService.writePrivateData(['docKeys', docId], docKey);
-          }
-
-          const docNode = userNode.get('docs').get(docId);
-          const document: Partial<Document> = {
-            id: docId,
-            title: encryptedTitle,
-            content: encryptedContent,
-            tags: encryptedTags,
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-            isPublic: validatedIsPublic,
-          };
-
-          const tagsForStorage = arrayToCsv(encryptedTags);
-          const documentForStorage = { ...document, tags: tagsForStorage };
-
-          await new Promise<void>((resolve, reject) => {
-            docNode.put(documentForStorage, (ack: unknown) => {
-              if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
-                reject(
-                  new Error(`Failed to save document: ${String(ack.err)}`)
-                );
-              } else {
-                resolve();
-              }
-            });
           });
+        });
 
-          return document;
-        }, transformError)
-      );
-
+        return document;
+      }, transformError);
       match(
         (doc: Document) => {
           set({
@@ -299,85 +294,83 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
     getDocument: async (docId: string) => {
       set({ status: 'LOADING', error: null });
 
-      const result = await pipe(
-        tryCatch(async () => {
-          const gun = gunService.getGun();
-          const userNode = gun.user();
-          const docNode = userNode.get('docs').get(docId);
+      const result = await tryCatch(async () => {
+        const gun = gunService.getGun();
+        const userNode = gun.user();
+        const docNode = userNode.get('docs').get(docId);
 
-          const docData = await new Promise<unknown>((resolve, reject) => {
-            docNode.once((data: unknown) => {
-              if (data === null || data === undefined) {
-                reject(new Error('Document not found'));
-              } else {
-                resolve(data);
-              }
-            });
+        const docData = await new Promise<unknown>((resolve, reject) => {
+          docNode.once((data: unknown) => {
+            if (data === null || data === undefined) {
+              reject(new Error('Document not found'));
+            } else {
+              resolve(data);
+            }
           });
+        });
 
-          if (!docData || typeof docData !== 'object') {
-            throw new Error('Document not found');
+        if (!docData || typeof docData !== 'object') {
+          throw new Error('Document not found');
+        }
+
+        const doc = docData as Partial<Document>;
+        if (!doc.id) {
+          throw new Error('Document not found');
+        }
+
+        let docKey: string | undefined;
+        if (!doc.isPublic) {
+          try {
+            docKey = await gunService.readPrivateData(['docKeys', docId]);
+          } catch {
+            throw new Error('Document key not found');
           }
+        }
 
-          const doc = docData as Partial<Document>;
-          if (!doc.id) {
-            throw new Error('Document not found');
+        let decryptedTitle = doc.title ?? '';
+        let decryptedContent = doc.content ?? '';
+        let decryptedTags = doc.tags;
+
+        if (docKey && !doc.isPublic) {
+          decryptedTitle =
+            (await encryptionService.decrypt(doc.title ?? '', docKey)) ??
+            doc.title ??
+            '';
+          decryptedContent =
+            (await encryptionService.decrypt(doc.content ?? '', docKey)) ??
+            doc.content ??
+            '';
+          if (doc.tags) {
+            const tagsAsString = Array.isArray(doc.tags)
+              ? doc.tags.join(',')
+              : doc.tags;
+            const decryptedTagsString = await encryptionService.decrypt(
+              tagsAsString,
+              docKey
+            );
+            decryptedTags = decryptedTagsString
+              ? decryptedTagsString.split(',')
+              : undefined;
           }
+        } else if (doc.tags) {
+          decryptedTags = csvToArray(doc.tags);
+        }
 
-          let docKey: string | undefined;
-          if (!doc.isPublic) {
-            try {
-              docKey = await gunService.readPrivateData(['docKeys', docId]);
-            } catch {
-              throw new Error('Document key not found');
-            }
-          }
+        const document: Document = {
+          id: doc.id,
+          title: decryptedTitle,
+          content: decryptedContent,
+          tags: decryptedTags,
+          createdAt: doc.createdAt ?? Date.now(),
+          updatedAt: doc.updatedAt ?? Date.now(),
+          isPublic: doc.isPublic ?? false,
+          access: doc.access ?? [],
+          parent: doc.parent,
+          original: doc.original,
+        };
 
-          let decryptedTitle = doc.title ?? '';
-          let decryptedContent = doc.content ?? '';
-          let decryptedTags = doc.tags;
-
-          if (docKey && !doc.isPublic) {
-            decryptedTitle =
-              (await encryptionService.decrypt(doc.title ?? '', docKey)) ??
-              doc.title ??
-              '';
-            decryptedContent =
-              (await encryptionService.decrypt(doc.content ?? '', docKey)) ??
-              doc.content ??
-              '';
-            if (doc.tags) {
-              const tagsAsString = Array.isArray(doc.tags)
-                ? doc.tags.join(',')
-                : doc.tags;
-              const decryptedTagsString = await encryptionService.decrypt(
-                tagsAsString,
-                docKey
-              );
-              decryptedTags = decryptedTagsString
-                ? decryptedTagsString.split(',')
-                : undefined;
-            }
-          } else if (doc.tags) {
-            decryptedTags = csvToArray(doc.tags);
-          }
-
-          const document: Document = {
-            id: doc.id,
-            title: decryptedTitle,
-            content: decryptedContent,
-            tags: decryptedTags,
-            createdAt: doc.createdAt ?? Date.now(),
-            updatedAt: doc.updatedAt ?? Date.now(),
-            isPublic: doc.isPublic ?? false,
-            access: doc.access ?? [],
-            parent: doc.parent,
-            original: doc.original,
-          };
-
-          return document;
-        }, transformError)
-      );
+        return document;
+      }, transformError);
 
       match(
         (doc: Document | null) => {
@@ -416,152 +409,148 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
     ) => {
       set({ status: 'SAVING', error: null });
 
-      const result = await pipe(
-        tryCatch(async () => {
-          if (!updates || Object.keys(updates).length === 0) {
-            throw new Error('No updates provided');
-          }
+      const result = await tryCatch(async () => {
+        if (!updates || Object.keys(updates).length === 0) {
+          throw new Error('No updates provided');
+        }
 
-          const gun = gunService.getGun();
-          const userNode = gun.user();
-          const docNode = userNode.get('docs').get(docId);
+        const gun = gunService.getGun();
+        const userNode = gun.user();
+        const docNode = userNode.get('docs').get(docId);
 
-          const docData = await new Promise<unknown>((resolve, reject) => {
-            docNode.once((data: unknown) => {
-              if (data === null || data === undefined) {
-                reject(new Error('Document not found'));
-              } else {
-                resolve(data);
-              }
-            });
+        const docData = await new Promise<unknown>((resolve, reject) => {
+          docNode.once((data: unknown) => {
+            if (data === null || data === undefined) {
+              reject(new Error('Document not found'));
+            } else {
+              resolve(data);
+            }
           });
+        });
 
-          if (!docData || typeof docData !== 'object') {
-            throw new Error('Document not found');
+        if (!docData || typeof docData !== 'object') {
+          throw new Error('Document not found');
+        }
+
+        const doc = docData as Partial<Document>;
+        if (!doc.id) {
+          throw new Error('Document not found');
+        }
+
+        let docKey: string | undefined;
+        if (!doc.isPublic) {
+          try {
+            docKey = await gunService.readPrivateData(['docKeys', docId]);
+          } catch {
+            throw new Error('Document key not found');
           }
+        }
 
-          const doc = docData as Partial<Document>;
-          if (!doc.id) {
-            throw new Error('Document not found');
+        const currentDoc = get();
+        const isCurrentDoc = currentDoc.currentDocument?.id === docId;
+
+        let updatedDoc: Partial<Document> = { ...doc };
+
+        if (updates.title !== undefined) {
+          if (!updates.title?.trim()) {
+            throw new Error('Title cannot be empty');
           }
-
-          let docKey: string | undefined;
-          if (!doc.isPublic) {
-            try {
-              docKey = await gunService.readPrivateData(['docKeys', docId]);
-            } catch {
-              throw new Error('Document key not found');
-            }
+          if (docKey && !doc.isPublic) {
+            updatedDoc.title =
+              (await encryptionService.encrypt(updates.title.trim(), docKey)) ??
+              updates.title.trim();
+          } else {
+            updatedDoc.title = updates.title.trim();
           }
+        }
 
-          const currentDoc = get();
-          const isCurrentDoc = currentDoc.currentDocument?.id === docId;
-
-          let updatedDoc: Partial<Document> = { ...doc };
-
-          if (updates.title !== undefined) {
-            if (!updates.title?.trim()) {
-              throw new Error('Title cannot be empty');
-            }
-            if (docKey && !doc.isPublic) {
-              updatedDoc.title =
-                (await encryptionService.encrypt(
-                  updates.title.trim(),
-                  docKey
-                )) ?? updates.title.trim();
-            } else {
-              updatedDoc.title = updates.title.trim();
-            }
+        if (updates.content !== undefined) {
+          if (docKey && !doc.isPublic) {
+            updatedDoc.content =
+              (await encryptionService.encrypt(updates.content, docKey)) ??
+              updates.content;
+          } else {
+            updatedDoc.content = updates.content;
           }
+        }
 
-          if (updates.content !== undefined) {
-            if (docKey && !doc.isPublic) {
-              updatedDoc.content =
-                (await encryptionService.encrypt(updates.content, docKey)) ??
-                updates.content;
-            } else {
-              updatedDoc.content = updates.content;
-            }
+        if (updates.tags !== undefined) {
+          if (docKey && !doc.isPublic) {
+            updatedDoc.tags = await Promise.all(
+              updates.tags.map(
+                async (tag: string) =>
+                  (await encryptionService.encrypt(tag, docKey!)) ?? tag
+              )
+            );
+          } else {
+            updatedDoc.tags = updates.tags;
           }
+        }
 
-          if (updates.tags !== undefined) {
-            if (docKey && !doc.isPublic) {
-              updatedDoc.tags = await Promise.all(
-                updates.tags.map(
-                  async (tag: string) =>
-                    (await encryptionService.encrypt(tag, docKey!)) ?? tag
-                )
+        updatedDoc.updatedAt = Date.now();
+
+        await new Promise<void>((resolve, reject) => {
+          docNode.put(updatedDoc, (ack: unknown) => {
+            if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
+              reject(
+                new Error(`Failed to update document: ${String(ack.err)}`)
               );
             } else {
-              updatedDoc.tags = updates.tags;
+              resolve();
             }
-          }
-
-          updatedDoc.updatedAt = Date.now();
-
-          await new Promise<void>((resolve, reject) => {
-            docNode.put(updatedDoc, (ack: unknown) => {
-              if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
-                reject(
-                  new Error(`Failed to update document: ${String(ack.err)}`)
-                );
-              } else {
-                resolve();
-              }
-            });
           });
+        });
 
-          if (isCurrentDoc) {
-            let decryptedTitle = updatedDoc.title ?? '';
-            let decryptedContent = updatedDoc.content ?? '';
-            let decryptedTags = updatedDoc.tags;
+        if (isCurrentDoc) {
+          let decryptedTitle = updatedDoc.title ?? '';
+          let decryptedContent = updatedDoc.content ?? '';
+          let decryptedTags = updatedDoc.tags;
 
-            if (docKey && !doc.isPublic) {
-              decryptedTitle =
-                (await encryptionService.decrypt(
-                  updatedDoc.title ?? '',
-                  docKey
-                )) ??
-                updatedDoc.title ??
-                '';
-              decryptedContent =
-                (await encryptionService.decrypt(
-                  updatedDoc.content ?? '',
-                  docKey
-                )) ??
-                updatedDoc.content ??
-                '';
-              if (updatedDoc.tags) {
-                decryptedTags = await Promise.all(
-                  updatedDoc.tags.map(
-                    async (tag: string) =>
-                      (await encryptionService.decrypt(tag, docKey!)) ?? tag
-                  )
-                );
-              }
+          if (docKey && !doc.isPublic) {
+            decryptedTitle =
+              (await encryptionService.decrypt(
+                updatedDoc.title ?? '',
+                docKey
+              )) ??
+              updatedDoc.title ??
+              '';
+            decryptedContent =
+              (await encryptionService.decrypt(
+                updatedDoc.content ?? '',
+                docKey
+              )) ??
+              updatedDoc.content ??
+              '';
+            if (updatedDoc.tags) {
+              decryptedTags = await Promise.all(
+                updatedDoc.tags.map(
+                  async (tag: string) =>
+                    (await encryptionService.decrypt(tag, docKey!)) ?? tag
+                )
+              );
             }
-
-            const decryptedDoc: Document = {
-              id: doc.id!,
-              title: decryptedTitle,
-              content: decryptedContent,
-              tags: decryptedTags,
-              createdAt: doc.createdAt ?? Date.now(),
-              updatedAt: updatedDoc.updatedAt ?? Date.now(),
-              isPublic: doc.isPublic ?? false,
-              access: doc.access ?? [],
-              parent: doc.parent,
-              original: doc.original,
-            };
-
-            set({
-              currentDocument: decryptedDoc,
-            });
           }
 
-          return undefined;
-        }, transformError)
-      );
+          const decryptedDoc: Document = {
+            id: doc.id!,
+            title: decryptedTitle,
+            content: decryptedContent,
+            tags: decryptedTags,
+            createdAt: doc.createdAt ?? Date.now(),
+            updatedAt: updatedDoc.updatedAt ?? Date.now(),
+            isPublic: doc.isPublic ?? false,
+            access: doc.access ?? [],
+            parent: doc.parent,
+            original: doc.original,
+          };
+
+          set({
+            currentDocument: decryptedDoc,
+          });
+        }
+
+        return undefined;
+      }, transformError);
 
       match(
         () => {
@@ -584,74 +573,70 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
     deleteDocument: async (docId: string) => {
       set({ status: 'LOADING', error: null });
 
-      const result = await pipe(
-        tryCatch(async () => {
-          const gun = gunService.getGun();
-          const userNode = gun.user();
-          const docNode = userNode.get('docs').get(docId);
+      const result = await tryCatch(async () => {
+        const gun = gunService.getGun();
+        const userNode = gun.user();
+        const docNode = userNode.get('docs').get(docId);
 
-          const docData = await new Promise<unknown>((resolve, reject) => {
-            docNode.once((data: unknown) => {
-              if (data === null || data === undefined) {
-                reject(new Error('Document not found'));
-              } else {
-                resolve(data);
-              }
-            });
+        const docData = await new Promise<unknown>((resolve, reject) => {
+          docNode.once((data: unknown) => {
+            if (data === null || data === undefined) {
+              reject(new Error('Document not found'));
+            } else {
+              resolve(data);
+            }
           });
+        });
 
-          if (!docData || typeof docData !== 'object') {
-            throw new Error('Document not found');
+        if (!docData || typeof docData !== 'object') {
+          throw new Error('Document not found');
+        }
+
+        const doc = docData as Partial<Document>;
+
+        await new Promise<void>((resolve, reject) => {
+          docNode.put(null, (ack: unknown) => {
+            if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
+              reject(
+                new Error(`Failed to delete document: ${String(ack.err)}`)
+              );
+            } else {
+              resolve();
+            }
+          });
+        });
+
+        if (!doc.isPublic) {
+          const privatePath = await gunService['getPrivatePath']([
+            'docKeys',
+            docId,
+          ]);
+          let privateNode: unknown = userNode;
+          for (const part of privatePath) {
+            const getNode = (privateNode as Record<string, unknown>).get as (
+              key: string
+            ) => unknown;
+            privateNode = getNode(part);
           }
 
-          const doc = docData as Partial<Document>;
-
           await new Promise<void>((resolve, reject) => {
-            docNode.put(null, (ack: unknown) => {
+            const putNode = privateNode as {
+              put: (data: unknown, cb?: (ack: unknown) => void) => void;
+            };
+            putNode.put(null, (ack: unknown) => {
               if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
                 reject(
-                  new Error(`Failed to delete document: ${String(ack.err)}`)
+                  new Error(`Failed to delete document key: ${String(ack.err)}`)
                 );
               } else {
                 resolve();
               }
             });
           });
+        }
 
-          if (!doc.isPublic) {
-            const privatePath = await gunService['getPrivatePath']([
-              'docKeys',
-              docId,
-            ]);
-            let privateNode: unknown = userNode;
-            for (const part of privatePath) {
-              const getNode = (privateNode as Record<string, unknown>).get as (
-                key: string
-              ) => unknown;
-              privateNode = getNode(part);
-            }
-
-            await new Promise<void>((resolve, reject) => {
-              const putNode = privateNode as {
-                put: (data: unknown, cb?: (ack: unknown) => void) => void;
-              };
-              putNode.put(null, (ack: unknown) => {
-                if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
-                  reject(
-                    new Error(
-                      `Failed to delete document key: ${String(ack.err)}`
-                    )
-                  );
-                } else {
-                  resolve();
-                }
-              });
-            });
-          }
-
-          return undefined;
-        }, transformError)
-      );
+        return undefined;
+      }, transformError);
 
       match(
         () => {
@@ -685,29 +670,27 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
     listDocuments: async () => {
       set({ status: 'LOADING', error: null });
 
-      const result = await pipe(
-        tryCatch(async () => {
-          const items = await gunService.listUserItems(['docs']);
+      const result = await tryCatch(async () => {
+        const items = await gunService.listUserItems(['docs']);
 
-          const minimalDocs: MinimalDocListItem[] = items
-            .map(item => {
-              const data = item.data as Partial<Document> | undefined;
-              if (!data || !data.id) {
-                return null;
-              }
+        const minimalDocs: MinimalDocListItem[] = items
+          .map(item => {
+            const data = item.data as Partial<Document> | undefined;
+            if (!data || !data.id) {
+              return null;
+            }
 
-              return {
-                docId: data.id,
-                soul: item.soul,
-                createdAt: data.createdAt ?? Date.now(),
-                updatedAt: data.updatedAt ?? Date.now(),
-              };
-            })
-            .filter((item): item is MinimalDocListItem => item !== null);
+            return {
+              docId: data.id,
+              soul: item.soul,
+              createdAt: data.createdAt ?? Date.now(),
+              updatedAt: data.updatedAt ?? Date.now(),
+            };
+          })
+          .filter((item): item is MinimalDocListItem => item !== null);
 
-          return minimalDocs;
-        }, transformError)
-      );
+        return minimalDocs;
+      }, transformError);
 
       match(
         (docs: MinimalDocListItem[]) => {
@@ -731,66 +714,64 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
     getDocumentMetadata: async (docId: string) => {
       set({ status: 'LOADING', error: null });
 
-      const result = await pipe(
-        tryCatch(async () => {
-          const gun = gunService.getGun();
-          const userNode = gun.user();
-          const docNode = userNode.get('docs').get(docId);
+      const result = await tryCatch(async () => {
+        const gun = gunService.getGun();
+        const userNode = gun.user();
+        const docNode = userNode.get('docs').get(docId);
 
-          const docData = await new Promise<unknown>((resolve, reject) => {
-            docNode.once((data: unknown) => {
-              if (data === null || data === undefined) {
-                reject(new Error('Document not found'));
-              } else {
-                resolve(data);
-              }
-            });
+        const docData = await new Promise<unknown>((resolve, reject) => {
+          docNode.once((data: unknown) => {
+            if (data === null || data === undefined) {
+              reject(new Error('Document not found'));
+            } else {
+              resolve(data);
+            }
           });
+        });
 
-          if (!docData || typeof docData !== 'object') {
-            throw new Error('Document not found');
+        if (!docData || typeof docData !== 'object') {
+          throw new Error('Document not found');
+        }
+
+        const doc = docData as Partial<Document>;
+        if (!doc.id) {
+          throw new Error('Document not found');
+        }
+
+        let docKey: string | undefined;
+        if (!doc.isPublic) {
+          try {
+            docKey = await gunService.readPrivateData(['docKeys', docId]);
+          } catch {
+            throw new Error('Document key not found');
           }
+        }
 
-          const doc = docData as Partial<Document>;
-          if (!doc.id) {
-            throw new Error('Document not found');
+        let decryptedTitle = doc.title ?? '';
+        let decryptedTags = doc.tags;
+
+        if (docKey && !doc.isPublic) {
+          decryptedTitle =
+            (await encryptionService.decrypt(doc.title ?? '', docKey)) ??
+            doc.title ??
+            '';
+          if (doc.tags) {
+            decryptedTags = await Promise.all(
+              doc.tags.map(
+                async (tag: string) =>
+                  (await encryptionService.decrypt(tag, docKey!)) ?? tag
+              )
+            );
           }
+        }
 
-          let docKey: string | undefined;
-          if (!doc.isPublic) {
-            try {
-              docKey = await gunService.readPrivateData(['docKeys', docId]);
-            } catch {
-              throw new Error('Document key not found');
-            }
-          }
+        const metadata: Pick<Document, 'title' | 'tags'> = {
+          title: decryptedTitle,
+          tags: decryptedTags,
+        };
 
-          let decryptedTitle = doc.title ?? '';
-          let decryptedTags = doc.tags;
-
-          if (docKey && !doc.isPublic) {
-            decryptedTitle =
-              (await encryptionService.decrypt(doc.title ?? '', docKey)) ??
-              doc.title ??
-              '';
-            if (doc.tags) {
-              decryptedTags = await Promise.all(
-                doc.tags.map(
-                  async (tag: string) =>
-                    (await encryptionService.decrypt(tag, docKey!)) ?? tag
-                )
-              );
-            }
-          }
-
-          const metadata: Pick<Document, 'title' | 'tags'> = {
-            title: decryptedTitle,
-            tags: decryptedTags,
-          };
-
-          return metadata;
-        }, transformError)
-      );
+        return metadata;
+      }, transformError);
 
       match(
         () => {
@@ -813,119 +794,110 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
     createBranch: async (docId: string) => {
       set({ status: 'SAVING', error: null });
 
-      const result = await pipe(
-        tryCatch(async () => {
-          const gun = gunService.getGun();
-          const userNode = gun.user();
-          const parentDocNode = userNode.get('docs').get(docId);
+      const result = await tryCatch(async () => {
+        const gun = gunService.getGun();
+        const userNode = gun.user();
+        const parentDocNode = userNode.get('docs').get(docId);
 
-          const parentDocData = await new Promise<unknown>(
-            (resolve, reject) => {
-              parentDocNode.once((data: unknown) => {
-                if (data === null || data === undefined) {
-                  reject(new Error('Parent document not found'));
-                } else {
-                  resolve(data);
-                }
-              });
+        const parentDocData = await new Promise<unknown>((resolve, reject) => {
+          parentDocNode.once((data: unknown) => {
+            if (data === null || data === undefined) {
+              reject(new Error('Parent document not found'));
+            } else {
+              resolve(data);
             }
-          );
-
-          if (!parentDocData || typeof parentDocData !== 'object') {
-            throw new Error('Parent document not found');
-          }
-
-          const parentDoc = parentDocData as Partial<Document>;
-          if (!parentDoc.id) {
-            throw new Error('Parent document not found');
-          }
-
-          const branchDocId = gunService.newId();
-          const parentIsPublic = parentDoc.isPublic ?? false;
-
-          let docKey: string | undefined;
-          if (!parentIsPublic) {
-            try {
-              docKey = await gunService.readPrivateData(['docKeys', docId]);
-            } catch {
-              throw new Error('Document key not found');
-            }
-          }
-
-          let branchTitle = parentDoc.title ?? '';
-          let branchContent = parentDoc.content ?? '';
-          let branchTags = parentDoc.tags;
-
-          if (docKey && !parentIsPublic) {
-            branchTitle =
-              (await encryptionService.decrypt(
-                parentDoc.title ?? '',
-                docKey
-              )) ??
-              parentDoc.title ??
-              '';
-            branchContent =
-              (await encryptionService.decrypt(
-                parentDoc.content ?? '',
-                docKey
-              )) ??
-              parentDoc.content ??
-              '';
-            if (parentDoc.tags) {
-              branchTags = await Promise.all(
-                parentDoc.tags.map(
-                  async (tag: string) =>
-                    (await encryptionService.decrypt(tag, docKey)) ?? tag
-                )
-              );
-            }
-
-            branchTitle =
-              (await encryptionService.encrypt(branchTitle, docKey)) ??
-              branchTitle;
-            branchContent =
-              (await encryptionService.encrypt(branchContent, docKey)) ??
-              branchContent;
-            if (branchTags) {
-              branchTags = await Promise.all(
-                branchTags.map(
-                  async (tag: string) =>
-                    (await encryptionService.encrypt(tag, docKey!)) ?? tag
-                )
-              );
-            }
-          }
-
-          const originalSoul = parentDoc.original ?? parentDoc.id;
-          const branchDocNode = userNode.get('docs').get(branchDocId);
-          const branchDocument: Document = {
-            id: branchDocId,
-            title: branchTitle,
-            content: branchContent,
-            tags: branchTags,
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-            isPublic: parentIsPublic,
-            access: parentDoc.access ?? [],
-            parent: parentDoc.id,
-            original: originalSoul,
-          };
-
-          await new Promise<void>((resolve, reject) => {
-            branchDocNode.put(branchDocument, (ack: unknown) => {
-              if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
-                reject(
-                  new Error(`Failed to create branch: ${String(ack.err)}`)
-                );
-              } else {
-                resolve();
-              }
-            });
           });
+        });
 
-          return branchDocId;
-        }, transformError)
-      );
+        if (!parentDocData || typeof parentDocData !== 'object') {
+          throw new Error('Parent document not found');
+        }
+
+        const parentDoc = parentDocData as Partial<Document>;
+        if (!parentDoc.id) {
+          throw new Error('Parent document not found');
+        }
+
+        const branchDocId = gunService.newId();
+        const parentIsPublic = parentDoc.isPublic ?? false;
+
+        let docKey: string | undefined;
+        if (!parentIsPublic) {
+          try {
+            docKey = await gunService.readPrivateData(['docKeys', docId]);
+          } catch {
+            throw new Error('Document key not found');
+          }
+        }
+
+        let branchTitle = parentDoc.title ?? '';
+        let branchContent = parentDoc.content ?? '';
+        let branchTags = parentDoc.tags;
+
+        if (docKey && !parentIsPublic) {
+          branchTitle =
+            (await encryptionService.decrypt(parentDoc.title ?? '', docKey)) ??
+            parentDoc.title ??
+            '';
+          branchContent =
+            (await encryptionService.decrypt(
+              parentDoc.content ?? '',
+              docKey
+            )) ??
+            parentDoc.content ??
+            '';
+          if (parentDoc.tags) {
+            branchTags = await Promise.all(
+              parentDoc.tags.map(
+                async (tag: string) =>
+                  (await encryptionService.decrypt(tag, docKey)) ?? tag
+              )
+            );
+          }
+
+          branchTitle =
+            (await encryptionService.encrypt(branchTitle, docKey)) ??
+            branchTitle;
+          branchContent =
+            (await encryptionService.encrypt(branchContent, docKey)) ??
+            branchContent;
+          if (branchTags) {
+            branchTags = await Promise.all(
+              branchTags.map(
+                async (tag: string) =>
+                  (await encryptionService.encrypt(tag, docKey!)) ?? tag
+              )
+            );
+          }
+        }
+
+        const originalSoul = parentDoc.original ?? parentDoc.id;
+        const branchDocNode = userNode.get('docs').get(branchDocId);
+        const branchDocument: Document = {
+          id: branchDocId,
+          title: branchTitle,
+          content: branchContent,
+          tags: branchTags,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          isPublic: parentIsPublic,
+          access: parentDoc.access ?? [],
+          parent: parentDoc.id,
+          original: originalSoul,
+        };
+
+        await new Promise<void>((resolve, reject) => {
+          branchDocNode.put(branchDocument, (ack: unknown) => {
+            if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
+              reject(new Error(`Failed to create branch: ${String(ack.err)}`));
+            } else {
+              resolve();
+            }
+          });
+        });
+
+        return branchDocId;
+      }, transformError);
 
       match(
         () => {
@@ -948,16 +920,139 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
     getBranch: async (branchId: string) => {
       set({ status: 'LOADING', error: null });
 
-      const result = await pipe(
-        tryCatch(async () => {
+      const result = await tryCatch(async () => {
+        const gun = gunService.getGun();
+        const userNode = gun.user();
+        const branchNode = userNode.get('docs').get(branchId);
+
+        const branchData = await new Promise<unknown>((resolve, reject) => {
+          branchNode.once((data: unknown) => {
+            if (data === null || data === undefined) {
+              reject(new Error('Branch not found'));
+            } else {
+              resolve(data);
+            }
+          });
+        });
+
+        if (!branchData || typeof branchData !== 'object') {
+          throw new Error('Branch not found');
+        }
+
+        const branch = branchData as Partial<Document>;
+        if (!branch.id) {
+          throw new Error('Branch not found');
+        }
+
+        if (!branch.parent) {
+          throw new Error('Not a branch document');
+        }
+
+        let docKey: string | undefined;
+        if (!branch.isPublic) {
+          try {
+            docKey = await gunService.readPrivateData([
+              'docKeys',
+              branch.parent,
+            ]);
+          } catch {
+            throw new Error('Document key not found');
+          }
+        }
+
+        let decryptedTitle = branch.title ?? '';
+        let decryptedContent = branch.content ?? '';
+        let decryptedTags = branch.tags;
+
+        if (docKey && !branch.isPublic) {
+          decryptedTitle =
+            (await encryptionService.decrypt(branch.title ?? '', docKey)) ??
+            branch.title ??
+            '';
+          decryptedContent =
+            (await encryptionService.decrypt(branch.content ?? '', docKey)) ??
+            branch.content ??
+            '';
+          if (branch.tags) {
+            decryptedTags = await Promise.all(
+              branch.tags.map(
+                async (tag: string) =>
+                  (await encryptionService.decrypt(tag, docKey!)) ?? tag
+              )
+            );
+          }
+        }
+
+        const document: Document = {
+          id: branch.id,
+          title: decryptedTitle,
+          content: decryptedContent,
+          tags: decryptedTags,
+          createdAt: branch.createdAt ?? Date.now(),
+          updatedAt: branch.updatedAt ?? Date.now(),
+          isPublic: branch.isPublic ?? false,
+          access: branch.access ?? [],
+          parent: branch.parent,
+          original: branch.original,
+        };
+
+        return document;
+      }, transformError);
+      match(
+        (doc: Document | null) => {
+          set({
+            currentDocument: doc,
+            status: 'READY',
+            error: null,
+          });
+        },
+        (error: DocumentError) => {
+          if (error.code === 'NOT_FOUND') {
+            set({
+              currentDocument: null,
+              status: 'READY',
+              error: null,
+            });
+          } else {
+            set({
+              status: 'READY',
+              error: error.message,
+            });
+          }
+        }
+      )(result);
+
+      if (!result.success && result.error.code === 'NOT_FOUND') {
+        return { success: true, data: null };
+      }
+
+      return result;
+    },
+
+    listBranches: async (docId: string) => {
+      set({ status: 'LOADING', error: null });
+
+      const result = await tryCatch(async () => {
+        const items = await gunService.listUserItems(['docs']);
+
+        const branchIds: string[] = [];
+        for (const item of items) {
+          const data = item.data as Partial<Document> | undefined;
+          if (data?.parent === docId && data?.id) {
+            branchIds.push(data.id);
+          }
+        }
+
+        const branches: Document[] = [];
+        for (const branchId of branchIds) {
           const gun = gunService.getGun();
           const userNode = gun.user();
           const branchNode = userNode.get('docs').get(branchId);
 
-          const branchData = await new Promise<unknown>((resolve, reject) => {
+          const branchData = await new Promise<unknown>(resolve => {
             branchNode.once((data: unknown) => {
               if (data === null || data === undefined) {
-                reject(new Error('Branch not found'));
+                resolve(null);
               } else {
                 resolve(data);
               }
@@ -965,16 +1060,12 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           });
 
           if (!branchData || typeof branchData !== 'object') {
-            throw new Error('Branch not found');
+            continue;
           }
 
           const branch = branchData as Partial<Document>;
-          if (!branch.id) {
-            throw new Error('Branch not found');
-          }
-
-          if (!branch.parent) {
-            throw new Error('Not a branch document');
+          if (!branch.id || !branch.parent) {
+            continue;
           }
 
           let docKey: string | undefined;
@@ -1025,139 +1116,11 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
             original: branch.original,
           };
 
-          return document;
-        }, transformError)
-      );
-
-      match(
-        (doc: Document | null) => {
-          set({
-            currentDocument: doc,
-            status: 'READY',
-            error: null,
-          });
-        },
-        (error: DocumentError) => {
-          if (error.code === 'NOT_FOUND') {
-            set({
-              currentDocument: null,
-              status: 'READY',
-              error: null,
-            });
-          } else {
-            set({
-              status: 'READY',
-              error: error.message,
-            });
-          }
+          branches.push(document);
         }
-      )(result);
 
-      if (!result.success && result.error.code === 'NOT_FOUND') {
-        return { success: true, data: null };
-      }
-
-      return result;
-    },
-
-    listBranches: async (docId: string) => {
-      set({ status: 'LOADING', error: null });
-
-      const result = await pipe(
-        tryCatch(async () => {
-          const items = await gunService.listUserItems(['docs']);
-
-          const branchIds: string[] = [];
-          for (const item of items) {
-            const data = item.data as Partial<Document> | undefined;
-            if (data?.parent === docId && data?.id) {
-              branchIds.push(data.id);
-            }
-          }
-
-          const branches: Document[] = [];
-          for (const branchId of branchIds) {
-            const gun = gunService.getGun();
-            const userNode = gun.user();
-            const branchNode = userNode.get('docs').get(branchId);
-
-            const branchData = await new Promise<unknown>(resolve => {
-              branchNode.once((data: unknown) => {
-                if (data === null || data === undefined) {
-                  resolve(null);
-                } else {
-                  resolve(data);
-                }
-              });
-            });
-
-            if (!branchData || typeof branchData !== 'object') {
-              continue;
-            }
-
-            const branch = branchData as Partial<Document>;
-            if (!branch.id || !branch.parent) {
-              continue;
-            }
-
-            let docKey: string | undefined;
-            if (!branch.isPublic) {
-              try {
-                docKey = await gunService.readPrivateData([
-                  'docKeys',
-                  branch.parent,
-                ]);
-              } catch {
-                throw new Error('Document key not found');
-              }
-            }
-
-            let decryptedTitle = branch.title ?? '';
-            let decryptedContent = branch.content ?? '';
-            let decryptedTags = branch.tags;
-
-            if (docKey && !branch.isPublic) {
-              decryptedTitle =
-                (await encryptionService.decrypt(branch.title ?? '', docKey)) ??
-                branch.title ??
-                '';
-              decryptedContent =
-                (await encryptionService.decrypt(
-                  branch.content ?? '',
-                  docKey
-                )) ??
-                branch.content ??
-                '';
-              if (branch.tags) {
-                decryptedTags = await Promise.all(
-                  branch.tags.map(
-                    async (tag: string) =>
-                      (await encryptionService.decrypt(tag, docKey!)) ?? tag
-                  )
-                );
-              }
-            }
-
-            const document: Document = {
-              id: branch.id,
-              title: decryptedTitle,
-              content: decryptedContent,
-              tags: decryptedTags,
-              createdAt: branch.createdAt ?? Date.now(),
-              updatedAt: branch.updatedAt ?? Date.now(),
-              isPublic: branch.isPublic ?? false,
-              access: branch.access ?? [],
-              parent: branch.parent,
-              original: branch.original,
-            };
-
-            branches.push(document);
-          }
-
-          return branches;
-        }, transformError)
-      );
-
+        return branches;
+      }, transformError);
       match(
         () => {
           set({
@@ -1179,47 +1142,42 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
     deleteBranch: async (branchId: string) => {
       set({ status: 'LOADING', error: null });
 
-      const result = await pipe(
-        tryCatch(async () => {
-          const gun = gunService.getGun();
-          const userNode = gun.user();
-          const branchNode = userNode.get('docs').get(branchId);
+      const result = await tryCatch(async () => {
+        const gun = gunService.getGun();
+        const userNode = gun.user();
+        const branchNode = userNode.get('docs').get(branchId);
 
-          const branchData = await new Promise<unknown>((resolve, reject) => {
-            branchNode.once((data: unknown) => {
-              if (data === null || data === undefined) {
-                reject(new Error('Branch not found'));
-              } else {
-                resolve(data);
-              }
-            });
+        const branchData = await new Promise<unknown>((resolve, reject) => {
+          branchNode.once((data: unknown) => {
+            if (data === null || data === undefined) {
+              reject(new Error('Branch not found'));
+            } else {
+              resolve(data);
+            }
           });
+        });
 
-          if (!branchData || typeof branchData !== 'object') {
-            throw new Error('Branch not found');
-          }
+        if (!branchData || typeof branchData !== 'object') {
+          throw new Error('Branch not found');
+        }
 
-          const branch = branchData as Partial<Document>;
-          if (!branch.id) {
-            throw new Error('Branch not found');
-          }
+        const branch = branchData as Partial<Document>;
+        if (!branch.id) {
+          throw new Error('Branch not found');
+        }
 
-          await new Promise<void>((resolve, reject) => {
-            branchNode.put(null, (ack: unknown) => {
-              if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
-                reject(
-                  new Error(`Failed to delete branch: ${String(ack.err)}`)
-                );
-              } else {
-                resolve();
-              }
-            });
+        await new Promise<void>((resolve, reject) => {
+          branchNode.put(null, (ack: unknown) => {
+            if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
+              reject(new Error(`Failed to delete branch: ${String(ack.err)}`));
+            } else {
+              resolve();
+            }
           });
+        });
 
-          return undefined;
-        }, transformError)
-      );
-
+        return undefined;
+      }, transformError);
       match(
         () => {
           const currentDocId = get().currentDocument?.id;
@@ -1254,110 +1212,102 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
     shareDocument: async (docId: string, userId: string) => {
       set({ status: 'SAVING', error: null });
 
-      const result = await pipe(
-        tryCatch(async () => {
-          const gun = gunService.getGun();
-          const userNode = gun.user();
-          const docNode = userNode.get('docs').get(docId);
+      const result = await tryCatch(async () => {
+        const gun = gunService.getGun();
+        const userNode = gun.user();
+        const docNode = userNode.get('docs').get(docId);
 
-          const docData = await new Promise<unknown>((resolve, reject) => {
-            docNode.once((data: unknown) => {
-              if (data === null || data === undefined) {
-                reject(new Error('Document not found'));
-              } else {
-                resolve(data);
-              }
-            });
-          });
-
-          if (!docData || typeof docData !== 'object') {
-            throw new Error('Document not found');
-          }
-
-          const doc = docData as Partial<Document>;
-          if (!doc.id) {
-            throw new Error('Document not found');
-          }
-
-          const currentAccess = doc.access ?? [];
-          const existingAccess = currentAccess.find(a => a.userId === userId);
-          if (existingAccess) {
-            return undefined;
-          }
-
-          const currentUser = userNode.is;
-          if (!currentUser || !currentUser.epub) {
-            throw new Error('User not authenticated');
-          }
-
-          const discoveredUsers = await gunService.discoverUsers(userId);
-          if (!discoveredUsers || discoveredUsers.length === 0) {
-            throw new Error('User not found');
-          }
-
-          const discoveredUser = discoveredUsers[0];
-          const userData = discoveredUser.data as { epub?: string } | undefined;
-          const recipientEpub = userData?.epub;
-
-          if (!recipientEpub) {
-            throw new Error('User not found');
-          }
-
-          let encryptedDocKey = '';
-
-          if (!doc.isPublic) {
-            try {
-              const docKey = await gunService.readPrivateData([
-                'docKeys',
-                docId,
-              ]);
-              encryptedDocKey =
-                (await encryptionService.encryptECDH(docKey, recipientEpub)) ??
-                '';
-            } catch {
-              throw new Error('Document key not found');
+        const docData = await new Promise<unknown>((resolve, reject) => {
+          docNode.once((data: unknown) => {
+            if (data === null || data === undefined) {
+              reject(new Error('Document not found'));
+            } else {
+              resolve(data);
             }
-          }
-
-          const newAccessEntry = {
-            userId,
-            docKey: encryptedDocKey,
-            senderEpub: currentUser.epub,
-          };
-
-          const updatedAccess = [...currentAccess, newAccessEntry];
-
-          const notification: SharedDocNotification = {
-            senderAlias: currentUser.alias,
-            senderPub: currentUser.pub as string,
-            senderEpub: currentUser.epub as string,
-            docId,
-            sharedAt: Date.now(),
-            isPublic: !!doc.isPublic,
-            encryptedDocKey: !doc.isPublic ? encryptedDocKey : undefined,
-          } as SharedDocNotification;
-
-          await gunService.writePrivateData(
-            ['sharedDocs', userId, docId],
-            JSON.stringify(notification)
-          );
-
-          await new Promise<void>((resolve, reject) => {
-            docNode.put({ access: updatedAccess }, (ack: unknown) => {
-              if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
-                reject(
-                  new Error(`Failed to share document: ${String(ack.err)}`)
-                );
-              } else {
-                resolve();
-              }
-            });
           });
+        });
 
+        if (!docData || typeof docData !== 'object') {
+          throw new Error('Document not found');
+        }
+
+        const doc = docData as Partial<Document>;
+        if (!doc.id) {
+          throw new Error('Document not found');
+        }
+
+        const currentAccess = doc.access ?? [];
+        const existingAccess = currentAccess.find(a => a.userId === userId);
+        if (existingAccess) {
           return undefined;
-        }, transformError)
-      );
+        }
 
+        const currentUser = userNode.is;
+        if (!currentUser || !currentUser.epub) {
+          throw new Error('User not authenticated');
+        }
+
+        const discoveredUsers = await gunService.discoverUsers(userId);
+        if (!discoveredUsers || discoveredUsers.length === 0) {
+          throw new Error('User not found');
+        }
+
+        const discoveredUser = discoveredUsers[0];
+        const userData = discoveredUser.data as { epub?: string } | undefined;
+        const recipientEpub = userData?.epub;
+
+        if (!recipientEpub) {
+          throw new Error('User not found');
+        }
+
+        let encryptedDocKey = '';
+
+        if (!doc.isPublic) {
+          try {
+            const docKey = await gunService.readPrivateData(['docKeys', docId]);
+            encryptedDocKey =
+              (await encryptionService.encryptECDH(docKey, recipientEpub)) ??
+              '';
+          } catch {
+            throw new Error('Document key not found');
+          }
+        }
+
+        const newAccessEntry = {
+          userId,
+          docKey: encryptedDocKey,
+          senderEpub: currentUser.epub,
+        };
+
+        const updatedAccess = [...currentAccess, newAccessEntry];
+
+        const notification: SharedDocNotification = {
+          senderAlias: currentUser.alias,
+          senderPub: currentUser.pub as string,
+          senderEpub: currentUser.epub as string,
+          docId,
+          sharedAt: Date.now(),
+          isPublic: !!doc.isPublic,
+          encryptedDocKey: !doc.isPublic ? encryptedDocKey : undefined,
+        } as SharedDocNotification;
+
+        await gunService.writePrivateData(
+          ['sharedDocs', userId, docId],
+          JSON.stringify(notification)
+        );
+
+        await new Promise<void>((resolve, reject) => {
+          docNode.put({ access: updatedAccess }, (ack: unknown) => {
+            if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
+              reject(new Error(`Failed to share document: ${String(ack.err)}`));
+            } else {
+              resolve();
+            }
+          });
+        });
+
+        return undefined;
+      }, transformError);
       match(
         () => {
           set({
@@ -1379,50 +1329,47 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
     unshareDocument: async (docId: string, userId: string) => {
       set({ status: 'SAVING', error: null });
 
-      const result = await pipe(
-        tryCatch(async () => {
-          const gun = gunService.getGun();
-          const userNode = gun.user();
-          const docNode = userNode.get('docs').get(docId);
+      const result = await tryCatch(async () => {
+        const gun = gunService.getGun();
+        const userNode = gun.user();
+        const docNode = userNode.get('docs').get(docId);
 
-          const docData = await new Promise<unknown>((resolve, reject) => {
-            docNode.once((data: unknown) => {
-              if (data === null || data === undefined) {
-                reject(new Error('Document not found'));
-              } else {
-                resolve(data);
-              }
-            });
+        const docData = await new Promise<unknown>((resolve, reject) => {
+          docNode.once((data: unknown) => {
+            if (data === null || data === undefined) {
+              reject(new Error('Document not found'));
+            } else {
+              resolve(data);
+            }
           });
+        });
 
-          if (!docData || typeof docData !== 'object') {
-            throw new Error('Document not found');
-          }
+        if (!docData || typeof docData !== 'object') {
+          throw new Error('Document not found');
+        }
 
-          const doc = docData as Partial<Document>;
-          if (!doc.id) {
-            throw new Error('Document not found');
-          }
+        const doc = docData as Partial<Document>;
+        if (!doc.id) {
+          throw new Error('Document not found');
+        }
 
-          const currentAccess = doc.access ?? [];
-          const updatedAccess = currentAccess.filter(a => a.userId !== userId);
+        const currentAccess = doc.access ?? [];
+        const updatedAccess = currentAccess.filter(a => a.userId !== userId);
 
-          await new Promise<void>((resolve, reject) => {
-            docNode.put({ access: updatedAccess }, (ack: unknown) => {
-              if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
-                reject(
-                  new Error(`Failed to unshare document: ${String(ack.err)}`)
-                );
-              } else {
-                resolve();
-              }
-            });
+        await new Promise<void>((resolve, reject) => {
+          docNode.put({ access: updatedAccess }, (ack: unknown) => {
+            if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
+              reject(
+                new Error(`Failed to unshare document: ${String(ack.err)}`)
+              );
+            } else {
+              resolve();
+            }
           });
+        });
 
-          return undefined;
-        }, transformError)
-      );
-
+        return undefined;
+      }, transformError);
       match(
         () => {
           set({
@@ -1444,132 +1391,126 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
     getSharedDocuments: async () => {
       set({ status: 'LOADING', error: null });
 
-      const result = await pipe(
-        tryCatch(async () => {
-          const gun = gunService.getGun();
-          const userNode = gun.user();
-          const currentUser = userNode.is;
+      const result = await tryCatch(async () => {
+        const gun = gunService.getGun();
+        const userNode = gun.user();
+        const currentUser = userNode.is;
 
-          if (!currentUser || !currentUser.alias) {
-            throw new Error('User not authenticated');
-          }
+        if (!currentUser || !currentUser.alias) {
+          throw new Error('User not authenticated');
+        }
 
-          const notifications = await gunService.readPrivateMap(
-            ['sharedDocs'],
-            [
-              'senderAlias',
-              'senderPub',
-              'senderEpub',
-              'docId',
-              'sharedAt',
-              'isPublic',
-              'encryptedDocKey',
-            ]
-          );
+        const notifications = await gunService.readPrivateMap(
+          ['sharedDocs'],
+          [
+            'senderAlias',
+            'senderPub',
+            'senderEpub',
+            'docId',
+            'sharedAt',
+            'isPublic',
+            'encryptedDocKey',
+          ]
+        );
 
-          const sharedDocs: Document[] = [];
+        const sharedDocs: Document[] = [];
 
-          for (const notif of notifications) {
-            try {
-              const docId = notif.docId;
-              const senderPub = notif.senderPub;
-              const senderEpub = notif.senderEpub;
-              const isPublic = notif.isPublic === 'true';
+        for (const notif of notifications) {
+          try {
+            const docId = notif.docId;
+            const senderPub = notif.senderPub;
+            const senderEpub = notif.senderEpub;
+            const isPublic = notif.isPublic === 'true';
 
-              const senderNode = gun.get(`~${senderPub}`);
-              const docNode = senderNode.get('docs').get(docId);
+            const senderNode = gun.get(`~${senderPub}`);
+            const docNode = senderNode.get('docs').get(docId);
 
-              const docData = await new Promise<unknown>(resolve => {
-                docNode.once((data: unknown) => {
-                  if (data === null || data === undefined) {
-                    resolve(null);
-                  } else {
-                    resolve(data);
-                  }
-                });
+            const docData = await new Promise<unknown>(resolve => {
+              docNode.once((data: unknown) => {
+                if (data === null || data === undefined) {
+                  resolve(null);
+                } else {
+                  resolve(data);
+                }
               });
+            });
 
-              if (!docData || typeof docData !== 'object') {
-                continue;
-              }
-
-              const doc = docData as Partial<Document>;
-              if (!doc.id) {
-                continue;
-              }
-
-              let docKey: string | undefined;
-              if (!isPublic && notif.encryptedDocKey) {
-                try {
-                  const decryptedKey = await encryptionService.decryptECDH(
-                    notif.encryptedDocKey,
-                    senderEpub
-                  );
-                  if (!decryptedKey) {
-                    continue;
-                  }
-                  docKey = decryptedKey;
-                } catch {
-                  continue;
-                }
-              }
-
-              let decryptedTitle = doc.title ?? '';
-              let decryptedContent = doc.content ?? '';
-              let decryptedTags = doc.tags;
-
-              if (docKey && !isPublic) {
-                try {
-                  decryptedTitle =
-                    (await encryptionService.decrypt(
-                      doc.title ?? '',
-                      docKey
-                    )) ??
-                    doc.title ??
-                    '';
-                  decryptedContent =
-                    (await encryptionService.decrypt(
-                      doc.content ?? '',
-                      docKey
-                    )) ??
-                    doc.content ??
-                    '';
-                  if (doc.tags) {
-                    decryptedTags = await Promise.all(
-                      doc.tags.map(
-                        async (tag: string) =>
-                          (await encryptionService.decrypt(tag, docKey!)) ?? tag
-                      )
-                    );
-                  }
-                } catch {
-                  continue;
-                }
-              }
-
-              const document: Document = {
-                id: doc.id,
-                title: decryptedTitle,
-                content: decryptedContent,
-                tags: decryptedTags,
-                createdAt: doc.createdAt ?? Date.now(),
-                updatedAt: doc.updatedAt ?? Date.now(),
-                isPublic,
-                access: doc.access ?? [],
-                parent: doc.parent,
-                original: doc.original,
-              };
-
-              sharedDocs.push(document);
-            } catch {
+            if (!docData || typeof docData !== 'object') {
               continue;
             }
+
+            const doc = docData as Partial<Document>;
+            if (!doc.id) {
+              continue;
+            }
+
+            let docKey: string | undefined;
+            if (!isPublic && notif.encryptedDocKey) {
+              try {
+                const decryptedKey = await encryptionService.decryptECDH(
+                  notif.encryptedDocKey,
+                  senderEpub
+                );
+                if (!decryptedKey) {
+                  continue;
+                }
+                docKey = decryptedKey;
+              } catch {
+                continue;
+              }
+            }
+
+            let decryptedTitle = doc.title ?? '';
+            let decryptedContent = doc.content ?? '';
+            let decryptedTags = doc.tags;
+
+            if (docKey && !isPublic) {
+              try {
+                decryptedTitle =
+                  (await encryptionService.decrypt(doc.title ?? '', docKey)) ??
+                  doc.title ??
+                  '';
+                decryptedContent =
+                  (await encryptionService.decrypt(
+                    doc.content ?? '',
+                    docKey
+                  )) ??
+                  doc.content ??
+                  '';
+                if (doc.tags) {
+                  decryptedTags = await Promise.all(
+                    doc.tags.map(
+                      async (tag: string) =>
+                        (await encryptionService.decrypt(tag, docKey!)) ?? tag
+                    )
+                  );
+                }
+              } catch {
+                continue;
+              }
+            }
+
+            const document: Document = {
+              id: doc.id,
+              title: decryptedTitle,
+              content: decryptedContent,
+              tags: decryptedTags,
+              createdAt: doc.createdAt ?? Date.now(),
+              updatedAt: doc.updatedAt ?? Date.now(),
+              isPublic,
+              access: doc.access ?? [],
+              parent: doc.parent,
+              original: doc.original,
+            };
+
+            sharedDocs.push(document);
+          } catch {
+            continue;
           }
+        }
 
-          return sharedDocs;
-        }, transformError)
-      );
-
+        return sharedDocs;
+      }, transformError);
       match(
         () => {
           set({
@@ -1591,64 +1532,61 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
     getCollaborators: async (docId: string) => {
       set({ status: 'LOADING', error: null });
 
-      const result = await pipe(
-        tryCatch(async () => {
-          const gun = gunService.getGun();
-          const userNode = gun.user();
-          const docNode = userNode.get('docs').get(docId);
+      const result = await tryCatch(async () => {
+        const gun = gunService.getGun();
+        const userNode = gun.user();
+        const docNode = userNode.get('docs').get(docId);
 
-          const docData = await new Promise<unknown>((resolve, reject) => {
-            docNode.once((data: unknown) => {
-              if (data === null || data === undefined) {
-                reject(new Error('Document not found'));
-              } else {
-                resolve(data);
-              }
-            });
+        const docData = await new Promise<unknown>((resolve, reject) => {
+          docNode.once((data: unknown) => {
+            if (data === null || data === undefined) {
+              reject(new Error('Document not found'));
+            } else {
+              resolve(data);
+            }
           });
+        });
 
-          if (!docData || typeof docData !== 'object') {
-            throw new Error('Document not found');
-          }
+        if (!docData || typeof docData !== 'object') {
+          throw new Error('Document not found');
+        }
 
-          const doc = docData as Partial<Document>;
-          if (!doc.id) {
-            throw new Error('Document not found');
-          }
+        const doc = docData as Partial<Document>;
+        if (!doc.id) {
+          throw new Error('Document not found');
+        }
 
-          const access = doc.access ?? [];
-          const collaborators: User[] = [];
+        const access = doc.access ?? [];
+        const collaborators: User[] = [];
 
-          for (const accessEntry of access) {
-            try {
-              const userId = accessEntry.userId;
-              const discoveredUsers = await gunService.discoverUsers(userId);
+        for (const accessEntry of access) {
+          try {
+            const userId = accessEntry.userId;
+            const discoveredUsers = await gunService.discoverUsers(userId);
 
-              if (!discoveredUsers || discoveredUsers.length === 0) {
-                continue;
-              }
-
-              const discoveredUser = discoveredUsers[0];
-
-              const profile: UserProfile = {
-                username: userId,
-                publicKey: discoveredUser.pub,
-              };
-
-              const user: User = {
-                profile,
-              };
-
-              collaborators.push(user);
-            } catch {
+            if (!discoveredUsers || discoveredUsers.length === 0) {
               continue;
             }
+
+            const discoveredUser = discoveredUsers[0];
+
+            const profile: UserProfile = {
+              username: userId,
+              publicKey: discoveredUser.pub,
+            };
+
+            const user: User = {
+              profile,
+            };
+
+            collaborators.push(user);
+          } catch {
+            continue;
           }
+        }
 
-          return collaborators;
-        }, transformError)
-      );
-
+        return collaborators;
+      }, transformError);
       match(
         () => {
           set({
