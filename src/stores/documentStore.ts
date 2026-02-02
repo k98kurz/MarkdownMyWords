@@ -11,6 +11,7 @@ import type {
   Document,
   DocumentError,
   MinimalDocListItem,
+  SharedDocNotification,
 } from '../types/document';
 import type { User } from '../types/gun';
 import { gunService } from '../services/gunService';
@@ -1703,6 +1704,21 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
           const updatedAccess = [...currentAccess, newAccessEntry];
 
+          const notification: SharedDocNotification = {
+            senderAlias: currentUser.alias,
+            senderPub: currentUser.pub as string,
+            senderEpub: currentUser.epub as string,
+            docId,
+            sharedAt: Date.now(),
+            isPublic: !!doc.isPublic,
+            encryptedDocKey: !doc.isPublic ? encryptedDocKey : undefined,
+          } as SharedDocNotification;
+
+          await gunService.writePrivateData(
+            ['sharedDocs', userId, docId],
+            JSON.stringify(notification)
+          );
+
           await new Promise<void>((resolve, reject) => {
             docNode.put({ access: updatedAccess }, (ack: unknown) => {
               if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
@@ -1909,108 +1925,116 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
             throw new Error('User not authenticated');
           }
 
-          const items = await gunService.listUserItems(['docs']);
+          const notifications = await gunService.readPrivateMap(
+            ['sharedDocs'],
+            [
+              'senderAlias',
+              'senderPub',
+              'senderEpub',
+              'docId',
+              'sharedAt',
+              'isPublic',
+              'encryptedDocKey',
+            ]
+          );
 
           const sharedDocs: Document[] = [];
 
-          for (const item of items) {
-            const data = item.data as Partial<Document> | undefined;
-            if (!data || !data.id) {
-              continue;
-            }
+          for (const notif of notifications) {
+            try {
+              const docId = notif.docId;
+              const senderPub = notif.senderPub;
+              const senderEpub = notif.senderEpub;
+              const isPublic = notif.isPublic === 'true';
 
-            const access = data.access;
-            if (!access || !Array.isArray(access)) {
-              continue;
-            }
+              const senderNode = gun.get(`~${senderPub}`);
+              const docNode = senderNode.get('docs').get(docId);
 
-            const sharedAccess = access.find(
-              a => a.userId === currentUser.alias
-            );
-            if (!sharedAccess || !sharedAccess.senderEpub) {
-              continue;
-            }
-
-            const docNode = userNode.get('docs').get(data.id);
-            const docData = await new Promise<unknown>((resolve, reject) => {
-              docNode.once((data: unknown) => {
-                if (data === null || data === undefined) {
-                  reject(new Error('Document not found'));
-                } else {
-                  resolve(data);
-                }
+              const docData = await new Promise<unknown>(resolve => {
+                docNode.once((data: unknown) => {
+                  if (data === null || data === undefined) {
+                    resolve(null);
+                  } else {
+                    resolve(data);
+                  }
+                });
               });
-            });
 
-            if (!docData || typeof docData !== 'object') {
-              continue;
-            }
+              if (!docData || typeof docData !== 'object') {
+                continue;
+              }
 
-            const doc = docData as Partial<Document>;
-            if (!doc.id) {
-              continue;
-            }
+              const doc = docData as Partial<Document>;
+              if (!doc.id) {
+                continue;
+              }
 
-            let docKey: string | undefined;
-            if (!doc.isPublic && sharedAccess.docKey) {
-              try {
-                const decryptedKey = await encryptionService.decryptECDH(
-                  sharedAccess.docKey,
-                  sharedAccess.senderEpub
-                );
-                if (!decryptedKey) {
+              let docKey: string | undefined;
+              if (!isPublic && notif.encryptedDocKey) {
+                try {
+                  const decryptedKey = await encryptionService.decryptECDH(
+                    notif.encryptedDocKey,
+                    senderEpub
+                  );
+                  if (!decryptedKey) {
+                    continue;
+                  }
+                  docKey = decryptedKey;
+                } catch {
                   continue;
                 }
-                docKey = decryptedKey;
-              } catch {
-                continue;
               }
-            }
 
-            let decryptedTitle = doc.title ?? '';
-            let decryptedContent = doc.content ?? '';
-            let decryptedTags = doc.tags;
+              let decryptedTitle = doc.title ?? '';
+              let decryptedContent = doc.content ?? '';
+              let decryptedTags = doc.tags;
 
-            if (docKey && !doc.isPublic) {
-              try {
-                decryptedTitle =
-                  (await encryptionService.decrypt(doc.title ?? '', docKey)) ??
-                  doc.title ??
-                  '';
-                decryptedContent =
-                  (await encryptionService.decrypt(
-                    doc.content ?? '',
-                    docKey
-                  )) ??
-                  doc.content ??
-                  '';
-                if (doc.tags) {
-                  decryptedTags = await Promise.all(
-                    doc.tags.map(
-                      async (tag: string) =>
-                        (await encryptionService.decrypt(tag, docKey!)) ?? tag
-                    )
-                  );
+              if (docKey && !isPublic) {
+                try {
+                  decryptedTitle =
+                    (await encryptionService.decrypt(
+                      doc.title ?? '',
+                      docKey
+                    )) ??
+                    doc.title ??
+                    '';
+                  decryptedContent =
+                    (await encryptionService.decrypt(
+                      doc.content ?? '',
+                      docKey
+                    )) ??
+                    doc.content ??
+                    '';
+                  if (doc.tags) {
+                    decryptedTags = await Promise.all(
+                      doc.tags.map(
+                        async (tag: string) =>
+                          (await encryptionService.decrypt(tag, docKey!)) ?? tag
+                      )
+                    );
+                  }
+                } catch {
+                  continue;
                 }
-              } catch {
-                continue;
               }
+
+              const document: Document = {
+                id: doc.id,
+                title: decryptedTitle,
+                content: decryptedContent,
+                tags: decryptedTags,
+                createdAt: doc.createdAt ?? Date.now(),
+                updatedAt: doc.updatedAt ?? Date.now(),
+                isPublic,
+                access: doc.access ?? [],
+                parent: doc.parent,
+                original: doc.original,
+              };
+
+              sharedDocs.push(document);
+            } catch {
+              continue;
             }
-
-            const document: Document = {
-              id: doc.id,
-              title: decryptedTitle,
-              content: decryptedContent,
-              tags: decryptedTags,
-              createdAt: doc.createdAt ?? Date.now(),
-              updatedAt: doc.updatedAt ?? Date.now(),
-              isPublic: doc.isPublic ?? false,
-              access: doc.access ?? [],
-              parent: doc.parent,
-              original: doc.original,
-            };
-
-            sharedDocs.push(document);
           }
 
           return sharedDocs;

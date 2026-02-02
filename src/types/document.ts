@@ -30,6 +30,20 @@ export interface DocumentAccessEntry {
 }
 
 /**
+ * Shared Document Notification
+ * Stored in recipient's private storage to discover shared documents
+ */
+export interface SharedDocNotification {
+  senderAlias: string;
+  senderPub: string;
+  senderEpub: string;
+  docId: string;
+  sharedAt: number;
+  isPublic: boolean;
+  encryptedDocKey?: string;
+}
+
+/**
  * Document
  * Full document model with all fields
  * Storage path: gun.user().get('docs').get(docId)
