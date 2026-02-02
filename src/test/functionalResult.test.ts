@@ -2,7 +2,11 @@
  * Functional Result Utility Tests
  */
 
-import { TestRunner, type TestSuiteResult } from '../utils/testRunner';
+import {
+  TestRunner,
+  printTestSummary,
+  type TestSuiteResult,
+} from '../utils/testRunner';
 import {
   success,
   failure,
@@ -801,6 +805,8 @@ export async function testFunctionalResult(): Promise<TestSuiteResult[]> {
   const edgeCasesResult = await testEdgeCases();
   suiteResults.push(edgeCasesResult);
   console.log('\n' + '='.repeat(60) + '\n');
+
+  printTestSummary(suiteResults);
 
   return suiteResults;
 }

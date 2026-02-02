@@ -4,7 +4,12 @@
 
 import { encryptionService } from '../services/encryptionService';
 import { gunService } from '../services/gunService';
-import { TestRunner, type TestSuiteResult, sleep } from '../utils/testRunner';
+import {
+  TestRunner,
+  printTestSummary,
+  type TestSuiteResult,
+  sleep,
+} from '../utils/testRunner';
 // import { retryWithBackoff } from '../../utils/retryHelper'
 
 const assert = (condition: unknown, message: string) => {
@@ -350,6 +355,8 @@ export async function testEncryptionService(): Promise<TestSuiteResult[]> {
       console.log('   ✅ Logged out and waited 800ms');
     }
   }
+
+  printTestSummary(suiteResults);
 
   return suiteResults;
 }
