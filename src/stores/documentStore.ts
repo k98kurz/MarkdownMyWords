@@ -1698,6 +1698,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           const newAccessEntry = {
             userId,
             docKey: encryptedDocKey,
+            senderEpub: currentUser.epub,
           };
 
           const updatedAccess = [...currentAccess, newAccessEntry];
@@ -1834,13 +1835,204 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
     },
 
     getSharedDocuments: async () => {
-      return {
-        success: false,
-        error: {
+      set({ status: 'LOADING', error: null });
+
+      const transformError = (error: unknown): DocumentError => {
+        if (error instanceof Error) {
+          if (
+            error.message.includes('decryption') ||
+            error.message.includes('ECDH')
+          ) {
+            return {
+              code: 'ENCRYPTION_ERROR',
+              message: 'Failed to decrypt shared document',
+              details: error,
+            };
+          }
+          if (
+            error.message.includes('not found') ||
+            error.message.includes('could not be decrypted')
+          ) {
+            return {
+              code: 'NOT_FOUND',
+              message: 'Failed to retrieve shared documents',
+              details: error,
+            };
+          }
+          if (
+            error.message.includes('docKey') ||
+            error.message.includes('permission')
+          ) {
+            return {
+              code: 'PERMISSION_DENIED',
+              message: 'Failed to decrypt document key',
+              details: error,
+            };
+          }
+          if (
+            error.message.includes('GunDB') ||
+            error.message.includes('Failed to read')
+          ) {
+            return {
+              code: 'NETWORK_ERROR',
+              message: 'Failed to retrieve shared documents',
+              details: error,
+            };
+          }
+          if (error.message.includes('User not authenticated')) {
+            return {
+              code: 'PERMISSION_DENIED',
+              message: 'User not authenticated',
+              details: error,
+            };
+          }
+          return {
+            code: 'NETWORK_ERROR',
+            message: error.message,
+            details: error,
+          };
+        }
+        return {
           code: 'NETWORK_ERROR',
-          message: 'Not implemented',
-        },
+          message: 'An unexpected error occurred',
+          details: error,
+        };
       };
+
+      const result = await pipe(
+        tryCatch(async () => {
+          const gun = gunService.getGun();
+          const userNode = gun.user();
+          const currentUser = userNode.is;
+
+          if (!currentUser || !currentUser.alias) {
+            throw new Error('User not authenticated');
+          }
+
+          const items = await gunService.listUserItems(['docs']);
+
+          const sharedDocs: Document[] = [];
+
+          for (const item of items) {
+            const data = item.data as Partial<Document> | undefined;
+            if (!data || !data.id) {
+              continue;
+            }
+
+            const access = data.access;
+            if (!access || !Array.isArray(access)) {
+              continue;
+            }
+
+            const sharedAccess = access.find(
+              a => a.userId === currentUser.alias
+            );
+            if (!sharedAccess || !sharedAccess.senderEpub) {
+              continue;
+            }
+
+            const docNode = userNode.get('docs').get(data.id);
+            const docData = await new Promise<unknown>((resolve, reject) => {
+              docNode.once((data: unknown) => {
+                if (data === null || data === undefined) {
+                  reject(new Error('Document not found'));
+                } else {
+                  resolve(data);
+                }
+              });
+            });
+
+            if (!docData || typeof docData !== 'object') {
+              continue;
+            }
+
+            const doc = docData as Partial<Document>;
+            if (!doc.id) {
+              continue;
+            }
+
+            let docKey: string | undefined;
+            if (!doc.isPublic && sharedAccess.docKey) {
+              try {
+                const decryptedKey = await encryptionService.decryptECDH(
+                  sharedAccess.docKey,
+                  sharedAccess.senderEpub
+                );
+                if (!decryptedKey) {
+                  continue;
+                }
+                docKey = decryptedKey;
+              } catch {
+                continue;
+              }
+            }
+
+            let decryptedTitle = doc.title ?? '';
+            let decryptedContent = doc.content ?? '';
+            let decryptedTags = doc.tags;
+
+            if (docKey && !doc.isPublic) {
+              try {
+                decryptedTitle =
+                  (await encryptionService.decrypt(doc.title ?? '', docKey)) ??
+                  doc.title ??
+                  '';
+                decryptedContent =
+                  (await encryptionService.decrypt(
+                    doc.content ?? '',
+                    docKey
+                  )) ??
+                  doc.content ??
+                  '';
+                if (doc.tags) {
+                  decryptedTags = await Promise.all(
+                    doc.tags.map(
+                      async (tag: string) =>
+                        (await encryptionService.decrypt(tag, docKey!)) ?? tag
+                    )
+                  );
+                }
+              } catch {
+                continue;
+              }
+            }
+
+            const document: Document = {
+              id: doc.id,
+              title: decryptedTitle,
+              content: decryptedContent,
+              tags: decryptedTags,
+              createdAt: doc.createdAt ?? Date.now(),
+              updatedAt: doc.updatedAt ?? Date.now(),
+              isPublic: doc.isPublic ?? false,
+              access: doc.access ?? [],
+              parent: doc.parent,
+              original: doc.original,
+            };
+
+            sharedDocs.push(document);
+          }
+
+          return sharedDocs;
+        }, transformError)
+      );
+
+      match(
+        () => {
+          set({
+            status: 'READY',
+            error: null,
+          });
+        },
+        (error: DocumentError) => {
+          set({
+            status: 'READY',
+            error: error.message,
+          });
+        }
+      )(result);
+
+      return result;
     },
 
     getCollaborators: async (_docId: string) => {
