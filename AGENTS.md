@@ -177,6 +177,13 @@ When reviewing code or AI agent output, ask:
 - Use sender's existing encryption key pair from `user._.sea` for ECDH, don't generate new key pairs
 - User recipient's existing encryption public key from the contacts list for ECDH
 - The `encryptionService` handles document encryption and key sharing (SEA ECDH)
+- **Array/List Handling**: NEVER use `.put()` with objects containing array attributes
+  - GunDB does NOT support storing arrays as object properties - this fundamentally breaks
+  - Use `.map()` to iterate and read array/list data
+  - Store each item as a separate node using `.get(key).put(value)` pattern
+  - Reading arrays requires collecting from `.map()` with a timeout pattern
+  - See `gunService.listItems()` at `src/services/gunService.ts:396` for correct pattern
+  - See `readPrivateMap()` in `code_references/gundb.md` for private data maps
 
 ### Zustand
 
