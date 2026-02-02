@@ -234,14 +234,164 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       return result;
     },
 
-    getDocument: async (_docId: string) => {
-      return {
-        success: false,
-        error: {
+    getDocument: async (docId: string) => {
+      set({ status: 'LOADING', error: null });
+
+      const transformError = (error: unknown): DocumentError => {
+        if (error instanceof Error) {
+          if (error.message.includes('decryption')) {
+            return {
+              code: 'ENCRYPTION_ERROR',
+              message: 'Failed to decrypt document',
+              details: error,
+            };
+          }
+          if (
+            error.message.includes('not found') ||
+            error.message.includes('could not be decrypted')
+          ) {
+            return {
+              code: 'NOT_FOUND',
+              message: 'Document not found',
+              details: error,
+            };
+          }
+          if (
+            error.message.includes('docKey') ||
+            error.message.includes('permission')
+          ) {
+            return {
+              code: 'PERMISSION_DENIED',
+              message: 'Document key not found',
+              details: error,
+            };
+          }
+          if (
+            error.message.includes('GunDB') ||
+            error.message.includes('Failed to read')
+          ) {
+            return {
+              code: 'NETWORK_ERROR',
+              message: 'Failed to retrieve document',
+              details: error,
+            };
+          }
+          return {
+            code: 'NETWORK_ERROR',
+            message: error.message,
+            details: error,
+          };
+        }
+        return {
           code: 'NETWORK_ERROR',
-          message: 'Not implemented',
-        },
+          message: 'An unexpected error occurred',
+          details: error,
+        };
       };
+
+      const result = await pipe(
+        tryCatch(async () => {
+          const gun = gunService.getGun();
+          const userNode = gun.user();
+          const docNode = userNode.get('docs').get(docId);
+
+          const docData = await new Promise<unknown>((resolve, reject) => {
+            docNode.once((data: unknown) => {
+              if (data === null || data === undefined) {
+                reject(new Error('Document not found'));
+              } else {
+                resolve(data);
+              }
+            });
+          });
+
+          if (!docData || typeof docData !== 'object') {
+            throw new Error('Document not found');
+          }
+
+          const doc = docData as Partial<Document>;
+          if (!doc.id) {
+            throw new Error('Document not found');
+          }
+
+          let docKey: string | undefined;
+          if (!doc.isPublic) {
+            try {
+              docKey = await gunService.readPrivateData(['docKeys', docId]);
+            } catch (error: unknown) {
+              throw new Error('Document key not found');
+            }
+          }
+
+          let decryptedTitle = doc.title ?? '';
+          let decryptedContent = doc.content ?? '';
+          let decryptedTags = doc.tags;
+
+          if (docKey && !doc.isPublic) {
+            decryptedTitle =
+              (await encryptionService.decrypt(doc.title ?? '', docKey)) ??
+              doc.title ??
+              '';
+            decryptedContent =
+              (await encryptionService.decrypt(doc.content ?? '', docKey)) ??
+              doc.content ??
+              '';
+            if (doc.tags) {
+              decryptedTags = await Promise.all(
+                doc.tags.map(
+                  async (tag: string) =>
+                    (await encryptionService.decrypt(tag, docKey!)) ?? tag
+                )
+              );
+            }
+          }
+
+          const document: Document = {
+            id: doc.id,
+            title: decryptedTitle,
+            content: decryptedContent,
+            tags: decryptedTags,
+            createdAt: doc.createdAt ?? Date.now(),
+            updatedAt: doc.updatedAt ?? Date.now(),
+            isPublic: doc.isPublic ?? false,
+            access: doc.access ?? [],
+            parent: doc.parent,
+            original: doc.original,
+          };
+
+          return document;
+        }, transformError)
+      );
+
+      match(
+        (doc: Document | null) => {
+          set({
+            currentDocument: doc,
+            status: 'READY',
+            error: null,
+          });
+        },
+        (error: DocumentError) => {
+          if (error.code === 'NOT_FOUND') {
+            set({
+              currentDocument: null,
+              status: 'READY',
+              error: null,
+            });
+          } else {
+            set({
+              status: 'READY',
+              error: error.message,
+            });
+          }
+        }
+      )(result);
+
+      if (!result.success && result.error.code === 'NOT_FOUND') {
+        return { success: true, data: null };
+      }
+
+      return result;
     },
 
     updateDocument: async (
