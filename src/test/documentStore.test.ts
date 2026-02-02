@@ -18,7 +18,11 @@ import { useDocumentStore } from '../stores/documentStore';
 import { useAuthStore } from '../stores/authStore';
 import { TestRunner, type TestSuiteResult, sleep } from '../utils/testRunner';
 import { isFailure, isSuccess } from '../utils/functionalResult';
-import type { DocumentError, MinimalDocListItem } from '../types/document';
+import type {
+  DocumentError,
+  MinimalDocListItem,
+  DocumentAccessEntry,
+} from '../types/document';
 import { gunService } from '../services/gunService';
 
 /**
@@ -2276,6 +2280,233 @@ export async function testDeleteBranchSuite(): Promise<TestSuiteResult> {
   await testDeleteBranch(runner);
 
   console.log('\n✅ deleteBranch tests complete!');
+  runner.printResults();
+
+  await cleanupDocumentStore();
+
+  return runner.getResults();
+}
+
+/**
+ * Test shareDocument
+ *
+ * NOTE: These tests require a recipient user to exist in GunDB.
+ * For manual testing:
+ * 1. Create a recipient user: useAuthStore.getState().register('recipient', 'password123')
+ * 2. Verify recipient has epub: gunService.getGun().user().is.epub
+ * 3. Run these tests from the sender's account
+ */
+async function testShareDocument(runner: TestRunner): Promise<void> {
+  await runner.run('Share public document with user', async () => {
+    await cleanupDocumentStore();
+
+    const title = generateTestTitle('_share_public');
+    const content = 'Public content to share';
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, content, undefined, true);
+
+    assert(isSuccess(createResult), 'Should create document first');
+    const docId = createResult.data!.id;
+
+    const shareResult = await useDocumentStore
+      .getState()
+      .shareDocument(docId, 'recipient');
+
+    assert(isSuccess(shareResult), 'Should share document successfully');
+    assert(shareResult.data === undefined, 'Should return void (undefined)');
+
+    const getResult = await useDocumentStore.getState().getDocument(docId);
+
+    assert(isSuccess(getResult), 'Should retrieve document');
+    assert(getResult.data !== null, 'Should return document');
+    const doc = getResult.data!;
+    assert(Array.isArray(doc.access), 'Should have access array');
+    const accessEntry = doc.access.find(
+      (a: DocumentAccessEntry) => a.userId === 'recipient'
+    );
+    assert(accessEntry !== undefined, 'Should have recipient in access array');
+    assert(
+      accessEntry!.docKey === '',
+      'Public doc should have empty encrypted docKey'
+    );
+
+    const state = useDocumentStore.getState();
+    assert(state.status === 'READY', 'Status should be READY');
+    assert(state.error === null, 'Should have no error');
+
+    console.log(`  Shared public document: ${docId}`);
+  });
+
+  await runner.run('Share private document with user', async () => {
+    await cleanupDocumentStore();
+
+    const title = generateTestTitle('_share_private');
+    const content = 'Private content to share';
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, content, undefined, false);
+
+    assert(isSuccess(createResult), 'Should create private document first');
+    const docId = createResult.data!.id;
+
+    const shareResult = await useDocumentStore
+      .getState()
+      .shareDocument(docId, 'recipient');
+
+    assert(
+      isSuccess(shareResult),
+      'Should share private document successfully'
+    );
+    assert(shareResult.data === undefined, 'Should return void (undefined)');
+
+    const getResult = await useDocumentStore.getState().getDocument(docId);
+
+    assert(isSuccess(getResult), 'Should retrieve document');
+    assert(getResult.data !== null, 'Should return document');
+    const doc = getResult.data!;
+    assert(Array.isArray(doc.access), 'Should have access array');
+    const accessEntry = doc.access.find(
+      (a: DocumentAccessEntry) => a.userId === 'recipient'
+    );
+    assert(accessEntry !== undefined, 'Should have recipient in access array');
+    assert(
+      accessEntry!.docKey !== '',
+      'Private doc should have encrypted docKey'
+    );
+    assert(
+      typeof accessEntry!.docKey === 'string',
+      'Encrypted docKey should be a string'
+    );
+    assert(
+      accessEntry!.docKey.length > 0,
+      'Encrypted docKey should not be empty'
+    );
+
+    console.log(`  Shared private document: ${docId}`);
+  });
+
+  await runner.run('Share with non-existent user fails', async () => {
+    await cleanupDocumentStore();
+
+    const title = generateTestTitle('_share_nonexistent');
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, 'content', undefined, true);
+
+    assert(isSuccess(createResult), 'Should create document first');
+    const docId = createResult.data!.id;
+
+    const shareResult = await useDocumentStore
+      .getState()
+      .shareDocument(docId, 'nonexistent-user');
+
+    assert(isFailure(shareResult), 'Should fail for non-existent user');
+    assert(isDocumentError(shareResult.error), 'Should return DocumentError');
+    assert(
+      shareResult.error?.code === 'NOT_FOUND',
+      'Error code should be NOT_FOUND'
+    );
+    assert(
+      shareResult.error?.message === 'User not found',
+      'Error message should match'
+    );
+
+    const state = useDocumentStore.getState();
+    assert(state.status === 'READY', 'Status should be READY');
+    assert(state.error !== null, 'Should have error message');
+
+    console.log(`  Non-existent user handled correctly: ${docId}`);
+  });
+
+  await runner.run('Share with already shared user succeeds', async () => {
+    await cleanupDocumentStore();
+
+    const title = generateTestTitle('_share_again');
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, 'content', undefined, true);
+
+    assert(isSuccess(createResult), 'Should create document first');
+    const docId = createResult.data!.id;
+
+    const shareResult1 = await useDocumentStore
+      .getState()
+      .shareDocument(docId, 'recipient');
+
+    assert(isSuccess(shareResult1), 'Should share first time');
+
+    const shareResult2 = await useDocumentStore
+      .getState()
+      .shareDocument(docId, 'recipient');
+
+    assert(isSuccess(shareResult2), 'Should succeed (idempotent)');
+
+    const getResult = await useDocumentStore.getState().getDocument(docId);
+
+    assert(isSuccess(getResult), 'Should retrieve document');
+    const doc = getResult.data!;
+    const accessEntries = doc.access.filter(
+      (a: DocumentAccessEntry) => a.userId === 'recipient'
+    );
+
+    assert(
+      accessEntries.length === 1,
+      'Should only have one access entry for user'
+    );
+
+    console.log(`  Re-share handled correctly: ${docId}`);
+  });
+
+  await runner.run('Loading state during sharing', async () => {
+    await cleanupDocumentStore();
+
+    const title = generateTestTitle('_loading_share');
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, 'content', undefined, true);
+
+    assert(isSuccess(createResult), 'Should create document first');
+    const docId = createResult.data!.id;
+
+    const initialState = useDocumentStore.getState();
+    assert(initialState.status === 'READY', 'Should not be loading initially');
+
+    const sharePromise = useDocumentStore
+      .getState()
+      .shareDocument(docId, 'recipient');
+
+    const loadingState = useDocumentStore.getState();
+    assert(loadingState.status === 'SAVING', 'Should be saving during sharing');
+
+    await sharePromise;
+
+    const finalState = useDocumentStore.getState();
+    assert(
+      finalState.status === 'READY',
+      'Should not be loading after success'
+    );
+    assert(finalState.error === null, 'Should have no error after success');
+  });
+}
+
+/**
+ * Run all shareDocument tests
+ */
+export async function testShareDocumentSuite(): Promise<TestSuiteResult> {
+  console.log('🧪 Testing documentStore.shareDocument()...\n');
+  console.log('='.repeat(60));
+
+  const runner = new TestRunner('documentStore.shareDocument');
+
+  await testShareDocument(runner);
+
+  console.log('\n✅ shareDocument tests complete!');
   runner.printResults();
 
   await cleanupDocumentStore();
