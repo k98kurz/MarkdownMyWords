@@ -254,12 +254,12 @@ const getOrThrow =
  */
 const pipe = async <T, E>(
   initial: Result<T, E> | Promise<Result<T, E>>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  /* eslint-disable @typescript-eslint/no-explicit-any */
   ...operations: Array<
     (result: Result<any, E>) => Result<any, E> | Promise<Result<any, E>>
   >
-): // eslint-disable-next-line @typescript-eslint/no-explicit-any
-Promise<Result<any, E>> => {
+): Promise<Result<any, E>> => {
+  /* eslint-enable @typescript-eslint/no-explicit-any */
   let current = await Promise.resolve(initial);
   for (const operation of operations) {
     current = await Promise.resolve(operation(current));

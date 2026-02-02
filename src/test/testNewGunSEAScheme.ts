@@ -231,7 +231,7 @@ async function readPrivateMap(
     const collectedKeys: string[] = [];
     setTimeout(() => resolve(collectedKeys), 500);
 
-    privateNode.map().once((data: unknown, key: string) => {
+    privateNode.map().once((_data: unknown, key: string) => {
       if (key) {
         collectedKeys.push(key);
       }
