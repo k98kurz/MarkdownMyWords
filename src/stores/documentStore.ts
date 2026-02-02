@@ -35,6 +35,16 @@ interface DocumentState {
  * Document Actions Interface
  */
 interface DocumentActions {
+  // Status helpers
+  setLoading: () => void;
+  setSaving: () => void;
+  setReady: () => void;
+
+  // Error helpers
+  setError: (error: string) => void;
+  clearError: () => void;
+
+  // Document CRUD operations
   createDocument: (
     title: string,
     content: string,
@@ -53,12 +63,16 @@ interface DocumentActions {
   getDocumentMetadata: (
     docId: string
   ) => Promise<Result<Pick<Document, 'title' | 'tags'>, DocumentError>>;
+
+  // Branch operations
   createBranch: (docId: string) => Promise<Result<string, DocumentError>>;
   getBranch: (
     branchId: string
   ) => Promise<Result<Document | null, DocumentError>>;
   listBranches: (docId: string) => Promise<Result<Document[], DocumentError>>;
   deleteBranch: (branchId: string) => Promise<Result<void, DocumentError>>;
+
+  // Sharing operations
   shareDocument: (
     docId: string,
     userId: string
@@ -78,11 +92,20 @@ interface DocumentActions {
  * Handles document CRUD, branching, and sharing operations.
  */
 export const useDocumentStore = create<DocumentState & DocumentActions>(
-  _set => ({
+  set => ({
     currentDocument: null,
     documentList: [],
     status: 'READY',
     error: null,
+
+    // Status helpers
+    setLoading: () => set({ status: 'LOADING', error: null }),
+    setSaving: () => set({ status: 'SAVING', error: null }),
+    setReady: () => set({ status: 'READY' }),
+
+    // Error helpers
+    setError: (error: string) => set({ status: 'READY', error }),
+    clearError: () => set({ error: null }),
 
     createDocument: async (
       _title: string,
