@@ -17,6 +17,95 @@ import type { User, UserProfile } from '../types/gun';
 import { gunService } from '../services/gunService';
 import { encryptionService } from '../services/encryptionService';
 
+const transformError = (error: unknown): DocumentError => {
+  if (error instanceof Error) {
+    const msg = error.message;
+    if (
+      msg.includes('Title is required') ||
+      msg.includes('Content is required') ||
+      msg.includes('Title cannot be empty') ||
+      msg.includes('cannot be empty') ||
+      msg.includes('No updates provided') ||
+      msg.includes('required') ||
+      msg.includes('validation')
+    ) {
+      return {
+        code: 'VALIDATION_ERROR',
+        message: msg,
+        details: error,
+      };
+    }
+    if (
+      msg.includes('encryption') ||
+      msg.includes('decryption') ||
+      msg.includes('ECDH') ||
+      msg.includes('could not be decrypted')
+    ) {
+      return {
+        code: 'ENCRYPTION_ERROR',
+        message: 'Failed to process document',
+        details: error,
+      };
+    }
+    if (
+      msg.includes('docKey') ||
+      msg.includes('permission') ||
+      msg.includes('User not authenticated')
+    ) {
+      return {
+        code: 'PERMISSION_DENIED',
+        message: 'Document key not found',
+        details: error,
+      };
+    }
+    if (
+      msg.includes('not found') ||
+      msg.includes('Parent document not found') ||
+      msg.includes('Not a branch')
+    ) {
+      return {
+        code: 'NOT_FOUND',
+        message: 'Document not found',
+        details: error,
+      };
+    }
+    return {
+      code: 'NETWORK_ERROR',
+      message: msg,
+      details: error,
+    };
+  }
+  return {
+    code: 'NETWORK_ERROR',
+    message: 'An unexpected error occurred',
+    details: error,
+  };
+};
+
+function arrayToCsv(tags: string[] | undefined): string | undefined {
+  return tags && tags.length > 0 ? tags.join(',') : undefined;
+}
+
+function csvToArray(tags: string | string[] | undefined): string[] | undefined {
+  if (!tags) {
+    return undefined;
+  }
+  if (Array.isArray(tags)) {
+    return tags;
+  }
+  return tags.split(',');
+}
+
+function validateTagsNoCommas(tags: string[] | undefined): void {
+  if (tags && tags.length > 0) {
+    for (const tag of tags) {
+      if (tag.includes(',')) {
+        throw new Error('Tags cannot contain commas');
+      }
+    }
+  }
+}
+
 /**
  * Document State Interface
  */
@@ -118,51 +207,6 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
     ) => {
       set({ status: 'LOADING', error: null });
 
-      const transformError = (error: unknown): DocumentError => {
-        if (error instanceof Error) {
-          const msg = error.message;
-          if (
-            msg.includes('Title is required') ||
-            msg.includes('Content is required') ||
-            msg.includes('Title cannot be empty') ||
-            msg.includes('cannot be empty') ||
-            msg.includes('No updates provided') ||
-            msg.includes('required') ||
-            msg.includes('validation')
-          ) {
-            return {
-              code: 'VALIDATION_ERROR',
-              message: msg,
-              details: error,
-            };
-          }
-          if (msg.includes('encryption')) {
-            return {
-              code: 'ENCRYPTION_ERROR',
-              message: 'Failed to encrypt document',
-              details: error,
-            };
-          }
-          if (msg.includes('GunDB') || msg.includes('Failed to write')) {
-            return {
-              code: 'NETWORK_ERROR',
-              message: 'Failed to save document',
-              details: error,
-            };
-          }
-          return {
-            code: 'NETWORK_ERROR',
-            message: msg,
-            details: error,
-          };
-        }
-        return {
-          code: 'NETWORK_ERROR',
-          message: 'An unexpected error occurred',
-          details: error,
-        };
-      };
-
       const result = await pipe(
         tryCatch(async () => {
           if (!title?.trim()) {
@@ -171,6 +215,8 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           if (content === undefined || content === null) {
             throw new Error('Content is required');
           }
+
+          validateTagsNoCommas(tags);
 
           const validatedIsPublic = isPublic ?? false;
           const docId = gunService.newId();
@@ -189,7 +235,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
               title.trim();
             encryptedContent =
               (await encryptionService.encrypt(content, docKey)) ?? content;
-            if (tags) {
+            if (tags && tags.length > 0) {
               encryptedTags = await Promise.all(
                 tags.map(
                   async (tag: string) =>
@@ -212,12 +258,11 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
             isPublic: validatedIsPublic,
           };
 
-          if (validatedIsPublic) {
-            (document as Document).access = [];
-          }
+          const tagsForStorage = arrayToCsv(encryptedTags);
+          const documentForStorage = { ...document, tags: tagsForStorage };
 
           await new Promise<void>((resolve, reject) => {
-            docNode.put(document, (ack: unknown) => {
+            docNode.put(documentForStorage, (ack: unknown) => {
               if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
                 reject(
                   new Error(`Failed to save document: ${String(ack.err)}`)
@@ -253,58 +298,6 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
     getDocument: async (docId: string) => {
       set({ status: 'LOADING', error: null });
-
-      const transformError = (error: unknown): DocumentError => {
-        if (error instanceof Error) {
-          if (error.message.includes('decryption')) {
-            return {
-              code: 'ENCRYPTION_ERROR',
-              message: 'Failed to decrypt document',
-              details: error,
-            };
-          }
-          if (
-            error.message.includes('not found') ||
-            error.message.includes('could not be decrypted')
-          ) {
-            return {
-              code: 'NOT_FOUND',
-              message: 'Document not found',
-              details: error,
-            };
-          }
-          if (
-            error.message.includes('docKey') ||
-            error.message.includes('permission')
-          ) {
-            return {
-              code: 'PERMISSION_DENIED',
-              message: 'Document key not found',
-              details: error,
-            };
-          }
-          if (
-            error.message.includes('GunDB') ||
-            error.message.includes('Failed to read')
-          ) {
-            return {
-              code: 'NETWORK_ERROR',
-              message: 'Failed to retrieve document',
-              details: error,
-            };
-          }
-          return {
-            code: 'NETWORK_ERROR',
-            message: error.message,
-            details: error,
-          };
-        }
-        return {
-          code: 'NETWORK_ERROR',
-          message: 'An unexpected error occurred',
-          details: error,
-        };
-      };
 
       const result = await pipe(
         tryCatch(async () => {
@@ -354,13 +347,19 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
               doc.content ??
               '';
             if (doc.tags) {
-              decryptedTags = await Promise.all(
-                doc.tags.map(
-                  async (tag: string) =>
-                    (await encryptionService.decrypt(tag, docKey!)) ?? tag
-                )
+              const tagsAsString = Array.isArray(doc.tags)
+                ? doc.tags.join(',')
+                : doc.tags;
+              const decryptedTagsString = await encryptionService.decrypt(
+                tagsAsString,
+                docKey
               );
+              decryptedTags = decryptedTagsString
+                ? decryptedTagsString.split(',')
+                : undefined;
             }
+          } else if (doc.tags) {
+            decryptedTags = csvToArray(doc.tags);
           }
 
           const document: Document = {
@@ -416,71 +415,6 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       updates: Partial<Pick<Document, 'title' | 'content' | 'tags'>>
     ) => {
       set({ status: 'SAVING', error: null });
-
-      const transformError = (error: unknown): DocumentError => {
-        if (error instanceof Error) {
-          if (
-            error.message.includes('Title cannot be empty') ||
-            error.message.includes('cannot be empty') ||
-            error.message.includes('No updates provided') ||
-            error.message.includes('required') ||
-            error.message.includes('validation')
-          ) {
-            return {
-              code: 'VALIDATION_ERROR',
-              message: error.message,
-              details: error,
-            };
-          }
-          if (error.message.includes('not found')) {
-            return {
-              code: 'NOT_FOUND',
-              message: 'Document not found',
-              details: error,
-            };
-          }
-          if (
-            error.message.includes('docKey') ||
-            error.message.includes('permission')
-          ) {
-            return {
-              code: 'PERMISSION_DENIED',
-              message: 'Document key not found',
-              details: error,
-            };
-          }
-          if (
-            error.message.includes('encryption') ||
-            error.message.includes('decryption')
-          ) {
-            return {
-              code: 'ENCRYPTION_ERROR',
-              message: 'Failed to encrypt document',
-              details: error,
-            };
-          }
-          if (
-            error.message.includes('GunDB') ||
-            error.message.includes('Failed to update')
-          ) {
-            return {
-              code: 'NETWORK_ERROR',
-              message: 'Failed to update document',
-              details: error,
-            };
-          }
-          return {
-            code: 'NETWORK_ERROR',
-            message: error.message,
-            details: error,
-          };
-        }
-        return {
-          code: 'NETWORK_ERROR',
-          message: 'An unexpected error occurred',
-          details: error,
-        };
-      };
 
       const result = await pipe(
         tryCatch(async () => {
@@ -650,38 +584,6 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
     deleteDocument: async (docId: string) => {
       set({ status: 'LOADING', error: null });
 
-      const transformError = (error: unknown): DocumentError => {
-        if (error instanceof Error) {
-          if (error.message.includes('not found')) {
-            return {
-              code: 'NOT_FOUND',
-              message: 'Document not found',
-              details: error,
-            };
-          }
-          if (
-            error.message.includes('GunDB') ||
-            error.message.includes('Failed to delete')
-          ) {
-            return {
-              code: 'NETWORK_ERROR',
-              message: 'Failed to delete document',
-              details: error,
-            };
-          }
-          return {
-            code: 'NETWORK_ERROR',
-            message: error.message,
-            details: error,
-          };
-        }
-        return {
-          code: 'NETWORK_ERROR',
-          message: 'An unexpected error occurred',
-          details: error,
-        };
-      };
-
       const result = await pipe(
         tryCatch(async () => {
           const gun = gunService.getGun();
@@ -783,31 +685,6 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
     listDocuments: async () => {
       set({ status: 'LOADING', error: null });
 
-      const transformError = (error: unknown): DocumentError => {
-        if (error instanceof Error) {
-          if (
-            error.message.includes('GunDB') ||
-            error.message.includes('Failed to list')
-          ) {
-            return {
-              code: 'NETWORK_ERROR',
-              message: 'Failed to retrieve document list',
-              details: error,
-            };
-          }
-          return {
-            code: 'NETWORK_ERROR',
-            message: error.message,
-            details: error,
-          };
-        }
-        return {
-          code: 'NETWORK_ERROR',
-          message: 'An unexpected error occurred',
-          details: error,
-        };
-      };
-
       const result = await pipe(
         tryCatch(async () => {
           const items = await gunService.listUserItems(['docs']);
@@ -853,58 +730,6 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
     getDocumentMetadata: async (docId: string) => {
       set({ status: 'LOADING', error: null });
-
-      const transformError = (error: unknown): DocumentError => {
-        if (error instanceof Error) {
-          if (error.message.includes('decryption')) {
-            return {
-              code: 'ENCRYPTION_ERROR',
-              message: 'Failed to decrypt document metadata',
-              details: error,
-            };
-          }
-          if (
-            error.message.includes('not found') ||
-            error.message.includes('could not be decrypted')
-          ) {
-            return {
-              code: 'NOT_FOUND',
-              message: 'Document not found',
-              details: error,
-            };
-          }
-          if (
-            error.message.includes('docKey') ||
-            error.message.includes('permission')
-          ) {
-            return {
-              code: 'PERMISSION_DENIED',
-              message: 'Document key not found',
-              details: error,
-            };
-          }
-          if (
-            error.message.includes('GunDB') ||
-            error.message.includes('Failed to read')
-          ) {
-            return {
-              code: 'NETWORK_ERROR',
-              message: 'Failed to retrieve document metadata',
-              details: error,
-            };
-          }
-          return {
-            code: 'NETWORK_ERROR',
-            message: error.message,
-            details: error,
-          };
-        }
-        return {
-          code: 'NETWORK_ERROR',
-          message: 'An unexpected error occurred',
-          details: error,
-        };
-      };
 
       const result = await pipe(
         tryCatch(async () => {
@@ -987,52 +812,6 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
     createBranch: async (docId: string) => {
       set({ status: 'SAVING', error: null });
-
-      const transformError = (error: unknown): DocumentError => {
-        if (error instanceof Error) {
-          if (
-            error.message.includes('required') ||
-            error.message.includes('validation') ||
-            error.message.includes('Parent document not found')
-          ) {
-            return {
-              code: 'NOT_FOUND',
-              message: 'Parent document not found',
-              details: error,
-            };
-          }
-          if (
-            error.message.includes('encryption') ||
-            error.message.includes('decryption')
-          ) {
-            return {
-              code: 'ENCRYPTION_ERROR',
-              message: 'Failed to process document',
-              details: error,
-            };
-          }
-          if (
-            error.message.includes('GunDB') ||
-            error.message.includes('Failed to save')
-          ) {
-            return {
-              code: 'NETWORK_ERROR',
-              message: 'Failed to create branch',
-              details: error,
-            };
-          }
-          return {
-            code: 'NETWORK_ERROR',
-            message: error.message,
-            details: error,
-          };
-        }
-        return {
-          code: 'NETWORK_ERROR',
-          message: 'An unexpected error occurred',
-          details: error,
-        };
-      };
 
       const result = await pipe(
         tryCatch(async () => {
@@ -1169,59 +948,6 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
     getBranch: async (branchId: string) => {
       set({ status: 'LOADING', error: null });
 
-      const transformError = (error: unknown): DocumentError => {
-        if (error instanceof Error) {
-          if (error.message.includes('decryption')) {
-            return {
-              code: 'ENCRYPTION_ERROR',
-              message: 'Failed to decrypt branch',
-              details: error,
-            };
-          }
-          if (
-            error.message.includes('not found') ||
-            error.message.includes('could not be decrypted') ||
-            error.message.includes('Not a branch')
-          ) {
-            return {
-              code: 'NOT_FOUND',
-              message: 'Branch not found',
-              details: error,
-            };
-          }
-          if (
-            error.message.includes('docKey') ||
-            error.message.includes('permission')
-          ) {
-            return {
-              code: 'PERMISSION_DENIED',
-              message: 'Document key not found',
-              details: error,
-            };
-          }
-          if (
-            error.message.includes('GunDB') ||
-            error.message.includes('Failed to read')
-          ) {
-            return {
-              code: 'NETWORK_ERROR',
-              message: 'Failed to retrieve branch',
-              details: error,
-            };
-          }
-          return {
-            code: 'NETWORK_ERROR',
-            message: error.message,
-            details: error,
-          };
-        }
-        return {
-          code: 'NETWORK_ERROR',
-          message: 'An unexpected error occurred',
-          details: error,
-        };
-      };
-
       const result = await pipe(
         tryCatch(async () => {
           const gun = gunService.getGun();
@@ -1336,61 +1062,6 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
     listBranches: async (docId: string) => {
       set({ status: 'LOADING', error: null });
-
-      const transformError = (error: unknown): DocumentError => {
-        if (error instanceof Error) {
-          if (
-            error.message.includes('decryption') ||
-            error.message.includes('encryption')
-          ) {
-            return {
-              code: 'ENCRYPTION_ERROR',
-              message: 'Failed to decrypt branch',
-              details: error,
-            };
-          }
-          if (
-            error.message.includes('not found') ||
-            error.message.includes('could not be decrypted')
-          ) {
-            return {
-              code: 'NOT_FOUND',
-              message: 'Failed to retrieve branches',
-              details: error,
-            };
-          }
-          if (
-            error.message.includes('docKey') ||
-            error.message.includes('permission')
-          ) {
-            return {
-              code: 'PERMISSION_DENIED',
-              message: 'Document key not found',
-              details: error,
-            };
-          }
-          if (
-            error.message.includes('GunDB') ||
-            error.message.includes('Failed to read')
-          ) {
-            return {
-              code: 'NETWORK_ERROR',
-              message: 'Failed to retrieve branches',
-              details: error,
-            };
-          }
-          return {
-            code: 'NETWORK_ERROR',
-            message: error.message,
-            details: error,
-          };
-        }
-        return {
-          code: 'NETWORK_ERROR',
-          message: 'An unexpected error occurred',
-          details: error,
-        };
-      };
 
       const result = await pipe(
         tryCatch(async () => {
@@ -1508,38 +1179,6 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
     deleteBranch: async (branchId: string) => {
       set({ status: 'LOADING', error: null });
 
-      const transformError = (error: unknown): DocumentError => {
-        if (error instanceof Error) {
-          if (error.message.includes('not found')) {
-            return {
-              code: 'NOT_FOUND',
-              message: 'Branch not found',
-              details: error,
-            };
-          }
-          if (
-            error.message.includes('GunDB') ||
-            error.message.includes('Failed to delete')
-          ) {
-            return {
-              code: 'NETWORK_ERROR',
-              message: 'Failed to delete branch',
-              details: error,
-            };
-          }
-          return {
-            code: 'NETWORK_ERROR',
-            message: error.message,
-            details: error,
-          };
-        }
-        return {
-          code: 'NETWORK_ERROR',
-          message: 'An unexpected error occurred',
-          details: error,
-        };
-      };
-
       const result = await pipe(
         tryCatch(async () => {
           const gun = gunService.getGun();
@@ -1614,59 +1253,6 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
     shareDocument: async (docId: string, userId: string) => {
       set({ status: 'SAVING', error: null });
-
-      const transformError = (error: unknown): DocumentError => {
-        if (error instanceof Error) {
-          if (
-            error.message.includes('User not authenticated') ||
-            error.message.includes('required') ||
-            error.message.includes('validation')
-          ) {
-            return {
-              code: 'PERMISSION_DENIED',
-              message: error.message,
-              details: error,
-            };
-          }
-          if (error.message.includes('not found')) {
-            return {
-              code: 'NOT_FOUND',
-              message: 'Document or user not found',
-              details: error,
-            };
-          }
-          if (
-            error.message.includes('encryption') ||
-            error.message.includes('ECDH')
-          ) {
-            return {
-              code: 'ENCRYPTION_ERROR',
-              message: 'Failed to share document',
-              details: error,
-            };
-          }
-          if (
-            error.message.includes('GunDB') ||
-            error.message.includes('Failed to share')
-          ) {
-            return {
-              code: 'NETWORK_ERROR',
-              message: 'Failed to share document',
-              details: error,
-            };
-          }
-          return {
-            code: 'NETWORK_ERROR',
-            message: error.message,
-            details: error,
-          };
-        }
-        return {
-          code: 'NETWORK_ERROR',
-          message: 'An unexpected error occurred',
-          details: error,
-        };
-      };
 
       const result = await pipe(
         tryCatch(async () => {
@@ -1793,38 +1379,6 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
     unshareDocument: async (docId: string, userId: string) => {
       set({ status: 'SAVING', error: null });
 
-      const transformError = (error: unknown): DocumentError => {
-        if (error instanceof Error) {
-          if (error.message.includes('not found')) {
-            return {
-              code: 'NOT_FOUND',
-              message: 'Document not found',
-              details: error,
-            };
-          }
-          if (
-            error.message.includes('GunDB') ||
-            error.message.includes('Failed to unshare')
-          ) {
-            return {
-              code: 'NETWORK_ERROR',
-              message: 'Failed to unshare document',
-              details: error,
-            };
-          }
-          return {
-            code: 'NETWORK_ERROR',
-            message: error.message,
-            details: error,
-          };
-        }
-        return {
-          code: 'NETWORK_ERROR',
-          message: 'An unexpected error occurred',
-          details: error,
-        };
-      };
-
       const result = await pipe(
         tryCatch(async () => {
           const gun = gunService.getGun();
@@ -1889,68 +1443,6 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
     getSharedDocuments: async () => {
       set({ status: 'LOADING', error: null });
-
-      const transformError = (error: unknown): DocumentError => {
-        if (error instanceof Error) {
-          if (
-            error.message.includes('decryption') ||
-            error.message.includes('ECDH')
-          ) {
-            return {
-              code: 'ENCRYPTION_ERROR',
-              message: 'Failed to decrypt shared document',
-              details: error,
-            };
-          }
-          if (
-            error.message.includes('not found') ||
-            error.message.includes('could not be decrypted')
-          ) {
-            return {
-              code: 'NOT_FOUND',
-              message: 'Failed to retrieve shared documents',
-              details: error,
-            };
-          }
-          if (
-            error.message.includes('docKey') ||
-            error.message.includes('permission')
-          ) {
-            return {
-              code: 'PERMISSION_DENIED',
-              message: 'Failed to decrypt document key',
-              details: error,
-            };
-          }
-          if (
-            error.message.includes('GunDB') ||
-            error.message.includes('Failed to read')
-          ) {
-            return {
-              code: 'NETWORK_ERROR',
-              message: 'Failed to retrieve shared documents',
-              details: error,
-            };
-          }
-          if (error.message.includes('User not authenticated')) {
-            return {
-              code: 'PERMISSION_DENIED',
-              message: 'User not authenticated',
-              details: error,
-            };
-          }
-          return {
-            code: 'NETWORK_ERROR',
-            message: error.message,
-            details: error,
-          };
-        }
-        return {
-          code: 'NETWORK_ERROR',
-          message: 'An unexpected error occurred',
-          details: error,
-        };
-      };
 
       const result = await pipe(
         tryCatch(async () => {
@@ -2098,38 +1590,6 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
     getCollaborators: async (docId: string) => {
       set({ status: 'LOADING', error: null });
-
-      const transformError = (error: unknown): DocumentError => {
-        if (error instanceof Error) {
-          if (error.message.includes('not found')) {
-            return {
-              code: 'NOT_FOUND',
-              message: 'Document not found',
-              details: error,
-            };
-          }
-          if (
-            error.message.includes('GunDB') ||
-            error.message.includes('Failed to read')
-          ) {
-            return {
-              code: 'NETWORK_ERROR',
-              message: 'Failed to retrieve collaborators',
-              details: error,
-            };
-          }
-          return {
-            code: 'NETWORK_ERROR',
-            message: error.message,
-            details: error,
-          };
-        }
-        return {
-          code: 'NETWORK_ERROR',
-          message: 'An unexpected error occurred',
-          details: error,
-        };
-      };
 
       const result = await pipe(
         tryCatch(async () => {
