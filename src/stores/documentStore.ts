@@ -624,24 +624,208 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       return result;
     },
 
-    deleteDocument: async (_docId: string) => {
-      return {
-        success: false,
-        error: {
+    deleteDocument: async (docId: string) => {
+      set({ status: 'LOADING', error: null });
+
+      const transformError = (error: unknown): DocumentError => {
+        if (error instanceof Error) {
+          if (error.message.includes('not found')) {
+            return {
+              code: 'NOT_FOUND',
+              message: 'Document not found',
+              details: error,
+            };
+          }
+          if (
+            error.message.includes('GunDB') ||
+            error.message.includes('Failed to delete')
+          ) {
+            return {
+              code: 'NETWORK_ERROR',
+              message: 'Failed to delete document',
+              details: error,
+            };
+          }
+          return {
+            code: 'NETWORK_ERROR',
+            message: error.message,
+            details: error,
+          };
+        }
+        return {
           code: 'NETWORK_ERROR',
-          message: 'Not implemented',
-        },
+          message: 'An unexpected error occurred',
+          details: error,
+        };
       };
+
+      const result = await pipe(
+        tryCatch(async () => {
+          const gun = gunService.getGun();
+          const userNode = gun.user();
+          const docNode = userNode.get('docs').get(docId);
+
+          const docData = await new Promise<unknown>((resolve, reject) => {
+            docNode.once((data: unknown) => {
+              if (data === null || data === undefined) {
+                reject(new Error('Document not found'));
+              } else {
+                resolve(data);
+              }
+            });
+          });
+
+          if (!docData || typeof docData !== 'object') {
+            throw new Error('Document not found');
+          }
+
+          const doc = docData as Partial<Document>;
+
+          await new Promise<void>((resolve, reject) => {
+            docNode.put(null, (ack: unknown) => {
+              if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
+                reject(
+                  new Error(`Failed to delete document: ${String(ack.err)}`)
+                );
+              } else {
+                resolve();
+              }
+            });
+          });
+
+          if (!doc.isPublic) {
+            const privatePath = await gunService['getPrivatePath']([
+              'docKeys',
+              docId,
+            ]);
+            let privateNode: unknown = userNode;
+            for (const part of privatePath) {
+              const getNode = (privateNode as Record<string, unknown>).get as (
+                key: string
+              ) => unknown;
+              privateNode = getNode(part);
+            }
+
+            await new Promise<void>((resolve, reject) => {
+              const putNode = privateNode as {
+                put: (data: unknown, cb?: (ack: unknown) => void) => void;
+              };
+              putNode.put(null, (ack: unknown) => {
+                if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
+                  reject(
+                    new Error(
+                      `Failed to delete document key: ${String(ack.err)}`
+                    )
+                  );
+                } else {
+                  resolve();
+                }
+              });
+            });
+          }
+
+          return undefined;
+        }, transformError)
+      );
+
+      match(
+        () => {
+          const currentDocId = get().currentDocument?.id;
+          if (currentDocId === docId) {
+            set({
+              currentDocument: null,
+            });
+          }
+
+          const documentList = get().documentList;
+          const updatedList = documentList.filter(item => item.docId !== docId);
+
+          set({
+            documentList: updatedList,
+            status: 'READY',
+            error: null,
+          });
+        },
+        (error: DocumentError) => {
+          set({
+            status: 'READY',
+            error: error.message,
+          });
+        }
+      )(result);
+
+      return result;
     },
 
     listDocuments: async () => {
-      return {
-        success: false,
-        error: {
+      set({ status: 'LOADING', error: null });
+
+      const transformError = (error: unknown): DocumentError => {
+        if (error instanceof Error) {
+          if (
+            error.message.includes('GunDB') ||
+            error.message.includes('Failed to list')
+          ) {
+            return {
+              code: 'NETWORK_ERROR',
+              message: 'Failed to retrieve document list',
+              details: error,
+            };
+          }
+          return {
+            code: 'NETWORK_ERROR',
+            message: error.message,
+            details: error,
+          };
+        }
+        return {
           code: 'NETWORK_ERROR',
-          message: 'Not implemented',
-        },
+          message: 'An unexpected error occurred',
+          details: error,
+        };
       };
+
+      const result = await pipe(
+        tryCatch(async () => {
+          const items = await gunService.listUserItems(['docs']);
+
+          const minimalDocs: MinimalDocListItem[] = items
+            .map(item => {
+              const data = item.data as Partial<Document> | undefined;
+              if (!data || !data.id) {
+                return null;
+              }
+
+              return {
+                docId: data.id,
+                soul: item.soul,
+                createdAt: data.createdAt ?? Date.now(),
+                updatedAt: data.updatedAt ?? Date.now(),
+              };
+            })
+            .filter((item): item is MinimalDocListItem => item !== null);
+
+          return minimalDocs;
+        }, transformError)
+      );
+
+      match(
+        (docs: MinimalDocListItem[]) => {
+          set({
+            documentList: docs,
+            status: 'READY',
+            error: null,
+          });
+        },
+        (error: DocumentError) => {
+          set({
+            status: 'READY',
+            error: error.message,
+          });
+        }
+      )(result);
+
+      return result;
     },
 
     getDocumentMetadata: async (_docId: string) => {

@@ -18,7 +18,7 @@ import { useDocumentStore } from '../stores/documentStore';
 import { useAuthStore } from '../stores/authStore';
 import { TestRunner, type TestSuiteResult, sleep } from '../utils/testRunner';
 import { isFailure, isSuccess } from '../utils/functionalResult';
-import type { DocumentError } from '../types/document';
+import type { DocumentError, MinimalDocListItem } from '../types/document';
 import { gunService } from '../services/gunService';
 
 /**
@@ -579,6 +579,357 @@ export async function testGetDocumentSuite(): Promise<TestSuiteResult> {
   await testGetDocument(runner);
 
   console.log('\n✅ getDocument tests complete!');
+  runner.printResults();
+
+  await cleanupDocumentStore();
+
+  return runner.getResults();
+}
+
+/**
+ * Test deleteDocument operations
+ */
+async function testDeleteDocument(runner: TestRunner): Promise<void> {
+  await runner.run('Delete existing public document', async () => {
+    const title = generateTestTitle('_delete_public');
+    const content = 'Public content to delete';
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, content, undefined, true);
+
+    assert(isSuccess(createResult), 'Should create document first');
+    const docId = createResult.data!.id;
+
+    const deleteResult = await useDocumentStore
+      .getState()
+      .deleteDocument(docId);
+
+    assert(isSuccess(deleteResult), 'Should delete existing document');
+    assert(deleteResult.data === undefined, 'Should return void (undefined)');
+
+    const getResult = await useDocumentStore.getState().getDocument(docId);
+    assert(isSuccess(getResult), 'getDocument should not throw error');
+    assert(
+      getResult.data === null,
+      'getDocument should return null after deletion'
+    );
+
+    const state = useDocumentStore.getState();
+    assert(state.status === 'READY', 'Status should be READY');
+    assert(state.error === null, 'Should have no error');
+    assert(
+      state.currentDocument === null,
+      'Should clear currentDocument if deleted'
+    );
+
+    console.log(`  Deleted public document: ${docId}`);
+  });
+
+  await runner.run('Delete existing private document', async () => {
+    const title = generateTestTitle('_delete_private');
+    const content = 'Private content to delete';
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, content, undefined, false);
+
+    assert(isSuccess(createResult), 'Should create document first');
+    const docId = createResult.data!.id;
+
+    const deleteResult = await useDocumentStore
+      .getState()
+      .deleteDocument(docId);
+
+    assert(isSuccess(deleteResult), 'Should delete private document');
+    assert(deleteResult.data === undefined, 'Should return void (undefined)');
+
+    const getResult = await useDocumentStore.getState().getDocument(docId);
+    assert(isSuccess(getResult), 'getDocument should not throw error');
+    assert(
+      getResult.data === null,
+      'getDocument should return null after deletion'
+    );
+
+    console.log(`  Deleted private document: ${docId}`);
+  });
+
+  await runner.run('Delete non-existent document', async () => {
+    const fakeDocId = gunService.newId();
+
+    const deleteResult = await useDocumentStore
+      .getState()
+      .deleteDocument(fakeDocId);
+
+    assert(isFailure(deleteResult), 'Should fail for non-existent document');
+    assert(isDocumentError(deleteResult.error), 'Should return DocumentError');
+    assert(
+      deleteResult.error?.code === 'NOT_FOUND',
+      'Error code should be NOT_FOUND'
+    );
+
+    const state = useDocumentStore.getState();
+    assert(state.status === 'READY', 'Status should be READY');
+    assert(state.error !== null, 'Should have error message');
+
+    console.log(`  Non-existent document handled correctly: ${fakeDocId}`);
+  });
+
+  await runner.run('State cleanup on deletion', async () => {
+    const title = generateTestTitle('_state_cleanup');
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, 'content', undefined, true);
+
+    assert(isSuccess(createResult), 'Should create document first');
+    const docId = createResult.data!.id;
+
+    const initialState = useDocumentStore.getState();
+    assert(
+      initialState.currentDocument?.id === docId,
+      'Should have document in currentDocument'
+    );
+
+    await useDocumentStore.getState().deleteDocument(docId);
+
+    const finalState = useDocumentStore.getState();
+    assert(finalState.currentDocument === null, 'Should clear currentDocument');
+    assert(finalState.status === 'READY', 'Status should be READY');
+    assert(finalState.error === null, 'Should have no error after success');
+  });
+
+  await runner.run('Document removed from documentList', async () => {
+    const title = generateTestTitle('_list_removal');
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, 'content', undefined, true);
+
+    assert(isSuccess(createResult), 'Should create document first');
+    const docId = createResult.data!.id;
+
+    const stateBefore = useDocumentStore.getState();
+    const listBefore = stateBefore.documentList;
+    const itemBefore = listBefore.find(item => item.docId === docId);
+
+    await useDocumentStore.getState().deleteDocument(docId);
+
+    const stateAfter = useDocumentStore.getState();
+    const listAfter = stateAfter.documentList;
+    const itemAfter = listAfter.find(item => item.docId === docId);
+
+    assert(itemAfter === undefined, 'Document should be removed from list');
+  });
+
+  await runner.run('Loading state during deletion', async () => {
+    const title = generateTestTitle('_loading_delete');
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, 'content', undefined, true);
+
+    assert(isSuccess(createResult), 'Should create document first');
+    const docId = createResult.data!.id;
+
+    const initialState = useDocumentStore.getState();
+    assert(initialState.status === 'READY', 'Should not be loading initially');
+
+    const deletePromise = useDocumentStore.getState().deleteDocument(docId);
+
+    const loadingState = useDocumentStore.getState();
+    assert(
+      loadingState.status === 'LOADING',
+      'Should be loading during deletion'
+    );
+
+    await deletePromise;
+
+    const finalState = useDocumentStore.getState();
+    assert(
+      finalState.status === 'READY',
+      'Should not be loading after success'
+    );
+    assert(finalState.error === null, 'Should have no error after success');
+  });
+}
+
+/**
+ * Run all deleteDocument tests
+ */
+export async function testDeleteDocumentSuite(): Promise<TestSuiteResult> {
+  console.log('🧪 Testing documentStore.deleteDocument()...\n');
+  console.log('='.repeat(60));
+
+  const runner = new TestRunner('documentStore.deleteDocument');
+
+  await testDeleteDocument(runner);
+
+  console.log('\n✅ deleteDocument tests complete!');
+  runner.printResults();
+
+  await cleanupDocumentStore();
+
+  return runner.getResults();
+}
+
+/**
+ * Test listDocuments
+ */
+async function testListDocuments(runner: TestRunner): Promise<void> {
+  await runner.run('List empty documents', async () => {
+    await cleanupDocumentStore();
+
+    const result = await useDocumentStore.getState().listDocuments();
+
+    assert(isSuccess(result), 'Should succeed with empty list');
+    assert(Array.isArray(result.data), 'Result data should be array');
+    assert(result.data!.length === 0, 'Should return empty array');
+
+    const state = useDocumentStore.getState();
+    assert(
+      state.documentList.length === 0,
+      'State documentList should be empty'
+    );
+    assert(state.status === 'READY', 'Status should be READY');
+    assert(state.error === null, 'Should have no error after success');
+  });
+
+  await runner.run('List documents after creating', async () => {
+    await cleanupDocumentStore();
+
+    const title1 = generateTestTitle('_list_1');
+    const title2 = generateTestTitle('_list_2');
+
+    const result1 = await useDocumentStore
+      .getState()
+      .createDocument(title1, 'content1', undefined, true);
+    assert(isSuccess(result1), 'Should create first document');
+
+    const result2 = await useDocumentStore
+      .getState()
+      .createDocument(title2, 'content2', undefined, false);
+    assert(isSuccess(result2), 'Should create second document');
+
+    const listResult = await useDocumentStore.getState().listDocuments();
+
+    assert(isSuccess(listResult), 'Should list documents successfully');
+    assert(
+      listResult.data!.length >= 2,
+      'Should have at least 2 documents in list'
+    );
+
+    const state = useDocumentStore.getState();
+    assert(
+      state.documentList.length >= 2,
+      'State documentList should have at least 2 documents'
+    );
+    assert(state.status === 'READY', 'Status should be READY');
+    assert(state.error === null, 'Should have no error after success');
+
+    const doc1 = listResult.data!.find(
+      (item: MinimalDocListItem) => item.docId === result1.data!.id
+    );
+    const doc2 = listResult.data!.find(
+      (item: MinimalDocListItem) => item.docId === result2.data!.id
+    );
+
+    assert(doc1 !== undefined, 'Should find first document in list');
+    assert(doc2 !== undefined, 'Should find second document in list');
+    assert(typeof doc1!.soul === 'string', 'Should have soul for doc1');
+    assert(typeof doc2!.soul === 'string', 'Should have soul for doc2');
+    assert(
+      typeof doc1!.createdAt === 'number',
+      'Should have createdAt for doc1'
+    );
+    assert(
+      typeof doc2!.updatedAt === 'number',
+      'Should have updatedAt for doc2'
+    );
+  });
+
+  await runner.run('Minimal data only (no decryption)', async () => {
+    await cleanupDocumentStore();
+
+    const title = generateTestTitle('_minimal_data');
+    const tags = ['tag1', 'tag2'];
+
+    const result = await useDocumentStore
+      .getState()
+      .createDocument(title, 'content', tags, false);
+
+    assert(isSuccess(result), 'Should create private document first');
+
+    const listResult = await useDocumentStore.getState().listDocuments();
+
+    assert(isSuccess(listResult), 'Should list documents successfully');
+
+    const docInList = listResult.data!.find(
+      (item: MinimalDocListItem) => item.docId === result.data!.id
+    );
+
+    assert(docInList !== undefined, 'Should find document in list');
+    assert(
+      'title' in docInList === false,
+      'MinimalDocListItem should not have title field'
+    );
+    assert(
+      'tags' in docInList === false,
+      'MinimalDocListItem should not have tags field'
+    );
+    assert(
+      'content' in docInList === false,
+      'MinimalDocListItem should not have content field'
+    );
+    assert('docId' in docInList, 'MinimalDocListItem should have docId field');
+    assert('soul' in docInList, 'MinimalDocListItem should have soul field');
+    assert(
+      'createdAt' in docInList,
+      'MinimalDocListItem should have createdAt field'
+    );
+    assert(
+      'updatedAt' in docInList,
+      'MinimalDocListItem should have updatedAt field'
+    );
+  });
+
+  await runner.run('Loading state during listing', async () => {
+    await cleanupDocumentStore();
+
+    const initialState = useDocumentStore.getState();
+    assert(initialState.status === 'READY', 'Should not be loading initially');
+
+    const listPromise = useDocumentStore.getState().listDocuments();
+
+    const loadingState = useDocumentStore.getState();
+    assert(
+      loadingState.status === 'LOADING',
+      'Should be loading during listing'
+    );
+
+    await listPromise;
+
+    const finalState = useDocumentStore.getState();
+    assert(
+      finalState.status === 'READY',
+      'Should not be loading after success'
+    );
+    assert(finalState.error === null, 'Should have no error after success');
+  });
+}
+
+/**
+ * Run all listDocuments tests
+ */
+export async function testListDocumentsSuite(): Promise<TestSuiteResult> {
+  console.log('🧪 Testing documentStore.listDocuments()...\n');
+  console.log('='.repeat(60));
+
+  const runner = new TestRunner('documentStore.listDocuments');
+
+  await testListDocuments(runner);
+
+  console.log('\n✅ listDocuments tests complete!');
   runner.printResults();
 
   await cleanupDocumentStore();
