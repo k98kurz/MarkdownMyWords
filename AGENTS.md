@@ -99,6 +99,12 @@ For proper usage with `.map()` to collect profiles, see `discoverUsers()` in
 Type-safe error handling utility at `src/utils/functionalResult.ts` for operations
 that may fail. Use for predictable error types and composable operations.
 
+Notes:
+- **DO NOT** use `pipe` with a single operation. That is retarded nonsense. `pipe` is
+for **multiple** operations.
+- **DO NOT** write the same `transformError` helper function a thousand times in a
+single file. Write it **once**.
+
 Example usage from `src/stores/authStore.ts`:
 
 ```typescript
