@@ -23,15 +23,15 @@ libraries over rewriting or reimplementing them. This is especially true for:
    - User management patterns: See `code_references/gundb.md` for user creation,
      profile storage, private data storage, and contacts
 
-1. **Database Operations** - Use GunDB's native APIs
+2. **Database Operations** - Use GunDB's native APIs
    - Use GunDB's built-in user management (`gun.user().create()`, `gun.user().auth()`)
    - Don't reimplement graph traversal or synchronization
 
-1. **State Management** - Use Zustand as intended
+3. **State Management** - Use Zustand as intended
    - Follow Zustand patterns for store creation and updates
    - Don't fight the framework's intended usage
 
-1. **Build Tools** - Use Vite, TypeScript ESLint
+4. **Build Tools** - Use Vite, TypeScript ESLint
    - Follow their standard conventions
    - Don't create custom build scripts unless absolutely necessary
 
@@ -47,35 +47,31 @@ The previous AI agents reimplemented SEA's encryption incorrectly:
 4. **Ignored SEA's automatic encryption/decryption** for user data storage
 5. **Created security vulnerabilities** by misunderstanding ECDH
 
-### Correct SEA Usage (Legacy Document Sharing)
+### SEA ECDH for Document Sharing
 
-**NOTE**: This section describes legacy document sharing via ECDH. For current
-user management and private data patterns (recommended), see
-`code_references/gundb.md`. This section may change in the future.
-
-The patterns below remain valid for document key sharing between users, but user
-profile storage and private data operations should follow gundb.md.
+Documents encrypted with SEA.encrypt using per-document keys
+and shared using SEA's ECDH:
 
 ```typescript
 // CORRECT: Documents encrypted with SEA.encrypt using per-document keys
-const docKey = await encryptionService.generateDocumentKey()
-const encrypted = await encryptionService.encryptDocument(content, docKey)
+const docKey = await encryptionService.generateDocumentKey();
+const encrypted = await encryptionService.encryptDocument(content, docKey);
 
 // CORRECT: Use SEA's ECDH for sharing document keys (not documents themselves)
-// NOTE: the e in epub/epriv stands for "encryption", not "ephemeral"
-const sharedSecret = await SEA.secret({ epub: recipientEpub }, user._.sea)
-const encryptedKey = await SEA.encrypt(docKey, sharedSecret)
+// NOTE: e in epub/epriv stands for "encryption", not "ephemeral"
+const sharedSecret = await SEA.secret({ epub: recipientEpub }, user._.sea);
+const encryptedKey = await SEA.encrypt(docKey, sharedSecret);
 
 // CORRECT: User authentication with SEA
-await gun.user().create(username, password)
-await gun.user().auth(username, password)
+await gun.user().create(username, password);
+await gun.user().auth(username, password);
 
 // INCORRECT: Don't use ECDH with new key pairs
-const ephemeralPair = await SEA.pair() // WRONG - use user's existing pair from user._.sea
-const sharedSecret = await SEA.secret({ epub: recipientPub }, ephemeralPair) // WRONG
+const ephemeralPair = await SEA.pair(); // WRONG - use user's existing pair from user._.sea
+const sharedSecret = await SEA.secret({ epub: recipientPub }, ephemeralPair); // WRONG
 
 // INCORRECT: Don't use public key directly as encryption key
-const encrypted = await SEA.encrypt(data, user.pub) // WRONG
+const encrypted = await SEA.encrypt(data, user.pub); // WRONG
 
 // INCORRECT: Don't use gun.get(~@username) directly for reading user profiles
 // This returns a list of "souls" claiming that username
@@ -98,19 +94,50 @@ For proper usage with `.map()` to collect profiles, see `discoverUsers()` in
 
 ## Development Guidelines
 
+### Functional Result Utility
+
+Type-safe error handling utility at `src/utils/functionalResult.ts` for operations
+that may fail. Use for predictable error types and composable operations.
+
+Example usage from `src/stores/authStore.ts`:
+
+```typescript
+import { pipe, chain, match } from '../utils/functionalResult';
+
+// Compose operations with error handling
+const result = await pipe(
+  validateAuthInput(username, password), // Validates first
+  chain(async () => {
+    await gunService.authenticateUser(username, password);
+    return getAuthenticatedUser();
+  })
+);
+
+// Handle success/failure
+match(
+  user => set({ user, isAuthenticated: true }),
+  error => set({ error, isAuthenticated: false })
+)(result);
+```
+
+See `src/test/functionalResult.test.ts` for comprehensive examples.
+
 ### Before Writing Code
 
-1. **Read the library documentation** for the dependency you're about to use
-2. **Check if the dependency already provides** the functionality you need
-3. **Understand the library's intended usage patterns**
-4. **Follow the library's conventions and best practices**
+1. **Read library documentation** for dependency you're about to use
+2. **Check if dependency already provides** functionality you need
+3. **Understand library's intended usage patterns**
+4. **Follow library's conventions and best practices**
 
 ### When in Doubt
 
 1. **Ask**: "Does this library already provide this functionality?"
 2. **Read**: Library documentation and examples
-3. **Search**: For existing usage patterns in the codebase
+3. **Search**: For existing usage patterns in codebase
 4. **Document**: Why a custom implementation was necessary (if it truly is)
+5. **For type-safe error handling**, use `functionalResult` from `src/utils/functionalResult.ts`
+   - See `src/stores/authStore.ts` for real-world usage example
+   - See `src/test/functionalResult.test.ts` for comprehensive examples
 
 ### Security-Specific Rules
 
