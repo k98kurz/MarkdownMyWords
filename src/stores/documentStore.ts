@@ -223,7 +223,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         let docKey: string | undefined;
         let encryptedTitle = title.trim();
         let encryptedContent = content;
-        let encryptedTags = tags;
+        let tagsCSV = arrayToCSV(tags);
 
         if (!validatedIsPublic) {
           docKey = await encryptionService.generateKey();
@@ -233,12 +233,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           encryptedContent =
             (await encryptionService.encrypt(content, docKey)) ?? content;
           if (tags && tags.length > 0) {
-            encryptedTags = await Promise.all(
-              tags.map(
-                async (tag: string) =>
-                  (await encryptionService.encrypt(tag, docKey!)) ?? tag
-              )
-            );
+            tagsCSV = await encryptionService.encrypt(tagsCSV, docKey!);
           }
 
           await gunService.writePrivateData(['docKeys', docId], docKey);
@@ -249,14 +244,13 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           id: docId,
           title: encryptedTitle,
           content: encryptedContent,
-          tags: encryptedTags,
+          tags: tags,
           createdAt: Date.now(),
           updatedAt: Date.now(),
           isPublic: validatedIsPublic,
         };
 
-        const tagsForStorage = arrayToCSV(encryptedTags);
-        const documentForStorage = { ...document, tags: tagsForStorage };
+        const documentForStorage = { ...document, tags: tagsCSV };
 
         await new Promise<void>((resolve, reject) => {
           docNode.put(documentForStorage, (ack: unknown) => {
@@ -327,7 +321,8 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
         let decryptedTitle = doc.title ?? '';
         let decryptedContent = doc.content ?? '';
-        let decryptedTags = doc.tags;
+        let tagsCSV = doc.tags;
+        let tags = [];
 
         if (docKey && !doc.isPublic) {
           decryptedTitle =
@@ -338,27 +333,22 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
             (await encryptionService.decrypt(doc.content ?? '', docKey)) ??
             doc.content ??
             '';
-          if (doc.tags) {
-            const tagsAsString = Array.isArray(doc.tags)
-              ? doc.tags.join(',')
-              : doc.tags;
-            const decryptedTagsString = await encryptionService.decrypt(
-              tagsAsString,
+          if (tagsCSV) {
+            const decryptedTags = await encryptionService.decrypt(
+              tagsCSV,
               docKey
             );
-            decryptedTags = decryptedTagsString
-              ? decryptedTagsString.split(',')
-              : undefined;
+            tags = csvToArray(decryptedTags);
           }
-        } else if (doc.tags) {
-          decryptedTags = csvToArray(doc.tags);
+        } else if (tagsCSV) {
+          tags = csvToArray(tagsCSV);
         }
 
         const document: Document = {
           id: doc.id,
           title: decryptedTitle,
           content: decryptedContent,
-          tags: decryptedTags,
+          tags: tags,
           createdAt: doc.createdAt ?? Date.now(),
           updatedAt: doc.updatedAt ?? Date.now(),
           isPublic: doc.isPublic ?? false,
