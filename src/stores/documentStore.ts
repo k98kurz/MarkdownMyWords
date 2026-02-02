@@ -120,17 +120,30 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
       const transformError = (error: unknown): DocumentError => {
         if (error instanceof Error) {
-          if (error.message.includes('encryption')) {
+          const msg = error.message;
+          if (
+            msg.includes('Title is required') ||
+            msg.includes('Content is required') ||
+            msg.includes('Title cannot be empty') ||
+            msg.includes('cannot be empty') ||
+            msg.includes('No updates provided') ||
+            msg.includes('required') ||
+            msg.includes('validation')
+          ) {
+            return {
+              code: 'VALIDATION_ERROR',
+              message: msg,
+              details: error,
+            };
+          }
+          if (msg.includes('encryption')) {
             return {
               code: 'ENCRYPTION_ERROR',
               message: 'Failed to encrypt document',
               details: error,
             };
           }
-          if (
-            error.message.includes('GunDB') ||
-            error.message.includes('Failed to write')
-          ) {
+          if (msg.includes('GunDB') || msg.includes('Failed to write')) {
             return {
               code: 'NETWORK_ERROR',
               message: 'Failed to save document',
@@ -139,7 +152,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           }
           return {
             code: 'NETWORK_ERROR',
-            message: error.message,
+            message: msg,
             details: error,
           };
         }
@@ -189,7 +202,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           }
 
           const docNode = userNode.get('docs').get(docId);
-          const document: Document = {
+          const document: Partial<Document> = {
             id: docId,
             title: encryptedTitle,
             content: encryptedContent,
@@ -197,8 +210,11 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
             createdAt: Date.now(),
             updatedAt: Date.now(),
             isPublic: validatedIsPublic,
-            access: [],
           };
+
+          if (validatedIsPublic) {
+            (document as Document).access = [];
+          }
 
           await new Promise<void>((resolve, reject) => {
             docNode.put(document, (ack: unknown) => {
@@ -403,6 +419,19 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
       const transformError = (error: unknown): DocumentError => {
         if (error instanceof Error) {
+          if (
+            error.message.includes('Title cannot be empty') ||
+            error.message.includes('cannot be empty') ||
+            error.message.includes('No updates provided') ||
+            error.message.includes('required') ||
+            error.message.includes('validation')
+          ) {
+            return {
+              code: 'VALIDATION_ERROR',
+              message: error.message,
+              details: error,
+            };
+          }
           if (error.message.includes('not found')) {
             return {
               code: 'NOT_FOUND',
@@ -437,13 +466,6 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
             return {
               code: 'NETWORK_ERROR',
               message: 'Failed to update document',
-              details: error,
-            };
-          }
-          if (error.message.includes('validation')) {
-            return {
-              code: 'VALIDATION_ERROR',
-              message: error.message,
               details: error,
             };
           }
@@ -968,7 +990,11 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
       const transformError = (error: unknown): DocumentError => {
         if (error instanceof Error) {
-          if (error.message.includes('not found')) {
+          if (
+            error.message.includes('required') ||
+            error.message.includes('validation') ||
+            error.message.includes('Parent document not found')
+          ) {
             return {
               code: 'NOT_FOUND',
               message: 'Parent document not found',
@@ -1591,6 +1617,17 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
       const transformError = (error: unknown): DocumentError => {
         if (error instanceof Error) {
+          if (
+            error.message.includes('User not authenticated') ||
+            error.message.includes('required') ||
+            error.message.includes('validation')
+          ) {
+            return {
+              code: 'PERMISSION_DENIED',
+              message: error.message,
+              details: error,
+            };
+          }
           if (error.message.includes('not found')) {
             return {
               code: 'NOT_FOUND',
