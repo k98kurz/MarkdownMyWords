@@ -1307,14 +1307,175 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       return result;
     },
 
-    listBranches: async (_docId: string) => {
-      return {
-        success: false,
-        error: {
+    listBranches: async (docId: string) => {
+      set({ status: 'LOADING', error: null });
+
+      const transformError = (error: unknown): DocumentError => {
+        if (error instanceof Error) {
+          if (
+            error.message.includes('decryption') ||
+            error.message.includes('encryption')
+          ) {
+            return {
+              code: 'ENCRYPTION_ERROR',
+              message: 'Failed to decrypt branch',
+              details: error,
+            };
+          }
+          if (
+            error.message.includes('not found') ||
+            error.message.includes('could not be decrypted')
+          ) {
+            return {
+              code: 'NOT_FOUND',
+              message: 'Failed to retrieve branches',
+              details: error,
+            };
+          }
+          if (
+            error.message.includes('docKey') ||
+            error.message.includes('permission')
+          ) {
+            return {
+              code: 'PERMISSION_DENIED',
+              message: 'Document key not found',
+              details: error,
+            };
+          }
+          if (
+            error.message.includes('GunDB') ||
+            error.message.includes('Failed to read')
+          ) {
+            return {
+              code: 'NETWORK_ERROR',
+              message: 'Failed to retrieve branches',
+              details: error,
+            };
+          }
+          return {
+            code: 'NETWORK_ERROR',
+            message: error.message,
+            details: error,
+          };
+        }
+        return {
           code: 'NETWORK_ERROR',
-          message: 'Not implemented',
-        },
+          message: 'An unexpected error occurred',
+          details: error,
+        };
       };
+
+      const result = await pipe(
+        tryCatch(async () => {
+          const items = await gunService.listUserItems(['docs']);
+
+          const branchIds: string[] = [];
+          for (const item of items) {
+            const data = item.data as Partial<Document> | undefined;
+            if (data?.parent === docId && data?.id) {
+              branchIds.push(data.id);
+            }
+          }
+
+          const branches: Document[] = [];
+          for (const branchId of branchIds) {
+            const gun = gunService.getGun();
+            const userNode = gun.user();
+            const branchNode = userNode.get('docs').get(branchId);
+
+            const branchData = await new Promise<unknown>(resolve => {
+              branchNode.once((data: unknown) => {
+                if (data === null || data === undefined) {
+                  resolve(null);
+                } else {
+                  resolve(data);
+                }
+              });
+            });
+
+            if (!branchData || typeof branchData !== 'object') {
+              continue;
+            }
+
+            const branch = branchData as Partial<Document>;
+            if (!branch.id || !branch.parent) {
+              continue;
+            }
+
+            let docKey: string | undefined;
+            if (!branch.isPublic) {
+              try {
+                docKey = await gunService.readPrivateData([
+                  'docKeys',
+                  branch.parent,
+                ]);
+              } catch {
+                throw new Error('Document key not found');
+              }
+            }
+
+            let decryptedTitle = branch.title ?? '';
+            let decryptedContent = branch.content ?? '';
+            let decryptedTags = branch.tags;
+
+            if (docKey && !branch.isPublic) {
+              decryptedTitle =
+                (await encryptionService.decrypt(branch.title ?? '', docKey)) ??
+                branch.title ??
+                '';
+              decryptedContent =
+                (await encryptionService.decrypt(
+                  branch.content ?? '',
+                  docKey
+                )) ??
+                branch.content ??
+                '';
+              if (branch.tags) {
+                decryptedTags = await Promise.all(
+                  branch.tags.map(
+                    async (tag: string) =>
+                      (await encryptionService.decrypt(tag, docKey!)) ?? tag
+                  )
+                );
+              }
+            }
+
+            const document: Document = {
+              id: branch.id,
+              title: decryptedTitle,
+              content: decryptedContent,
+              tags: decryptedTags,
+              createdAt: branch.createdAt ?? Date.now(),
+              updatedAt: branch.updatedAt ?? Date.now(),
+              isPublic: branch.isPublic ?? false,
+              access: branch.access ?? [],
+              parent: branch.parent,
+              original: branch.original,
+            };
+
+            branches.push(document);
+          }
+
+          return branches;
+        }, transformError)
+      );
+
+      match(
+        () => {
+          set({
+            status: 'READY',
+            error: null,
+          });
+        },
+        (error: DocumentError) => {
+          set({
+            status: 'READY',
+            error: error.message,
+          });
+        }
+      )(result);
+
+      return result;
     },
 
     deleteBranch: async (_branchId: string) => {

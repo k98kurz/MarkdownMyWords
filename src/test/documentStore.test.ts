@@ -1731,3 +1731,263 @@ export async function testGetBranchSuite(): Promise<TestSuiteResult> {
 
   return runner.getResults();
 }
+
+/**
+ * Test listBranches
+ */
+async function testListBranches(runner: TestRunner): Promise<void> {
+  await runner.run('List branches of document with no branches', async () => {
+    await cleanupDocumentStore();
+
+    const title = generateTestTitle('_no_branches');
+    const content = 'Parent document content';
+    const tags = ['parent'];
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, content, tags, true);
+
+    assert(isSuccess(createResult), 'Should create parent document first');
+    const parentDocId = createResult.data!.id;
+
+    const listResult = await useDocumentStore
+      .getState()
+      .listBranches(parentDocId);
+
+    assert(isSuccess(listResult), 'Should succeed with empty branches array');
+    assert(Array.isArray(listResult.data), 'Result data should be array');
+    assert(listResult.data!.length === 0, 'Should return empty array');
+
+    const state = useDocumentStore.getState();
+    assert(state.status === 'READY', 'Status should be READY');
+    assert(state.error === null, 'Should have no error after success');
+
+    console.log(`  Listed branches for parent: ${parentDocId}`);
+  });
+
+  await runner.run('List branches of public document', async () => {
+    await cleanupDocumentStore();
+
+    const title = generateTestTitle('_public_parent');
+    const content = 'Public parent content';
+    const tags = ['public', 'parent'];
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, content, tags, true);
+
+    assert(isSuccess(createResult), 'Should create parent document first');
+    const parentDocId = createResult.data!.id;
+
+    const branch1Result = await useDocumentStore
+      .getState()
+      .createBranch(parentDocId);
+
+    assert(isSuccess(branch1Result), 'Should create first branch');
+    const branch1Id = branch1Result.data!;
+
+    const branch2Result = await useDocumentStore
+      .getState()
+      .createBranch(parentDocId);
+
+    assert(isSuccess(branch2Result), 'Should create second branch');
+    const branch2Id = branch2Result.data!;
+
+    await cleanupDocumentStore();
+
+    const listResult = await useDocumentStore
+      .getState()
+      .listBranches(parentDocId);
+
+    assert(isSuccess(listResult), 'Should succeed with branches array');
+    assert(Array.isArray(listResult.data), 'Result data should be array');
+    assert(listResult.data!.length === 2, 'Should return 2 branches');
+
+    const branch1 = listResult.data!.find(b => b.id === branch1Id);
+    const branch2 = listResult.data!.find(b => b.id === branch2Id);
+
+    assert(branch1 !== undefined, 'Should find first branch');
+    assert(branch1.title === title, 'Branch should have original title');
+    assert(branch1.content === content, 'Branch should have original content');
+    assert(branch1.isPublic === true, 'Branch should be public');
+    assert(branch1.parent === parentDocId, 'Branch should have parent set');
+
+    assert(branch2 !== undefined, 'Should find second branch');
+    assert(branch2.title === title, 'Branch should have original title');
+    assert(branch2.content === content, 'Branch should have original content');
+    assert(branch2.isPublic === true, 'Branch should be public');
+    assert(branch2.parent === parentDocId, 'Branch should have parent set');
+
+    const state = useDocumentStore.getState();
+    assert(state.status === 'READY', 'Status should be READY');
+    assert(state.error === null, 'Should have no error after success');
+
+    console.log(
+      `  Listed ${listResult.data!.length} branches for parent: ${parentDocId}`
+    );
+  });
+
+  await runner.run('List branches of private document', async () => {
+    await cleanupDocumentStore();
+
+    const title = generateTestTitle('_private_parent');
+    const content = 'Private parent content';
+    const tags = ['private', 'secret'];
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, content, tags, false);
+
+    assert(isSuccess(createResult), 'Should create private parent first');
+    const parentDocId = createResult.data!.id;
+
+    const branchResult = await useDocumentStore
+      .getState()
+      .createBranch(parentDocId);
+
+    assert(isSuccess(branchResult), 'Should create branch');
+    const branchId = branchResult.data!;
+
+    await cleanupDocumentStore();
+
+    const listResult = await useDocumentStore
+      .getState()
+      .listBranches(parentDocId);
+
+    assert(isSuccess(listResult), 'Should succeed with branches array');
+    assert(Array.isArray(listResult.data), 'Result data should be array');
+    assert(listResult.data!.length === 1, 'Should return 1 branch');
+
+    const branch = listResult.data![0];
+    assert(branch.id === branchId, 'Branch should have correct id');
+    assert(branch.title === title, 'Branch should have decrypted title');
+    assert(branch.content === content, 'Branch should have decrypted content');
+    assert(
+      JSON.stringify(branch.tags) === JSON.stringify(tags),
+      'Branch should have decrypted tags'
+    );
+    assert(branch.isPublic === false, 'Branch should be private');
+    assert(branch.parent === parentDocId, 'Branch should have parent set');
+
+    const state = useDocumentStore.getState();
+    assert(state.status === 'READY', 'Status should be READY');
+    assert(state.error === null, 'Should have no error after success');
+
+    console.log(`  Listed private branches for parent: ${parentDocId}`);
+  });
+
+  await runner.run('List branches does not include non-branches', async () => {
+    await cleanupDocumentStore();
+
+    const title1 = generateTestTitle('_parent1');
+    const content1 = 'Parent 1 content';
+
+    const createResult1 = await useDocumentStore
+      .getState()
+      .createDocument(title1, content1, undefined, true);
+
+    assert(isSuccess(createResult1), 'Should create first parent document');
+    const parentDocId1 = createResult1.data!.id;
+
+    const title2 = generateTestTitle('_parent2');
+    const content2 = 'Parent 2 content';
+
+    const createResult2 = await useDocumentStore
+      .getState()
+      .createDocument(title2, content2, undefined, true);
+
+    assert(isSuccess(createResult2), 'Should create second parent document');
+    const parentDocId2 = createResult2.data!.id;
+
+    const branchResult = await useDocumentStore
+      .getState()
+      .createBranch(parentDocId1);
+
+    assert(isSuccess(branchResult), 'Should create branch from first parent');
+    const branchId = branchResult.data!;
+
+    await cleanupDocumentStore();
+
+    const listResult = await useDocumentStore
+      .getState()
+      .listBranches(parentDocId1);
+
+    assert(isSuccess(listResult), 'Should succeed');
+    assert(listResult.data!.length === 1, 'Should return only 1 branch');
+    assert(listResult.data![0].id === branchId, 'Should return the branch');
+
+    const listResult2 = await useDocumentStore
+      .getState()
+      .listBranches(parentDocId2);
+
+    assert(isSuccess(listResult2), 'Should succeed for second parent');
+    assert(
+      listResult2.data!.length === 0,
+      'Should return empty array for parent with no branches'
+    );
+
+    console.log(`  Verified branch filtering for parent: ${parentDocId1}`);
+  });
+
+  await runner.run('Loading state during listBranches', async () => {
+    await cleanupDocumentStore();
+
+    const title = generateTestTitle('_loading_list');
+    const content = 'Parent content';
+
+    const createResult = await useDocumentStore
+      .getState()
+      .createDocument(title, content, undefined, true);
+
+    assert(isSuccess(createResult), 'Should create parent document first');
+    const parentDocId = createResult.data!.id;
+
+    const branchResult = await useDocumentStore
+      .getState()
+      .createBranch(parentDocId);
+
+    assert(isSuccess(branchResult), 'Should create branch first');
+    const branchId = branchResult.data!;
+
+    const initialState = useDocumentStore.getState();
+    assert(initialState.status === 'READY', 'Should not be loading initially');
+
+    const listPromise = useDocumentStore.getState().listBranches(parentDocId);
+
+    const loadingState = useDocumentStore.getState();
+    assert(
+      loadingState.status === 'LOADING',
+      'Should be loading during listBranches'
+    );
+
+    await listPromise;
+
+    const finalState = useDocumentStore.getState();
+    assert(
+      finalState.status === 'READY',
+      'Should not be loading after success'
+    );
+    assert(finalState.error === null, 'Should have no error after success');
+
+    console.log(`  Verified loading state for branch list of: ${parentDocId}`);
+  });
+}
+
+/**
+ * Run all listBranches tests
+ */
+export async function testListBranchesSuite(): Promise<TestSuiteResult> {
+  console.log('🧪 Testing documentStore.listBranches()...\n');
+  console.log('='.repeat(60));
+
+  const runner = new TestRunner('documentStore.listBranches');
+
+  await testListBranches(runner);
+
+  console.log('\n✅ listBranches tests complete!');
+  runner.printResults();
+
+  await cleanupDocumentStore();
+
+  return runner.getResults();
+}
