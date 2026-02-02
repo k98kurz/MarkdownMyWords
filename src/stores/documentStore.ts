@@ -13,7 +13,7 @@ import type {
   MinimalDocListItem,
   SharedDocNotification,
 } from '../types/document';
-import type { User } from '../types/gun';
+import type { User, UserProfile } from '../types/gun';
 import { gunService } from '../services/gunService';
 import { encryptionService } from '../services/encryptionService';
 
@@ -2059,14 +2059,115 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       return result;
     },
 
-    getCollaborators: async (_docId: string) => {
-      return {
-        success: false,
-        error: {
+    getCollaborators: async (docId: string) => {
+      set({ status: 'LOADING', error: null });
+
+      const transformError = (error: unknown): DocumentError => {
+        if (error instanceof Error) {
+          if (error.message.includes('not found')) {
+            return {
+              code: 'NOT_FOUND',
+              message: 'Document not found',
+              details: error,
+            };
+          }
+          if (
+            error.message.includes('GunDB') ||
+            error.message.includes('Failed to read')
+          ) {
+            return {
+              code: 'NETWORK_ERROR',
+              message: 'Failed to retrieve collaborators',
+              details: error,
+            };
+          }
+          return {
+            code: 'NETWORK_ERROR',
+            message: error.message,
+            details: error,
+          };
+        }
+        return {
           code: 'NETWORK_ERROR',
-          message: 'Not implemented',
-        },
+          message: 'An unexpected error occurred',
+          details: error,
+        };
       };
+
+      const result = await pipe(
+        tryCatch(async () => {
+          const gun = gunService.getGun();
+          const userNode = gun.user();
+          const docNode = userNode.get('docs').get(docId);
+
+          const docData = await new Promise<unknown>((resolve, reject) => {
+            docNode.once((data: unknown) => {
+              if (data === null || data === undefined) {
+                reject(new Error('Document not found'));
+              } else {
+                resolve(data);
+              }
+            });
+          });
+
+          if (!docData || typeof docData !== 'object') {
+            throw new Error('Document not found');
+          }
+
+          const doc = docData as Partial<Document>;
+          if (!doc.id) {
+            throw new Error('Document not found');
+          }
+
+          const access = doc.access ?? [];
+          const collaborators: User[] = [];
+
+          for (const accessEntry of access) {
+            try {
+              const userId = accessEntry.userId;
+              const discoveredUsers = await gunService.discoverUsers(userId);
+
+              if (!discoveredUsers || discoveredUsers.length === 0) {
+                continue;
+              }
+
+              const discoveredUser = discoveredUsers[0];
+
+              const profile: UserProfile = {
+                username: userId,
+                publicKey: discoveredUser.pub,
+              };
+
+              const user: User = {
+                profile,
+              };
+
+              collaborators.push(user);
+            } catch {
+              continue;
+            }
+          }
+
+          return collaborators;
+        }, transformError)
+      );
+
+      match(
+        () => {
+          set({
+            status: 'READY',
+            error: null,
+          });
+        },
+        (error: DocumentError) => {
+          set({
+            status: 'READY',
+            error: error.message,
+          });
+        }
+      )(result);
+
+      return result;
     },
   })
 );
