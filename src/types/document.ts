@@ -52,7 +52,7 @@ export interface Document {
   id: string;
   title: string;
   content: string;
-  tags?: string[];
+  tags: string[];
   original?: string;
   parent?: string;
   createdAt: number;
@@ -65,6 +65,7 @@ export interface Document {
  * Document Metadata
  * Minimal document data for listing without full decryption
  * Used for two-phase loading strategy
+ * I.e. initial loading of list components will show only this info
  */
 export interface DocumentMetadata {
   docId: string;
@@ -72,7 +73,7 @@ export interface DocumentMetadata {
   createdAt: number;
   updatedAt: number;
   title?: string;
-  tags?: string[];
+  tags: string[];
 }
 
 /**
