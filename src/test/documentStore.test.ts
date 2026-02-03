@@ -73,19 +73,23 @@ function isDocumentError(error: unknown): error is DocumentError {
 /**
  * No more retarded mix of a thousand fucking verifyBullshit functions
  */
-function compareTwoThings(expected: unknown, actual: unknown) {
+function compareTwoThings(
+  expected: unknown,
+  actual: unknown,
+  msg: string = 'error'
+) {
   if (expected == actual) return;
   if (Array.isArray(expected)) {
     assert(Array.isArray(actual), `expected array; got ${actual}`);
     assert(
       expected.length == actual.length,
-      `expected array len ${expected.length}; actual ${actual.length}`
+      `${msg}: expected array len ${expected.length}; actual ${actual.length}`
     );
   }
   if (typeof expected == 'object' && expected !== null) {
     assert(
       typeof actual == 'object' && actual !== null,
-      'expected non-null, got null'
+      `${msg}: expected non-null, got null`
     );
     const expectedObj = expected as Record<string, unknown>;
     const actualObj = actual as Record<string, unknown>;
@@ -93,11 +97,32 @@ function compareTwoThings(expected: unknown, actual: unknown) {
     for (let k of Object.keys(expectedObj)) {
       if (Object.prototype.hasOwnProperty.call(expectedObj, k)) {
         assert(
-          Object.prototype.hasOwnProperty.call(actualObj, k) &&
-            actualObj[k] == expectedObj[k],
-          `expected ${JSON.stringify(expected)}; ` +
-            `encountered ${JSON.stringify(actual)}`
+          Object.prototype.hasOwnProperty.call(actualObj, k),
+          `${msg}: expected to have attribute ${k}; ` +
+            `actual ${JSON.stringify(actualObj)}`
         );
+        const expectedArr = expectedObj[k] as unknown[];
+        const actualArr = actualObj[k] as unknown[];
+        if (Array.isArray(expectedObj[k])) {
+          for (let i = 0; i < expectedArr.length; i++) {
+            if (expectedArr[i] != actualArr[i]) {
+              assert(
+                false,
+                `${msg}: array element mismatch at index ${i}: ` +
+                  `expected ${JSON.stringify(expectedArr[i])}, ` +
+                  `actual ${JSON.stringify(actualArr[i])}`
+              );
+            }
+          }
+        } else {
+          assert(
+            Object.prototype.hasOwnProperty.call(actualObj, k) &&
+              actualObj[k] == expectedObj[k],
+            `${msg}: expected ${JSON.stringify(expected)}; ` +
+              `encountered ${JSON.stringify(actual)}; ` +
+              `failed on ${k}`
+          );
+        }
       }
     }
   }
@@ -249,8 +274,8 @@ async function testInputValidation(): Promise<TestSuiteResult> {
 }
 
 /**
-* Test all CRUD operations
-*/
+ * Test all CRUD operations
+ */
 async function testCRUDe2e(): Promise<TestSuiteResult> {
   console.log('Testing all documentStore CRUD operations');
   const runner = new TestRunner('documentStore CRUD');
@@ -258,702 +283,883 @@ async function testCRUDe2e(): Promise<TestSuiteResult> {
   await cleanupDocumentStore();
   await runner.run('CRUD e2e: happy path', async () => {
     // 1. list documents
+    console.log('1. list documents');
+    const listResult1 = await useDocumentStore.getState().listDocuments();
+    assert(isSuccess(listResult1), 'listDocuments should succeed');
+    const initialList = listResult1.data;
+
     // 2. create a public document
+    console.log('2. create a public document');
+    const title = generateTestTitle('_public');
+    const content = 'Public document content';
+    const tags = ['tag1', 'tag2'];
+    const createResult1 = await useDocumentStore
+      .getState()
+      .createDocument(title, content, tags, true);
+    assert(isSuccess(createResult1), 'createDocument should succeed');
+    compareTwoThings(
+      { title, content, isPublic: true, tags },
+      createResult1.data,
+      'create public document response'
+    );
+    const docId1 = createResult1.data!.id;
+
     // 3. get that document
+    console.log('3. get that document');
+    const getResult1 = await useDocumentStore.getState().getDocument(docId1);
+    assert(isSuccess(getResult1), 'getDocument should succeed');
+    compareTwoThings(
+      { id: docId1, title, content, isPublic: true, tags },
+      getResult1.data,
+      'get public document response'
+    );
+
     // 4. update the document
+    console.log('4. update the document');
+    const newContent = 'Updated public document content';
+    const updateResult1 = await useDocumentStore
+      .getState()
+      .updateDocument(docId1, { content: newContent });
+    assert(
+      isSuccess(updateResult1),
+      'updateDocument should succeed ' +
+        (updateResult1.success ? '' : JSON.stringify(updateResult1.error))
+    );
+    compareTwoThings(undefined, updateResult1.data, 'update document response');
+
     // 5. get that document again
+    console.log('5. get that document again');
+    const getResult2 = await useDocumentStore.getState().getDocument(docId1);
+    assert(isSuccess(getResult2), 'getDocument should succeed');
+    compareTwoThings(
+      { id: docId1, title, content: newContent, isPublic: true, tags },
+      getResult2.data,
+      'get updated document response'
+    );
+
     // 6. create private document
+    console.log('6. create private document');
+    const title2 = generateTestTitle('_private');
+    const content2 = 'Private document content';
+    const tags2 = ['tag3', 'tag4'];
+    const createResult2 = await useDocumentStore
+      .getState()
+      .createDocument(title2, content2, tags2, false);
+    assert(isSuccess(createResult2), 'createDocument should succeed');
+    compareTwoThings(
+      { title: title2, content: content2, isPublic: false, tags: tags2 },
+      createResult2.data,
+      'create private document response'
+    );
+    const docId2 = createResult2.data!.id;
+
     // 7. list documents
+    console.log('7. list documents');
+    const listResult2 = await useDocumentStore.getState().listDocuments();
+    assert(isSuccess(listResult2), 'listDocuments should succeed');
+    assert(
+      initialList.length + 2 === listResult2.data.length,
+      'Should have 2 more documents'
+    );
+    assert(
+      listResult2.data!.find(
+        (item: MinimalDocListItem) => item.docId === docId1
+      ),
+      'list should include document 1'
+    );
+    assert(
+      listResult2.data!.find(
+        (item: MinimalDocListItem) => item.docId === docId2
+      ),
+      'list should include document 2'
+    );
+
     // 8. get document metadata
+    console.log('8. get document metadata');
+    const metadataResult = await useDocumentStore
+      .getState()
+      .getDocumentMetadata(docId1);
+    assert(isSuccess(metadataResult), 'getDocumentMetadata should succeed');
+    compareTwoThings(
+      { title, tags: tags },
+      metadataResult.data,
+      'document metadata'
+    );
+    assert(
+      'content' in metadataResult.data === false,
+      'Metadata should not include content field'
+    );
+
+    // 9. delete first document
+    console.log('9. delete first document');
+    const deleteResult1 = await useDocumentStore
+      .getState()
+      .deleteDocument(docId1);
+    assert(isSuccess(deleteResult1), 'deleteDocument should succeed');
+    compareTwoThings(
+      undefined,
+      deleteResult1.data,
+      'delete first document response'
+    );
+
+    // 10. delete second document
+    console.log('10. delete second document');
+    const deleteResult2 = await useDocumentStore
+      .getState()
+      .deleteDocument(docId2);
+    assert(isSuccess(deleteResult2), 'deleteDocument should succeed');
+    compareTwoThings(
+      undefined,
+      deleteResult2.data,
+      'delete second document response'
+    );
+
+    // 11. list documents (final)
+    console.log('11. list documents (final)');
+    const listResult3 = await useDocumentStore.getState().listDocuments();
+    assert(isSuccess(listResult3), 'listDocuments should succeed');
+    assert(
+      initialList.length === listResult3.data.length,
+      'Should return to original count'
+    );
   });
 
   await runner.run('CRUD e2e: edge cases', async () => {
     // 1. delete a non-existent doc
+    console.log('1. delete a non-existent doc');
+    const fakeDocId1 = gunService.newId();
+    const deleteResult = await useDocumentStore
+      .getState()
+      .deleteDocument(fakeDocId1);
+    assert(isFailure(deleteResult), 'deleteDocument should fail');
+    assert(isDocumentError(deleteResult.error), 'Should return DocumentError');
+    compareTwoThings(
+      { code: 'NOT_FOUND' },
+      deleteResult.error,
+      'delete non-existent error code'
+    );
+    compareTwoThings(
+      'Document not found',
+      deleteResult.error.message,
+      'delete non-existent error message'
+    );
+    compareTwoThings(
+      { status: 'READY', error: 'Document not found' },
+      useDocumentStore.getState(),
+      'delete non-existent store state'
+    );
+
     // 2. update a non-existent doc
+    console.log('2. update a non-existent doc');
+    const fakeDocId2 = gunService.newId();
+    const updateResult = await useDocumentStore
+      .getState()
+      .updateDocument(fakeDocId2, { content: 'test' });
+    assert(isFailure(updateResult), 'updateDocument should fail');
+    assert(isDocumentError(updateResult.error), 'Should return DocumentError');
+    compareTwoThings(
+      { code: 'NOT_FOUND' },
+      updateResult.error,
+      'update non-existent error code'
+    );
+    compareTwoThings(
+      'Document not found',
+      updateResult.error.message,
+      'update non-existent error message'
+    );
+    compareTwoThings(
+      { status: 'READY', error: 'Document not found' },
+      useDocumentStore.getState(),
+      'update non-existent store state'
+    );
   });
+
+  runner.printResults();
+  await cleanupDocumentStore();
+  return runner.getResults();
 }
 
 /**
  * Test createDocument operations (parameterized for public/private)
  */
-async function testCreateDocument(): Promise<TestSuiteResult> {
-  console.log('🧪 Testing documentStore.createDocument()...\n');
-  const runner = new TestRunner('createDocument Operations');
-
-  await cleanupDocumentStore();
-
-  for (const isPublic of [true, false]) {
-    const suffix = isPublic ? 'public' : 'private';
-    await runner.run(`Create ${suffix} document`, async () => {
-      const title = generateTestTitle(`_${suffix}`);
-      const content = `Test ${suffix} content`;
-      const tags = ['tag1', 'tag2'];
-
-      const result = await useDocumentStore
-        .getState()
-        .createDocument(title, content, tags, isPublic);
-
-      assert(
-        isSuccess(result),
-        'Should succeed creating document: ' +
-          `${isSuccess(result) ? 'ok' : JSON.stringify(result.error)}`
-      );
-      assert(result.data !== undefined, 'Should have document data');
-
-      const doc = result.data!;
-
-      compareTwoThings({ title: title, content: content }, doc);
-
-      const expected = {
-        title: title,
-        content: content,
-        isPublic: isPublic,
-        tags: tags,
-      };
-
-      compareTwoThings(expected, doc);
-
-      assert(
-        useDocumentStore.getState().currentDocument?.id === doc.id,
-        'Should set currentDocument'
-      );
-
-      compareTwoThings(
-        { status: 'READY', error: null },
-        useDocumentStore.getState()
-      );
-
-      console.log(
-        `  Created ${isPublic ? 'public' : 'private'} document: ${doc.id}`
-      );
-    });
-  }
-
-  await runner.run('Create document with no tags', async () => {
-    const title = generateTestTitle('_no_tags');
-    const content = 'Test content';
-
-    const result = await useDocumentStore
-      .getState()
-      .createDocument(title, content);
-
-    assertWithDetails(
-      isSuccess(result),
-      'Should succeed creating document without tags',
-      { error: isFailure(result) ? result.error : undefined }
-    );
-    assert(result.data !== undefined, 'Should have document data');
-
-    const doc = result.data!;
-    const expected = {
-      title: title,
-      content: content,
-      isPublic: false,
-    };
-    compareTwoThings(expected, doc);
-
-    compareTwoThings(
-      { status: 'READY', error: null },
-      useDocumentStore.getState()
-    );
-  });
-
-  await runner.run('Create document with empty tags array', async () => {
-    const title = generateTestTitle('_empty_tags');
-    const content = 'Test content';
-
-    const result = await useDocumentStore
-      .getState()
-      .createDocument(title, content, []);
-
-    assertWithDetails(
-      isSuccess(result),
-      'Should succeed creating document with empty tags',
-      { error: isFailure(result) ? result.error : undefined }
-    );
-    assert(result.data !== undefined, 'Should have document data');
-
-    const doc = result.data!;
-    const expected = {
-      title: title,
-      content: content,
-      isPublic: false,
-    };
-    compareTwoThings(expected, doc);
-    compareTwoThings(
-      { status: 'READY', error: null },
-      useDocumentStore.getState()
-    );
-  });
-
-  await runner.run(
-    'Non-corruption of state on validation failure',
-    async () => {
-      const originalDocument = useDocumentStore.getState().currentDocument;
-      await useDocumentStore.getState().createDocument('', 'content');
-      assert(
-        useDocumentStore.getState().currentDocument === originalDocument,
-        'Should not set new currentDocument on invalid createDocument'
-      );
-      compareTwoThings(
-        {
-          status: 'READY',
-          error: 'Title is required',
-        },
-        useDocumentStore.getState()
-      );
-    }
-  );
-
-  console.log('\n✅ createDocument tests complete!');
-  runner.printResults();
-  await cleanupDocumentStore();
-  return runner.getResults();
-}
+//async function testCreateDocument(): Promise<TestSuiteResult> {
+//  console.log('🧪 Testing documentStore.createDocument()...\n');
+//  const runner = new TestRunner('createDocument Operations');
+//
+//  await cleanupDocumentStore();
+//
+//  for (const isPublic of [true, false]) {
+//    const suffix = isPublic ? 'public' : 'private';
+//    await runner.run(`Create ${suffix} document`, async () => {
+//      const title = generateTestTitle(`_${suffix}`);
+//      const content = `Test ${suffix} content`;
+//      const tags = ['tag1', 'tag2'];
+//
+//      const result = await useDocumentStore
+//        .getState()
+//        .createDocument(title, content, tags, isPublic);
+//
+//      assert(
+//        isSuccess(result),
+//        'Should succeed creating document: ' +
+//          `${isSuccess(result) ? 'ok' : JSON.stringify(result.error)}`
+//      );
+//      assert(result.data !== undefined, 'Should have document data');
+//
+//      const doc = result.data!;
+//
+//      compareTwoThings({ title: title, content: content }, doc);
+//
+//      const expected = {
+//        title: title,
+//        content: content,
+//        isPublic: isPublic,
+//        tags: tags,
+//      };
+//
+//      compareTwoThings(expected, doc);
+//
+//      assert(
+//        useDocumentStore.getState().currentDocument?.id === doc.id,
+//        'Should set currentDocument'
+//      );
+//
+//      compareTwoThings(
+//        { status: 'READY', error: null },
+//        useDocumentStore.getState()
+//      );
+//
+//      console.log(
+//        `  Created ${isPublic ? 'public' : 'private'} document: ${doc.id}`
+//      );
+//    });
+//  }
+//
+//  await runner.run('Create document with no tags', async () => {
+//    const title = generateTestTitle('_no_tags');
+//    const content = 'Test content';
+//
+//    const result = await useDocumentStore
+//      .getState()
+//      .createDocument(title, content);
+//
+//    assertWithDetails(
+//      isSuccess(result),
+//      'Should succeed creating document without tags',
+//      { error: isFailure(result) ? result.error : undefined }
+//    );
+//    assert(result.data !== undefined, 'Should have document data');
+//
+//    const doc = result.data!;
+//    const expected = {
+//      title: title,
+//      content: content,
+//      isPublic: false,
+//    };
+//    compareTwoThings(expected, doc);
+//
+//    compareTwoThings(
+//      { status: 'READY', error: null },
+//      useDocumentStore.getState()
+//    );
+//  });
+//
+//  await runner.run('Create document with empty tags array', async () => {
+//    const title = generateTestTitle('_empty_tags');
+//    const content = 'Test content';
+//
+//    const result = await useDocumentStore
+//      .getState()
+//      .createDocument(title, content, []);
+//
+//    assertWithDetails(
+//      isSuccess(result),
+//      'Should succeed creating document with empty tags',
+//      { error: isFailure(result) ? result.error : undefined }
+//    );
+//    assert(result.data !== undefined, 'Should have document data');
+//
+//    const doc = result.data!;
+//    const expected = {
+//      title: title,
+//      content: content,
+//      isPublic: false,
+//    };
+//    compareTwoThings(expected, doc);
+//    compareTwoThings(
+//      { status: 'READY', error: null },
+//      useDocumentStore.getState()
+//    );
+//  });
+//
+//  await runner.run(
+//    'Non-corruption of state on validation failure',
+//    async () => {
+//      const originalDocument = useDocumentStore.getState().currentDocument;
+//      await useDocumentStore.getState().createDocument('', 'content');
+//      assert(
+//        useDocumentStore.getState().currentDocument === originalDocument,
+//        'Should not set new currentDocument on invalid createDocument'
+//      );
+//      compareTwoThings(
+//        {
+//          status: 'READY',
+//          error: 'Title is required',
+//        },
+//        useDocumentStore.getState()
+//      );
+//    }
+//  );
+//
+//  console.log('\n✅ createDocument tests complete!');
+//  runner.printResults();
+//  await cleanupDocumentStore();
+//  return runner.getResults();
+//}
 
 /**
  * Test getDocument operations (parameterized for public/private)
  */
-async function testGetDocument(): Promise<TestSuiteResult> {
-  console.log('🧪 Testing documentStore.getDocument()...\n');
-  const runner = new TestRunner('getDocument Operations');
-
-  await cleanupDocumentStore();
-
-  for (const isPublic of [true, false]) {
-    const suffix = isPublic ? 'public' : 'private';
-    await runner.run(`Get existing ${suffix} document`, async () => {
-      const title = generateTestTitle(`_get_${suffix}`);
-      const content = `${suffix} content to retrieve`;
-      const tags = [suffix, 'test'];
-
-      const createResult = await useDocumentStore
-        .getState()
-        .createDocument(title, content, tags, isPublic);
-      assertWithDetails(
-        isSuccess(createResult),
-        'Should create document first',
-        { error: isFailure(createResult) ? createResult.error : undefined }
-      );
-      const docId = createResult.data!.id;
-
-      await cleanupDocumentStore();
-
-      const getResult = await useDocumentStore.getState().getDocument(docId);
-
-      assertWithDetails(
-        isSuccess(getResult),
-        'Should retrieve existing document',
-        { error: isFailure(getResult) ? getResult.error : undefined }
-      );
-      assert(getResult.data !== null, 'Should return document (not null)');
-      assert(getResult.data!.id === docId, 'Should have matching id');
-      assert(
-        getResult.data!.title === title,
-        'Should have decrypted/matching title'
-      );
-      assert(
-        getResult.data!.content === content,
-        'Should have decrypted/matching content'
-      );
-      assert(
-        JSON.stringify(getResult.data!.tags) === JSON.stringify(tags),
-        'Should have decrypted/matching tags'
-      );
-      assert(
-        getResult.data!.isPublic === isPublic,
-        `Should have isPublic=${isPublic}`
-      );
-      assert(
-        useDocumentStore.getState().currentDocument?.id === docId,
-        'Should set currentDocument'
-      );
-
-      compareTwoThings(
-        { status: 'READY', error: null },
-        useDocumentStore.getState()
-      );
-
-      console.log(`  Retrieved ${suffix} document: ${docId}`);
-    });
-  }
-
-  await runner.run(
-    'Get non-existent document returns null (not error)',
-    async () => {
-      const fakeDocId = gunService.newId();
-      const getResult = await useDocumentStore
-        .getState()
-        .getDocument(fakeDocId);
-      assert(isSuccess(getResult), 'Should succeed (not throw error)');
-      assert(
-        getResult.data === null,
-        'Should return null for non-existent doc'
-      );
-      assert(
-        useDocumentStore.getState().currentDocument === null,
-        'Should not set currentDocument'
-      );
-
-      compareTwoThings(
-        { status: 'READY', error: null },
-        useDocumentStore.getState()
-      );
-      console.log(`  Non-existent document handled correctly: ${fakeDocId}`);
-    }
-  );
-
-  await runner.run('Get document without title/content defaults', async () => {
-    const title = generateTestTitle('_defaults');
-    const content = 'content';
-
-    const createResult = await useDocumentStore
-      .getState()
-      .createDocument(title, content, undefined, true);
-    assertWithDetails(isSuccess(createResult), 'Should create document first', {
-      error: isFailure(createResult) ? createResult.error : undefined,
-    });
-    const docId = createResult.data!.id;
-
-    await cleanupDocumentStore();
-
-    const getResult = await useDocumentStore.getState().getDocument(docId);
-    assertWithDetails(
-      isSuccess(getResult),
-      'Should retrieve existing document',
-      { error: isFailure(getResult) ? getResult.error : undefined }
-    );
-    assert(getResult.data !== null, 'Should return document');
-    assert(getResult.data!.title === title, 'Should have title');
-    assert(getResult.data!.content === content, 'Should have content');
-    assertWithDetails(
-      Array.isArray(getResult.data!.tags) && getResult.data!.tags.length === 0,
-      'Tags should be empty array',
-      {
-        actual: getResult.data!.tags,
-        expected: [],
-      }
-    );
-    console.log(`  Retrieved document with defaults: ${docId}`);
-  });
-
-  console.log('\n✅ getDocument tests complete!');
-  runner.printResults();
-  await cleanupDocumentStore();
-  return runner.getResults();
-}
+//async function testGetDocument(): Promise<TestSuiteResult> {
+//  console.log('🧪 Testing documentStore.getDocument()...\n');
+//  const runner = new TestRunner('getDocument Operations');
+//
+//  await cleanupDocumentStore();
+//
+//  for (const isPublic of [true, false]) {
+//    const suffix = isPublic ? 'public' : 'private';
+//    await runner.run(`Get existing ${suffix} document`, async () => {
+//      const title = generateTestTitle(`_get_${suffix}`);
+//      const content = `${suffix} content to retrieve`;
+//      const tags = [suffix, 'test'];
+//
+//      const createResult = await useDocumentStore
+//        .getState()
+//        .createDocument(title, content, tags, isPublic);
+//      assertWithDetails(
+//        isSuccess(createResult),
+//        'Should create document first',
+//        { error: isFailure(createResult) ? createResult.error : undefined }
+//      );
+//      const docId = createResult.data!.id;
+//
+//      await cleanupDocumentStore();
+//
+//      const getResult = await useDocumentStore.getState().getDocument(docId);
+//
+//      assertWithDetails(
+//        isSuccess(getResult),
+//        'Should retrieve existing document',
+//        { error: isFailure(getResult) ? getResult.error : undefined }
+//      );
+//      assert(getResult.data !== null, 'Should return document (not null)');
+//      assert(getResult.data!.id === docId, 'Should have matching id');
+//      assert(
+//        getResult.data!.title === title,
+//        'Should have decrypted/matching title'
+//      );
+//      assert(
+//        getResult.data!.content === content,
+//        'Should have decrypted/matching content'
+//      );
+//      assert(
+//        JSON.stringify(getResult.data!.tags) === JSON.stringify(tags),
+//        'Should have decrypted/matching tags'
+//      );
+//      assert(
+//        getResult.data!.isPublic === isPublic,
+//        `Should have isPublic=${isPublic}`
+//      );
+//      assert(
+//        useDocumentStore.getState().currentDocument?.id === docId,
+//        'Should set currentDocument'
+//      );
+//
+//      compareTwoThings(
+//        { status: 'READY', error: null },
+//        useDocumentStore.getState()
+//      );
+//
+//      console.log(`  Retrieved ${suffix} document: ${docId}`);
+//    });
+//  }
+//
+//  await runner.run(
+//    'Get non-existent document returns null (not error)',
+//    async () => {
+//      const fakeDocId = gunService.newId();
+//      const getResult = await useDocumentStore
+//        .getState()
+//        .getDocument(fakeDocId);
+//      assert(isSuccess(getResult), 'Should succeed (not throw error)');
+//      assert(
+//        getResult.data === null,
+//        'Should return null for non-existent doc'
+//      );
+//      assert(
+//        useDocumentStore.getState().currentDocument === null,
+//        'Should not set currentDocument'
+//      );
+//
+//      compareTwoThings(
+//        { status: 'READY', error: null },
+//        useDocumentStore.getState()
+//      );
+//      console.log(`  Non-existent document handled correctly: ${fakeDocId}`);
+//    }
+//  );
+//
+//  await runner.run('Get document without title/content defaults', async () => {
+//    const title = generateTestTitle('_defaults');
+//    const content = 'content';
+//
+//    const createResult = await useDocumentStore
+//      .getState()
+//      .createDocument(title, content, undefined, true);
+//    assertWithDetails(isSuccess(createResult), 'Should create document first', {
+//      error: isFailure(createResult) ? createResult.error : undefined,
+//    });
+//    const docId = createResult.data!.id;
+//
+//    await cleanupDocumentStore();
+//
+//    const getResult = await useDocumentStore.getState().getDocument(docId);
+//    assertWithDetails(
+//      isSuccess(getResult),
+//      'Should retrieve existing document',
+//      { error: isFailure(getResult) ? getResult.error : undefined }
+//    );
+//    assert(getResult.data !== null, 'Should return document');
+//    assert(getResult.data!.title === title, 'Should have title');
+//    assert(getResult.data!.content === content, 'Should have content');
+//    assertWithDetails(
+//      Array.isArray(getResult.data!.tags) && getResult.data!.tags.length === 0,
+//      'Tags should be empty array',
+//      {
+//        actual: getResult.data!.tags,
+//        expected: [],
+//      }
+//    );
+//    console.log(`  Retrieved document with defaults: ${docId}`);
+//  });
+//
+//  console.log('\n✅ getDocument tests complete!');
+//  runner.printResults();
+//  await cleanupDocumentStore();
+//  return runner.getResults();
+//}
 
 /**
  * Test deleteDocument operations (parameterized for public/private)
  */
-async function testDeleteDocument(): Promise<TestSuiteResult> {
-  console.log('🧪 Testing documentStore.deleteDocument()...\n');
-  const runner = new TestRunner('deleteDocument Operations');
-
-  for (const isPublic of [true, false]) {
-    const suffix = isPublic ? 'public' : 'private';
-    await runner.run(`Delete existing ${suffix} document`, async () => {
-      const title = generateTestTitle(`_delete_${suffix}`);
-      const content = `${suffix} content to delete`;
-
-      const createResult = await useDocumentStore
-        .getState()
-        .createDocument(title, content, undefined, isPublic);
-      assertWithDetails(
-        isSuccess(createResult),
-        'Should create document first',
-        { error: isFailure(createResult) ? createResult.error : undefined }
-      );
-      const docId = createResult.data!.id;
-
-      const deleteResult = await useDocumentStore
-        .getState()
-        .deleteDocument(docId);
-
-      assertWithDetails(
-        isSuccess(deleteResult),
-        'Should delete existing document',
-        { error: isFailure(deleteResult) ? deleteResult.error : undefined }
-      );
-      assert(deleteResult.data === undefined, 'Should return void (undefined)');
-
-      const getResult = await useDocumentStore.getState().getDocument(docId);
-      assertWithDetails(
-        isSuccess(getResult),
-        'getDocument should not throw error',
-        { error: isFailure(getResult) ? getResult.error : undefined }
-      );
-      assert(
-        getResult.data === null,
-        'getDocument should return null after deletion'
-      );
-
-      assert(
-        useDocumentStore.getState().currentDocument === null,
-        'Should clear currentDocument if deleted'
-      );
-
-      compareTwoThings(
-        { status: 'READY', error: null },
-        useDocumentStore.getState()
-      );
-
-      console.log(`  Deleted ${suffix} document: ${docId}`);
-    });
-  }
-
-  await runner.run('Delete non-existent document', async () => {
-    const fakeDocId = gunService.newId();
-    const deleteResult = await useDocumentStore
-      .getState()
-      .deleteDocument(fakeDocId);
-
-    assert(isFailure(deleteResult), 'Should fail for non-existent document');
-    assert(isDocumentError(deleteResult.error), 'Should return DocumentError');
-    assert(
-      deleteResult.error?.code === 'NOT_FOUND',
-      'Error code should be NOT_FOUND'
-    );
-    compareTwoThings(
-      {
-        status: 'READY',
-        error: 'Document not found',
-      },
-      useDocumentStore.getState()
-    );
-    console.log(`  Non-existent document handled correctly: ${fakeDocId}`);
-  });
-
-  await runner.run('State cleanup on deletion', async () => {
-    const title = generateTestTitle('_state_cleanup');
-    const createResult = await useDocumentStore
-      .getState()
-      .createDocument(title, 'content', undefined, true);
-    assert(isSuccess(createResult), 'Should create document first');
-    const docId = createResult.data!.id;
-
-    assert(
-      useDocumentStore.getState().currentDocument?.id === docId,
-      'Should have document in currentDocument'
-    );
-
-    await useDocumentStore.getState().deleteDocument(docId);
-
-    assert(
-      useDocumentStore.getState().currentDocument === null,
-      'Should clear currentDocument'
-    );
-
-    compareTwoThings(
-      { status: 'READY', error: null },
-      useDocumentStore.getState()
-    );
-  });
-
-  await runner.run(
-    'Deleted document is removed from documentList',
-    async () => {
-      const title = generateTestTitle('_list_removal');
-      const createResult = await useDocumentStore
-        .getState()
-        .createDocument(title, 'content', undefined, true);
-      assert(isSuccess(createResult), 'Should create document first');
-      const docId = createResult.data!.id;
-      await useDocumentStore.getState().listDocuments();
-
-      const stateBefore = useDocumentStore.getState();
-      const itemBefore = stateBefore.documentList.find(
-        item => item.docId === docId
-      );
-      assert(itemBefore !== undefined, 'Document should be in documentList');
-
-      await useDocumentStore.getState().deleteDocument(docId);
-
-      const stateAfter = useDocumentStore.getState();
-      const itemAfter = stateAfter.documentList.find(
-        item => item.docId === docId
-      );
-      assert(itemAfter === undefined, 'Document should be removed from list');
-    }
-  );
-
-  console.log('\n✅ deleteDocument tests complete!');
-  runner.printResults();
-  await cleanupDocumentStore();
-  return runner.getResults();
-}
+//async function testDeleteDocument(): Promise<TestSuiteResult> {
+//  console.log('🧪 Testing documentStore.deleteDocument()...\n');
+//  const runner = new TestRunner('deleteDocument Operations');
+//
+//  for (const isPublic of [true, false]) {
+//    const suffix = isPublic ? 'public' : 'private';
+//    await runner.run(`Delete existing ${suffix} document`, async () => {
+//      const title = generateTestTitle(`_delete_${suffix}`);
+//      const content = `${suffix} content to delete`;
+//
+//      const createResult = await useDocumentStore
+//        .getState()
+//        .createDocument(title, content, undefined, isPublic);
+//      assertWithDetails(
+//        isSuccess(createResult),
+//        'Should create document first',
+//        { error: isFailure(createResult) ? createResult.error : undefined }
+//      );
+//      const docId = createResult.data!.id;
+//
+//      const deleteResult = await useDocumentStore
+//        .getState()
+//        .deleteDocument(docId);
+//
+//      assertWithDetails(
+//        isSuccess(deleteResult),
+//        'Should delete existing document',
+//        { error: isFailure(deleteResult) ? deleteResult.error : undefined }
+//      );
+//      assert(deleteResult.data === undefined, 'Should return void (undefined)');
+//
+//      const getResult = await useDocumentStore.getState().getDocument(docId);
+//      assertWithDetails(
+//        isSuccess(getResult),
+//        'getDocument should not throw error',
+//        { error: isFailure(getResult) ? getResult.error : undefined }
+//      );
+//      assert(
+//        getResult.data === null,
+//        'getDocument should return null after deletion'
+//      );
+//
+//      assert(
+//        useDocumentStore.getState().currentDocument === null,
+//        'Should clear currentDocument if deleted'
+//      );
+//
+//      compareTwoThings(
+//        { status: 'READY', error: null },
+//        useDocumentStore.getState()
+//      );
+//
+//      console.log(`  Deleted ${suffix} document: ${docId}`);
+//    });
+//  }
+//
+//  await runner.run('Delete non-existent document', async () => {
+//    const fakeDocId = gunService.newId();
+//    const deleteResult = await useDocumentStore
+//      .getState()
+//      .deleteDocument(fakeDocId);
+//
+//    assert(isFailure(deleteResult), 'Should fail for non-existent document');
+//    assert(isDocumentError(deleteResult.error), 'Should return DocumentError');
+//    assert(
+//      deleteResult.error?.code === 'NOT_FOUND',
+//      'Error code should be NOT_FOUND'
+//    );
+//    compareTwoThings(
+//      {
+//        status: 'READY',
+//        error: 'Document not found',
+//      },
+//      useDocumentStore.getState()
+//    );
+//    console.log(`  Non-existent document handled correctly: ${fakeDocId}`);
+//  });
+//
+//  await runner.run('State cleanup on deletion', async () => {
+//    const title = generateTestTitle('_state_cleanup');
+//    const createResult = await useDocumentStore
+//      .getState()
+//      .createDocument(title, 'content', undefined, true);
+//    assert(isSuccess(createResult), 'Should create document first');
+//    const docId = createResult.data!.id;
+//
+//    assert(
+//      useDocumentStore.getState().currentDocument?.id === docId,
+//      'Should have document in currentDocument'
+//    );
+//
+//    await useDocumentStore.getState().deleteDocument(docId);
+//
+//    assert(
+//      useDocumentStore.getState().currentDocument === null,
+//      'Should clear currentDocument'
+//    );
+//
+//    compareTwoThings(
+//      { status: 'READY', error: null },
+//      useDocumentStore.getState()
+//    );
+//  });
+//
+//  await runner.run(
+//    'Deleted document is removed from documentList',
+//    async () => {
+//      const title = generateTestTitle('_list_removal');
+//      const createResult = await useDocumentStore
+//        .getState()
+//        .createDocument(title, 'content', undefined, true);
+//      assert(isSuccess(createResult), 'Should create document first');
+//      const docId = createResult.data!.id;
+//      await useDocumentStore.getState().listDocuments();
+//
+//      const stateBefore = useDocumentStore.getState();
+//      const itemBefore = stateBefore.documentList.find(
+//        item => item.docId === docId
+//      );
+//      assert(itemBefore !== undefined, 'Document should be in documentList');
+//
+//      await useDocumentStore.getState().deleteDocument(docId);
+//
+//      const stateAfter = useDocumentStore.getState();
+//      const itemAfter = stateAfter.documentList.find(
+//        item => item.docId === docId
+//      );
+//      assert(itemAfter === undefined, 'Document should be removed from list');
+//    }
+//  );
+//
+//  console.log('\n✅ deleteDocument tests complete!');
+//  runner.printResults();
+//  await cleanupDocumentStore();
+//  return runner.getResults();
+//}
 
 /**
  * Test listDocuments operations
  */
-async function testListDocuments(): Promise<TestSuiteResult> {
-  console.log('🧪 Testing documentStore.listDocuments()...\n');
-  const runner = new TestRunner('listDocuments Operations');
-
-  await cleanupDocumentStore();
-
-  await runner.run('List empty documents', async () => {
-    const result = await useDocumentStore.getState().listDocuments();
-    assertWithDetails(isSuccess(result), 'Should succeed with empty list', {
-      error: isFailure(result) ? result.error : undefined,
-    });
-    assert(Array.isArray(result.data), 'Result data should be array');
-    assert(result.data!.length === 0, 'Should return empty array');
-    assert(
-      useDocumentStore.getState().documentList.length === 0,
-      'State documentList should be empty'
-    );
-
-    compareTwoThings(
-      { status: 'READY', error: null },
-      useDocumentStore.getState()
-    );
-  });
-
-  await runner.run('List documents after creating', async () => {
-    await cleanupDocumentStore();
-
-    const title1 = generateTestTitle('_list_1');
-    const title2 = generateTestTitle('_list_2');
-
-    const result1 = await useDocumentStore
-      .getState()
-      .createDocument(title1, 'content1', [], true);
-    assertWithDetails(isSuccess(result1), 'Should create first document', {
-      error: isFailure(result1) ? result1.error : undefined,
-    });
-
-    const result2 = await useDocumentStore
-      .getState()
-      .createDocument(title2, 'content2', [], false);
-    assertWithDetails(isSuccess(result2), 'Should create second document', {
-      error: isFailure(result2) ? result2.error : undefined,
-    });
-
-    const listResult = await useDocumentStore.getState().listDocuments();
-
-    assert(isSuccess(listResult), 'Should list documents successfully');
-    assert(
-      listResult.data!.length >= 2,
-      'Should have at least 2 documents in list'
-    );
-
-    const doc1 = listResult.data!.find(
-      (item: MinimalDocListItem) => item.docId === result1.data!.id
-    );
-    const doc2 = listResult.data!.find(
-      (item: MinimalDocListItem) => item.docId === result2.data!.id
-    );
-
-    assert(doc1 !== undefined, 'Should find first document in list');
-    assert(doc2 !== undefined, 'Should find second document in list');
-    assert(typeof doc1!.soul === 'string', 'Should have soul for doc1');
-    assert(typeof doc2!.soul === 'string', 'Should have soul for doc2');
-    assert(
-      typeof doc1!.createdAt === 'number',
-      'Should have createdAt for doc1'
-    );
-    assert(
-      typeof doc2!.updatedAt === 'number',
-      'Should have updatedAt for doc2'
-    );
-
-    assert(
-      useDocumentStore.getState().documentList.length >= 2,
-      'State documentList should have at least 2 documents'
-    );
-
-    compareTwoThings(
-      { status: 'READY', error: null },
-      useDocumentStore.getState()
-    );
-  });
-
-  await runner.run('Minimal data only (no decryption)', async () => {
-    await cleanupDocumentStore();
-
-    const title = generateTestTitle('_minimal_data');
-    const tags = ['tag1', 'tag2'];
-
-    const result = await useDocumentStore
-      .getState()
-      .createDocument(title, 'content', tags, false);
-    assert(isSuccess(result), 'Should create private document first');
-
-    const listResult = await useDocumentStore.getState().listDocuments();
-
-    assert(isSuccess(listResult), 'Should list documents successfully');
-
-    const docInList = listResult.data!.find(
-      (item: MinimalDocListItem) => item.docId === result.data!.id
-    );
-
-    assert(docInList !== undefined, 'Should find document in list');
-    assert(
-      'title' in docInList === false,
-      'MinimalDocListItem should not have title field'
-    );
-    assert(
-      'tags' in docInList === false,
-      'MinimalDocListItem should not have tags field'
-    );
-    assert(
-      'content' in docInList === false,
-      'MinimalDocListItem should not have content field'
-    );
-    assert('docId' in docInList, 'MinimalDocListItem should have docId field');
-    assert('soul' in docInList, 'MinimalDocListItem should have soul field');
-    assert(
-      'createdAt' in docInList,
-      'MinimalDocListItem should have createdAt field'
-    );
-    assert(
-      'updatedAt' in docInList,
-      'MinimalDocListItem should have updatedAt field'
-    );
-  });
-
-  console.log('\n✅ listDocuments tests complete!');
-  runner.printResults();
-  await cleanupDocumentStore();
-  return runner.getResults();
-}
+//async function testListDocuments(): Promise<TestSuiteResult> {
+//  console.log('🧪 Testing documentStore.listDocuments()...\n');
+//  const runner = new TestRunner('listDocuments Operations');
+//
+//  await cleanupDocumentStore();
+//
+//  await runner.run('List empty documents', async () => {
+//    const result = await useDocumentStore.getState().listDocuments();
+//    assertWithDetails(isSuccess(result), 'Should succeed with empty list', {
+//      error: isFailure(result) ? result.error : undefined,
+//    });
+//    assert(Array.isArray(result.data), 'Result data should be array');
+//    assert(result.data!.length === 0, 'Should return empty array');
+//    assert(
+//      useDocumentStore.getState().documentList.length === 0,
+//      'State documentList should be empty'
+//    );
+//
+//    compareTwoThings(
+//      { status: 'READY', error: null },
+//      useDocumentStore.getState()
+//    );
+//  });
+//
+//  await runner.run('List documents after creating', async () => {
+//    await cleanupDocumentStore();
+//
+//    const title1 = generateTestTitle('_list_1');
+//    const title2 = generateTestTitle('_list_2');
+//
+//    const result1 = await useDocumentStore
+//      .getState()
+//      .createDocument(title1, 'content1', [], true);
+//    assertWithDetails(isSuccess(result1), 'Should create first document', {
+//      error: isFailure(result1) ? result1.error : undefined,
+//    });
+//
+//    const result2 = await useDocumentStore
+//      .getState()
+//      .createDocument(title2, 'content2', [], false);
+//    assertWithDetails(isSuccess(result2), 'Should create second document', {
+//      error: isFailure(result2) ? result2.error : undefined,
+//    });
+//
+//    const listResult = await useDocumentStore.getState().listDocuments();
+//
+//    assert(isSuccess(listResult), 'Should list documents successfully');
+//    assert(
+//      listResult.data!.length >= 2,
+//      'Should have at least 2 documents in list'
+//    );
+//
+//    const doc1 = listResult.data!.find(
+//      (item: MinimalDocListItem) => item.docId === result1.data!.id
+//    );
+//    const doc2 = listResult.data!.find(
+//      (item: MinimalDocListItem) => item.docId === result2.data!.id
+//    );
+//
+//    assert(doc1 !== undefined, 'Should find first document in list');
+//    assert(doc2 !== undefined, 'Should find second document in list');
+//    assert(typeof doc1!.soul === 'string', 'Should have soul for doc1');
+//    assert(typeof doc2!.soul === 'string', 'Should have soul for doc2');
+//    assert(
+//      typeof doc1!.createdAt === 'number',
+//      'Should have createdAt for doc1'
+//    );
+//    assert(
+//      typeof doc2!.updatedAt === 'number',
+//      'Should have updatedAt for doc2'
+//    );
+//
+//    assert(
+//      useDocumentStore.getState().documentList.length >= 2,
+//      'State documentList should have at least 2 documents'
+//    );
+//
+//    compareTwoThings(
+//      { status: 'READY', error: null },
+//      useDocumentStore.getState()
+//    );
+//  });
+//
+//  await runner.run('Minimal data only (no decryption)', async () => {
+//    await cleanupDocumentStore();
+//
+//    const title = generateTestTitle('_minimal_data');
+//    const tags = ['tag1', 'tag2'];
+//
+//    const result = await useDocumentStore
+//      .getState()
+//      .createDocument(title, 'content', tags, false);
+//    assert(isSuccess(result), 'Should create private document first');
+//
+//    const listResult = await useDocumentStore.getState().listDocuments();
+//
+//    assert(isSuccess(listResult), 'Should list documents successfully');
+//
+//    const docInList = listResult.data!.find(
+//      (item: MinimalDocListItem) => item.docId === result.data!.id
+//    );
+//
+//    assert(docInList !== undefined, 'Should find document in list');
+//    assert(
+//      'title' in docInList === false,
+//      'MinimalDocListItem should not have title field'
+//    );
+//    assert(
+//      'tags' in docInList === false,
+//      'MinimalDocListItem should not have tags field'
+//    );
+//    assert(
+//      'content' in docInList === false,
+//      'MinimalDocListItem should not have content field'
+//    );
+//    assert('docId' in docInList, 'MinimalDocListItem should have docId field');
+//    assert('soul' in docInList, 'MinimalDocListItem should have soul field');
+//    assert(
+//      'createdAt' in docInList,
+//      'MinimalDocListItem should have createdAt field'
+//    );
+//    assert(
+//      'updatedAt' in docInList,
+//      'MinimalDocListItem should have updatedAt field'
+//    );
+//  });
+//
+//  console.log('\n✅ listDocuments tests complete!');
+//  runner.printResults();
+//  await cleanupDocumentStore();
+//  return runner.getResults();
+//}
 
 /**
  * Test getDocumentMetadata operations (parameterized for public/private)
  */
-async function testGetDocumentMetadata(): Promise<TestSuiteResult> {
-  console.log('🧪 Testing documentStore.getDocumentMetadata()...\n');
-  const runner = new TestRunner('getDocumentMetadata Operations');
-
-  for (const isPublic of [true, false]) {
-    const suffix = isPublic ? 'public' : 'private';
-    await runner.run(`Get metadata for ${suffix} document`, async () => {
-      await cleanupDocumentStore();
-
-      const title = generateTestTitle(`_${suffix}_metadata`);
-      const tags = ['tag1', 'tag2'];
-
-      const createResult = await useDocumentStore
-        .getState()
-        .createDocument(title, 'content', tags, isPublic);
-      assert(isSuccess(createResult), `Should create ${suffix} document first`);
-      const docId = createResult.data!.id;
-
-      const metadataResult = await useDocumentStore
-        .getState()
-        .getDocumentMetadata(docId);
-
-      assert(isSuccess(metadataResult), 'Should get metadata successfully');
-      assert(
-        metadataResult.data!.title === title,
-        'Should return correct title'
-      );
-      assert(
-        Array.isArray(metadataResult.data!.tags),
-        'Should return tags array'
-      );
-      assert(
-        metadataResult.data!.tags!.length === tags.length,
-        'Should return all tags'
-      );
-      assert(
-        metadataResult.data!.tags![0] === tags[0],
-        'First tag should match'
-      );
-
-      compareTwoThings(
-        { status: 'READY', error: null },
-        useDocumentStore.getState()
-      );
-    });
-  }
-
-  await runner.run('Get metadata for non-existent document', async () => {
-    await cleanupDocumentStore();
-
-    const fakeDocId = gunService.newId();
-    const metadataResult = await useDocumentStore
-      .getState()
-      .getDocumentMetadata(fakeDocId);
-
-    assert(isFailure(metadataResult), 'Should fail for non-existent document');
-    assert(
-      isDocumentError(metadataResult.error),
-      'Should return DocumentError'
-    );
-    assert(
-      metadataResult.error?.code === 'NOT_FOUND',
-      'Error code should be NOT_FOUND'
-    );
-    compareTwoThings(
-      {
-        status: 'READY',
-        error: 'Document not found',
-      },
-      useDocumentStore.getState()
-    );
-  });
-
-  await runner.run('Metadata does not include content', async () => {
-    await cleanupDocumentStore();
-
-    const title = generateTestTitle('_no_content');
-    const content = 'This content should not be in metadata';
-
-    const createResult = await useDocumentStore
-      .getState()
-      .createDocument(title, content, undefined, true);
-    assert(isSuccess(createResult), 'Should create document first');
-    const docId = createResult.data!.id;
-
-    const metadataResult = await useDocumentStore
-      .getState()
-      .getDocumentMetadata(docId);
-
-    assert(isSuccess(metadataResult), 'Should get metadata successfully');
-    assert(
-      'content' in metadataResult.data! === false,
-      'Metadata should not include content field'
-    );
-    assert(
-      'title' in metadataResult.data!,
-      'Metadata should include title field'
-    );
-    assert(
-      'tags' in metadataResult.data!,
-      'Metadata should include tags field'
-    );
-  });
-
-  await runner.run('Document without tags', async () => {
-    await cleanupDocumentStore();
-
-    const title = generateTestTitle('_no_tags_metadata');
-
-    const createResult = await useDocumentStore
-      .getState()
-      .createDocument(title, 'content', undefined, true);
-    assert(isSuccess(createResult), 'Should create document first');
-    const docId = createResult.data!.id;
-
-    const metadataResult = await useDocumentStore
-      .getState()
-      .getDocumentMetadata(docId);
-
-    assert(isSuccess(metadataResult), 'Should get metadata successfully');
-    assert(metadataResult.data!.title === title, 'Should return title');
-    assert(
-      metadataResult.data!.tags.length === 0,
-      'Tags should be empty if not provided'
-    );
-  });
-
-  console.log('\n✅ getDocumentMetadata tests complete!');
-  runner.printResults();
-  await cleanupDocumentStore();
-  return runner.getResults();
-}
+//async function testGetDocumentMetadata(): Promise<TestSuiteResult> {
+//  console.log('🧪 Testing documentStore.getDocumentMetadata()...\n');
+//  const runner = new TestRunner('getDocumentMetadata Operations');
+//
+//  for (const isPublic of [true, false]) {
+//    const suffix = isPublic ? 'public' : 'private';
+//    await runner.run(`Get metadata for ${suffix} document`, async () => {
+//      await cleanupDocumentStore();
+//
+//      const title = generateTestTitle(`_${suffix}_metadata`);
+//      const tags = ['tag1', 'tag2'];
+//
+//      const createResult = await useDocumentStore
+//        .getState()
+//        .createDocument(title, 'content', tags, isPublic);
+//      assert(isSuccess(createResult), `Should create ${suffix} document first`);
+//      const docId = createResult.data!.id;
+//
+//      const metadataResult = await useDocumentStore
+//        .getState()
+//        .getDocumentMetadata(docId);
+//
+//      assert(isSuccess(metadataResult), 'Should get metadata successfully');
+//      assert(
+//        metadataResult.data!.title === title,
+//        'Should return correct title'
+//      );
+//      assert(
+//        Array.isArray(metadataResult.data!.tags),
+//        'Should return tags array'
+//      );
+//      assert(
+//        metadataResult.data!.tags!.length === tags.length,
+//        'Should return all tags'
+//      );
+//      assert(
+//        metadataResult.data!.tags![0] === tags[0],
+//        'First tag should match'
+//      );
+//
+//      compareTwoThings(
+//        { status: 'READY', error: null },
+//        useDocumentStore.getState()
+//      );
+//    });
+//  }
+//
+//  await runner.run('Get metadata for non-existent document', async () => {
+//    await cleanupDocumentStore();
+//
+//    const fakeDocId = gunService.newId();
+//    const metadataResult = await useDocumentStore
+//      .getState()
+//      .getDocumentMetadata(fakeDocId);
+//
+//    assert(isFailure(metadataResult), 'Should fail for non-existent document');
+//    assert(
+//      isDocumentError(metadataResult.error),
+//      'Should return DocumentError'
+//    );
+//    assert(
+//      metadataResult.error?.code === 'NOT_FOUND',
+//      'Error code should be NOT_FOUND'
+//    );
+//    compareTwoThings(
+//      {
+//        status: 'READY',
+//        error: 'Document not found',
+//      },
+//      useDocumentStore.getState()
+//    );
+//  });
+//
+//  await runner.run('Metadata does not include content', async () => {
+//    await cleanupDocumentStore();
+//
+//    const title = generateTestTitle('_no_content');
+//    const content = 'This content should not be in metadata';
+//
+//    const createResult = await useDocumentStore
+//      .getState()
+//      .createDocument(title, content, undefined, true);
+//    assert(isSuccess(createResult), 'Should create document first');
+//    const docId = createResult.data!.id;
+//
+//    const metadataResult = await useDocumentStore
+//      .getState()
+//      .getDocumentMetadata(docId);
+//
+//    assert(isSuccess(metadataResult), 'Should get metadata successfully');
+//    assert(
+//      'content' in metadataResult.data! === false,
+//      'Metadata should not include content field'
+//    );
+//    assert(
+//      'title' in metadataResult.data!,
+//      'Metadata should include title field'
+//    );
+//    assert(
+//      'tags' in metadataResult.data!,
+//      'Metadata should include tags field'
+//    );
+//  });
+//
+//  await runner.run('Document without tags', async () => {
+//    await cleanupDocumentStore();
+//
+//    const title = generateTestTitle('_no_tags_metadata');
+//
+//    const createResult = await useDocumentStore
+//      .getState()
+//      .createDocument(title, 'content', undefined, true);
+//    assert(isSuccess(createResult), 'Should create document first');
+//    const docId = createResult.data!.id;
+//
+//    const metadataResult = await useDocumentStore
+//      .getState()
+//      .getDocumentMetadata(docId);
+//
+//    assert(isSuccess(metadataResult), 'Should get metadata successfully');
+//    assert(metadataResult.data!.title === title, 'Should return title');
+//    assert(
+//      metadataResult.data!.tags.length === 0,
+//      'Tags should be empty if not provided'
+//    );
+//  });
+//
+//  console.log('\n✅ getDocumentMetadata tests complete!');
+//  runner.printResults();
+//  await cleanupDocumentStore();
+//  return runner.getResults();
+//}
 
 /**
  * Test shareDocument operations (parameterized for public/private)
@@ -1296,25 +1502,25 @@ export async function testDocumentStore(): Promise<TestSuiteResult[]> {
   suiteResults.push(e2eResult);
   console.log('='.repeat(60));
 
-//  const listResult = await testListDocuments();
-//  suiteResults.push(listResult);
-//  console.log('\n' + '='.repeat(60) + '\n');
-//
-//  const createResult = await testCreateDocument();
-//  suiteResults.push(createResult);
-//  console.log('\n' + '='.repeat(60) + '\n');
-//
-//  const getResult = await testGetDocument();
-//  suiteResults.push(getResult);
-//  console.log('\n' + '='.repeat(60) + '\n');
-//
-//  const deleteResult = await testDeleteDocument();
-//  suiteResults.push(deleteResult);
-//  console.log('\n' + '='.repeat(60) + '\n');
-//
-//  const metadataResult = await testGetDocumentMetadata();
-//  suiteResults.push(metadataResult);
-//  console.log('\n' + '='.repeat(60) + '\n');
+  //  const listResult = await testListDocuments();
+  //  suiteResults.push(listResult);
+  //  console.log('\n' + '='.repeat(60) + '\n');
+  //
+  //  const createResult = await testCreateDocument();
+  //  suiteResults.push(createResult);
+  //  console.log('\n' + '='.repeat(60) + '\n');
+  //
+  //  const getResult = await testGetDocument();
+  //  suiteResults.push(getResult);
+  //  console.log('\n' + '='.repeat(60) + '\n');
+  //
+  //  const deleteResult = await testDeleteDocument();
+  //  suiteResults.push(deleteResult);
+  //  console.log('\n' + '='.repeat(60) + '\n');
+  //
+  //  const metadataResult = await testGetDocumentMetadata();
+  //  suiteResults.push(metadataResult);
+  //  console.log('\n' + '='.repeat(60) + '\n');
 
   //  const shareResult = await testShareDocument();
   //  suiteResults.push(shareResult);

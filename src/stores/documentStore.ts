@@ -9,6 +9,7 @@ import { create } from 'zustand';
 import { type Result, tryCatch, match } from '../utils/functionalResult';
 import type {
   Document,
+  DocumentAccessEntry,
   DocumentError,
   MinimalDocListItem,
   SharedDocNotification,
@@ -432,41 +433,69 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         const currentDoc = get();
         const isCurrentDoc = currentDoc.currentDocument?.id === docId;
 
-        let updatedDoc = { ...doc };
+        const updatesToApply = updates;
 
-        if (updates.title !== undefined) {
-          if (!updates.title?.trim()) {
-            throw new Error('Title cannot be empty');
+        let finalTitle = updatesToApply.title ?? doc.title;
+        let finalContent = updatesToApply.content ?? doc.content;
+        let finalTags = updatesToApply.tags
+          ? arrayToCSV(updatesToApply.tags)
+          : typeof doc.tags === 'string'
+            ? doc.tags
+            : arrayToCSV(doc.tags ?? []);
+
+        if (finalTitle !== undefined && !finalTitle?.trim()) {
+          throw new Error('Title cannot be empty');
+        }
+
+        if (docKey && !doc.isPublic) {
+          if (finalTitle !== undefined) {
+            finalTitle =
+              (await encryptionService.encrypt(finalTitle, docKey)) ??
+              finalTitle;
           }
-          if (docKey && !doc.isPublic) {
-            updatedDoc.title =
-              (await encryptionService.encrypt(updates.title.trim(), docKey)) ??
-              updates.title.trim();
-          } else {
-            updatedDoc.title = updates.title.trim();
+          if (finalContent !== undefined) {
+            finalContent =
+              (await encryptionService.encrypt(finalContent, docKey)) ??
+              finalContent;
+          }
+          if (finalTags !== undefined) {
+            finalTags =
+              (await encryptionService.encrypt(finalTags, docKey)) ?? finalTags;
           }
         }
 
-        if (updates.content !== undefined) {
-          if (docKey && !doc.isPublic) {
-            updatedDoc.content =
-              (await encryptionService.encrypt(updates.content, docKey)) ??
-              updates.content;
-          } else {
-            updatedDoc.content = updates.content;
-          }
-        }
+        type UpdatedDoc = {
+          id: string;
+          title: string;
+          content: string;
+          tags: string;
+          createdAt: number;
+          updatedAt: number;
+          isPublic: boolean;
+          access?: DocumentAccessEntry[];
+          parent?: string;
+          original?: string;
+        };
 
-        if (updates.tags !== undefined) {
-          let tagsCSV = arrayToCSV(updates.tags);
-          if (docKey && !doc.isPublic) {
-            tagsCSV =
-              (await encryptionService.encrypt(tagsCSV, docKey)) ?? tagsCSV;
-          }
-          updatedDoc.tags = tagsCSV as unknown as string[];
-        }
+        let updatedDoc: UpdatedDoc = {
+          id: doc.id!,
+          title: finalTitle!,
+          content: finalContent!,
+          tags: finalTags!,
+          createdAt: doc.createdAt!,
+          updatedAt: Date.now(),
+          isPublic: doc.isPublic!,
+        };
 
-        updatedDoc.updatedAt = Date.now();
+        if (doc.access !== undefined) {
+          updatedDoc = { ...updatedDoc, access: doc.access };
+        }
+        if (doc.parent !== undefined) {
+          updatedDoc = { ...updatedDoc, parent: doc.parent };
+        }
+        if (doc.original !== undefined) {
+          updatedDoc = { ...updatedDoc, original: doc.original };
+        }
 
         await new Promise<void>((resolve, reject) => {
           docNode.put(updatedDoc, (ack: GunAck) => {
