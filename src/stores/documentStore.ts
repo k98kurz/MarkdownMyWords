@@ -81,18 +81,12 @@ const transformError = (error: unknown): DocumentError => {
   };
 };
 
-function arrayToCSV(tags: string[] | undefined): string | undefined {
-  return tags && tags.length > 0 ? tags.join(',') : undefined;
+function arrayToCSV(tags?: string[]): string {
+  return tags && tags.length > 0 ? tags.join(',') : '';
 }
 
-function csvToArray(tags: string | string[] | undefined): string[] | undefined {
-  if (!tags) {
-    return undefined;
-  }
-  if (Array.isArray(tags)) {
-    return tags;
-  }
-  return tags.split(',');
+function csvToArray(tags?: string): string[] {
+  return (!!tags) ? tags.split(',') : [];
 }
 
 function validateTagsNoCommas(tags: string[] | undefined): void {
@@ -233,15 +227,20 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         const docNode = userNode.get('docs').get(docId);
         const document: Partial<Document> = {
           id: docId,
-          title: encryptedTitle,
-          content: encryptedContent,
+          title: title,
+          content: content,
           tags: tags,
           createdAt: Date.now(),
           updatedAt: Date.now(),
           isPublic: validatedIsPublic,
         };
 
-        const documentForStorage = { ...document, tags: tagsCSV };
+        const documentForStorage = { 
+          ...document,
+          title: encryptedTitle,
+          content: encryptedContent,
+          tags: tagsCSV
+        };
 
         await new Promise<void>((resolve, reject) => {
           docNode.put(documentForStorage, (ack: unknown) => {

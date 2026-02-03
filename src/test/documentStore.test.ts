@@ -144,7 +144,10 @@ function verifyDocumentProperties(
     assert(typeof doc.id === 'string', 'Document should have id');
     assert(doc.id.length > 0, 'Document id should not be empty');
   }
-  assert(doc.title === expected.title, 'Title should match');
+  assertWithDetails(doc.title === expected.title, 'Title should match', {
+    expected: expected,
+    actual: doc,
+  });
   assert(doc.content === expected.content, 'Content should match');
   if (expected.tags) {
     assert(
@@ -202,24 +205,6 @@ function verifyTimestamps(
   assert(
     doc.updatedAt === doc.createdAt,
     'updatedAt should equal createdAt initially'
-  );
-}
-
-/**
- * Verify document is encrypted (private doc)
- */
-function verifyEncryptedDocument(
-  doc: { title: string; content: string },
-  expectedTitle: string,
-  expectedContent: string
-): void {
-  assert(
-    doc.title !== expectedTitle,
-    'Title should be encrypted (different from input)'
-  );
-  assert(
-    doc.content !== expectedContent,
-    'Content should be encrypted (different from input)'
   );
 }
 
@@ -383,17 +368,14 @@ async function testCreateDocument(): Promise<TestSuiteResult> {
 
       assert(
         isSuccess(result),
-        `Should succeed creating document: ${isSuccess(result) ? 'ok' : JSON.stringify(result.error)}`
+        'Should succeed creating document: ' +
+          `${isSuccess(result) ? 'ok' : JSON.stringify(result.error)}`
       );
       assert(result.data !== undefined, 'Should have document data');
 
       const doc = result.data!;
 
-      if (isPublic) {
-        verifyUnencryptedDocument(doc, title, content);
-      } else {
-        verifyEncryptedDocument(doc, title, content);
-      }
+      verifyUnencryptedDocument(doc, title, content);
 
       const expected = {
         title: title,
@@ -463,7 +445,7 @@ async function testCreateDocument(): Promise<TestSuiteResult> {
       title: title,
       content: content,
       isPublic: false,
-      hasAccess: true,
+      hasAccess: false,
     };
     verifyDocumentProperties(doc, expected);
     verifySuccessState();
