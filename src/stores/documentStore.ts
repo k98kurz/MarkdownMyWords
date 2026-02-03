@@ -13,7 +13,6 @@ import type {
   MinimalDocListItem,
   SharedDocNotification,
 } from '../types/document';
-import type { User, UserProfile } from '../types/gun';
 import { gunService } from '../services/gunService';
 import { encryptionService } from '../services/encryptionService';
 
@@ -156,14 +155,6 @@ interface DocumentActions {
     docId: string
   ) => Promise<Result<Pick<Document, 'title' | 'tags'>, DocumentError>>;
 
-  // Branch operations
-  createBranch: (docId: string) => Promise<Result<string, DocumentError>>;
-  getBranch: (
-    branchId: string
-  ) => Promise<Result<Document | null, DocumentError>>;
-  listBranches: (docId: string) => Promise<Result<Document[], DocumentError>>;
-  deleteBranch: (branchId: string) => Promise<Result<void, DocumentError>>;
-
   // Sharing operations
   shareDocument: (
     docId: string,
@@ -202,10 +193,10 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       content: string,
       tags?: string[],
       isPublic?: boolean
-    ) => {
+    ): Promise<Result<Document, DocumentError>> => {
       set({ status: 'LOADING', error: null });
 
-      const result = await tryCatch(async () => {
+      const result = (await tryCatch(async () => {
         if (!title?.trim()) {
           throw new Error('Title is required');
         }
@@ -232,7 +223,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
             title.trim();
           encryptedContent =
             (await encryptionService.encrypt(content, docKey)) ?? content;
-          if (tags && tags.length > 0) {
+          if (tags && tags.length > 0 && tagsCSV) {
             tagsCSV = await encryptionService.encrypt(tagsCSV, docKey!);
           }
 
@@ -262,8 +253,10 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           });
         });
 
+        document.access = [];
+
         return document;
-      }, transformError);
+      }, transformError)) as Result<Document, DocumentError>;
       match(
         (doc: Document) => {
           set({
@@ -283,10 +276,12 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       return result;
     },
 
-    getDocument: async (docId: string) => {
+    getDocument: async (
+      docId: string
+    ): Promise<Result<Document | null, DocumentError>> => {
       set({ status: 'LOADING', error: null });
 
-      const result = await tryCatch(async () => {
+      const result = (await tryCatch(async () => {
         const gun = gunService.getGun();
         const userNode = gun.user();
         const docNode = userNode.get('docs').get(docId);
@@ -322,7 +317,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         let decryptedTitle = doc.title ?? '';
         let decryptedContent = doc.content ?? '';
         let tagsCSV = doc.tags;
-        let tags = [];
+        let tags: string[] = [];
 
         if (docKey && !doc.isPublic) {
           decryptedTitle =
@@ -333,15 +328,15 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
             (await encryptionService.decrypt(doc.content ?? '', docKey)) ??
             doc.content ??
             '';
-          if (tagsCSV) {
+          if (tagsCSV && typeof tagsCSV === 'string') {
             const decryptedTags = await encryptionService.decrypt(
               tagsCSV,
               docKey
             );
-            tags = csvToArray(decryptedTags);
+            tags = csvToArray(decryptedTags) ?? [];
           }
-        } else if (tagsCSV) {
-          tags = csvToArray(tagsCSV);
+        } else if (tagsCSV && typeof tagsCSV === 'string') {
+          tags = csvToArray(tagsCSV) ?? [];
         }
 
         const document: Document = {
@@ -358,7 +353,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         };
 
         return document;
-      }, transformError);
+      }, transformError)) as Result<Document | null, DocumentError>;
 
       match(
         (doc: Document | null) => {
@@ -394,10 +389,10 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
     updateDocument: async (
       docId: string,
       updates: Partial<Pick<Document, 'title' | 'content' | 'tags'>>
-    ) => {
+    ): Promise<Result<void, DocumentError>> => {
       set({ status: 'SAVING', error: null });
 
-      const result = await tryCatch(async () => {
+      const result = (await tryCatch(async () => {
         if (!updates || Object.keys(updates).length === 0) {
           throw new Error('No updates provided');
         }
@@ -492,7 +487,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         if (isCurrentDoc) {
           let decryptedTitle = updatedDoc.title ?? '';
           let decryptedContent = updatedDoc.content ?? '';
-          let decryptedTags = updatedDoc.tags;
+          let decryptedTags = updatedDoc.tags ?? [];
 
           if (docKey && !doc.isPublic) {
             decryptedTitle =
@@ -538,7 +533,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         }
 
         return undefined;
-      }, transformError);
+      }, transformError)) as Result<void, DocumentError>;
 
       match(
         () => {
@@ -558,10 +553,12 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       return result;
     },
 
-    deleteDocument: async (docId: string) => {
+    deleteDocument: async (
+      docId: string
+    ): Promise<Result<void, DocumentError>> => {
       set({ status: 'LOADING', error: null });
 
-      const result = await tryCatch(async () => {
+      const result = (await tryCatch(async () => {
         const gun = gunService.getGun();
         const userNode = gun.user();
         const docNode = userNode.get('docs').get(docId);
@@ -624,7 +621,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         }
 
         return undefined;
-      }, transformError);
+      }, transformError)) as Result<void, DocumentError>;
 
       match(
         () => {
@@ -655,10 +652,12 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       return result;
     },
 
-    listDocuments: async () => {
+    listDocuments: async (): Promise<
+      Result<MinimalDocListItem[], DocumentError>
+    > => {
       set({ status: 'LOADING', error: null });
 
-      const result = await tryCatch(async () => {
+      const result = (await tryCatch(async () => {
         const items = await gunService.listUserItems(['docs']);
 
         const minimalDocs: MinimalDocListItem[] = items
@@ -678,7 +677,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           .filter((item): item is MinimalDocListItem => item !== null);
 
         return minimalDocs;
-      }, transformError);
+      }, transformError)) as Result<MinimalDocListItem[], DocumentError>;
 
       match(
         (docs: MinimalDocListItem[]) => {
@@ -699,10 +698,12 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       return result;
     },
 
-    getDocumentMetadata: async (docId: string) => {
+    getDocumentMetadata: async (
+      docId: string
+    ): Promise<Result<Pick<Document, 'title' | 'tags'>, DocumentError>> => {
       set({ status: 'LOADING', error: null });
 
-      const result = await tryCatch(async () => {
+      const result = (await tryCatch(async () => {
         const gun = gunService.getGun();
         const userNode = gun.user();
         const docNode = userNode.get('docs').get(docId);
@@ -736,7 +737,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         }
 
         let decryptedTitle = doc.title ?? '';
-        let decryptedTags = doc.tags;
+        let decryptedTags = doc.tags ?? [];
 
         if (docKey && !doc.isPublic) {
           decryptedTitle =
@@ -759,7 +760,10 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         };
 
         return metadata;
-      }, transformError);
+      }, transformError)) as Result<
+        Pick<Document, 'title' | 'tags'>,
+        DocumentError
+      >;
 
       match(
         () => {
@@ -779,10 +783,13 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       return result;
     },
 
-    shareDocument: async (docId: string, userId: string) => {
+    shareDocument: async (
+      docId: string,
+      userId: string
+    ): Promise<Result<void, DocumentError>> => {
       set({ status: 'SAVING', error: null });
 
-      const result = await tryCatch(async () => {
+      const result = (await tryCatch(async () => {
         const gun = gunService.getGun();
         const userNode = gun.user();
         const docNode = userNode.get('docs').get(docId);
@@ -877,7 +884,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         });
 
         return undefined;
-      }, transformError);
+      }, transformError)) as Result<void, DocumentError>;
       match(
         () => {
           set({
@@ -896,10 +903,13 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       return result;
     },
 
-    unshareDocument: async (docId: string, userId: string) => {
+    unshareDocument: async (
+      docId: string,
+      userId: string
+    ): Promise<Result<void, DocumentError>> => {
       set({ status: 'SAVING', error: null });
 
-      const result = await tryCatch(async () => {
+      const result = (await tryCatch(async () => {
         const gun = gunService.getGun();
         const userNode = gun.user();
         const docNode = userNode.get('docs').get(docId);
@@ -939,7 +949,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         });
 
         return undefined;
-      }, transformError);
+      }, transformError)) as Result<void, DocumentError>;
       match(
         () => {
           set({
