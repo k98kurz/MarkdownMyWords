@@ -595,19 +595,13 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
             'docKeys',
             docId,
           ]);
-          let privateNode: unknown = userNode;
-          for (const part of privatePath) {
-            const getNode = (privateNode as Record<string, unknown>).get as (
-              key: string
-            ) => unknown;
-            privateNode = getNode(part);
-          }
+          const node = privatePath.reduce(
+            (n, part) => (n as GunNodeRef).get(part),
+            userNode
+          ) as GunNodeRef;
 
           await new Promise<void>((resolve, reject) => {
-            const putNode = privateNode as {
-              put: (data: unknown, cb?: (ack: unknown) => void) => void;
-            };
-            putNode.put(null, (ack: unknown) => {
+            node.put(null, (ack: unknown) => {
               if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
                 reject(
                   new Error(`Failed to delete document key: ${String(ack.err)}`)
