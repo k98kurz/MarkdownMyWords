@@ -19,6 +19,9 @@ import type {
   DocumentAccessEntry,
 } from '@/types/document';
 
+const TEST_USERNAME = 'testuser_doc_tests';
+const TEST_PASSWORD = 'testpass123';
+
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
@@ -36,6 +39,23 @@ function generateTestTitle(suffix: string = ''): string {
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(message);
+  }
+}
+
+/**
+ * Assert helper with detailed error messages
+ */
+function assertWithDetails<T>(
+  condition: boolean,
+  message: string,
+  details: { expected?: T; actual?: T; error?: unknown }
+): asserts condition {
+  if (!condition) {
+    const detailsStr = Object.entries(details)
+      .filter(([_, v]) => v !== undefined)
+      .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
+      .join(', ');
+    throw new Error(`${message}${detailsStr ? ` (${detailsStr})` : ''}`);
   }
 }
 
@@ -116,42 +136,36 @@ function verifyDocumentProperties(
     updatedAt: number;
     access?: DocumentAccessEntry[];
   },
-  expectedTitle: string,
-  expectedContent: string,
-  expectedIsPublic: boolean,
-  expectedHasAccess: boolean,
-  expectedTags?: string[],
-  expectedId?: string,
-  expectedAccessLength?: number
+  expected: Record<string, string | boolean | string[] | number>
 ): void {
-  if (expectedId) {
-    assert(doc.id === expectedId, 'Document id should match');
+  if (expected.id) {
+    assert(doc.id === expected.id, 'Document id should match');
   } else {
     assert(typeof doc.id === 'string', 'Document should have id');
     assert(doc.id.length > 0, 'Document id should not be empty');
   }
-  assert(doc.title === expectedTitle, 'Title should match');
-  assert(doc.content === expectedContent, 'Content should match');
-  if (expectedTags) {
+  assert(doc.title === expected.title, 'Title should match');
+  assert(doc.content === expected.content, 'Content should match');
+  if (expected.tags) {
     assert(
-      JSON.stringify(doc.tags) === JSON.stringify(expectedTags),
+      JSON.stringify(doc.tags) === JSON.stringify(expected.tags),
       'Tags should match'
     );
   } else if (doc.tags !== undefined) {
     assert(Array.isArray(doc.tags), 'Tags should be an array');
   }
   assert(
-    doc.isPublic === expectedIsPublic,
-    `isPublic should be ${expectedIsPublic}`
+    doc.isPublic === expected.isPublic,
+    `isPublic should be ${expected.isPublic}`
   );
   assert(doc.createdAt > 0, 'Should have createdAt timestamp');
   assert(doc.updatedAt > 0, 'Should have updatedAt timestamp');
   assert(Array.isArray(doc.access), 'Should have access array');
-  if (expectedHasAccess) {
-    if (expectedAccessLength !== undefined) {
+  if (expected.hasAccess) {
+    if (expected.accessLength !== undefined) {
       assert(
-        doc.access.length === expectedAccessLength,
-        `Access array should have ${expectedAccessLength} items`
+        doc.access.length === expected.accessLength,
+        `Access array should have ${expected.accessLength} items`
       );
     } else {
       assert(doc.access.length > 0, 'Access array should not be empty');
@@ -237,6 +251,41 @@ async function cleanupDocumentStore(): Promise<void> {
   await sleep(100);
 }
 
+async function setupTestUser(): Promise<void> {
+  console.log('🔐 Setting up test user...');
+  const gun = gunService.getGun();
+
+  if (gun && gun.user()) {
+    gun.user().leave();
+    await sleep(500);
+  }
+
+  try {
+    await gunService.createUser(TEST_USERNAME, TEST_PASSWORD);
+    console.log(`  ✅ Created user: ${TEST_USERNAME}`);
+  } catch (error) {
+    console.log(`  ℹ️  User already exists: ${TEST_USERNAME}`);
+  }
+
+  await gunService.authenticateUser(TEST_USERNAME, TEST_PASSWORD);
+  console.log(`  ✅ Authenticated user: ${TEST_USERNAME}`);
+
+  await gunService.writeProfile();
+  await sleep(500);
+
+  console.log('  ✅ Test user setup complete\n');
+}
+
+async function cleanupTestUser(): Promise<void> {
+  console.log('🔐 Cleaning up test user...');
+  const gun = gunService.getGun();
+  if (gun && gun.user()) {
+    gun.user().leave();
+    await sleep(500);
+    console.log('  ✅ Logged out test user\n');
+  }
+}
+
 // ============================================================================
 // TEST SUITES
 // ============================================================================
@@ -256,7 +305,9 @@ async function testInputValidation(): Promise<TestSuiteResult> {
     const result = await useDocumentStore
       .getState()
       .createDocument('', 'content');
-    assert(isFailure(result), 'Should fail with empty title');
+    assertWithDetails(isFailure(result), 'Should fail with empty title', {
+      actual: result,
+    });
     assert(isDocumentError(result.error), 'Should return DocumentError');
     assert(
       result.error?.code === 'VALIDATION_ERROR',
@@ -330,7 +381,10 @@ async function testCreateDocument(): Promise<TestSuiteResult> {
         .getState()
         .createDocument(title, content, tags, isPublic);
 
-      assert(isSuccess(result), 'Should succeed creating document');
+      assert(
+        isSuccess(result),
+        `Should succeed creating document: ${isSuccess(result) ? 'ok' : JSON.stringify(result.error)}`
+      );
       assert(result.data !== undefined, 'Should have document data');
 
       const doc = result.data!;
@@ -341,7 +395,15 @@ async function testCreateDocument(): Promise<TestSuiteResult> {
         verifyEncryptedDocument(doc, title, content);
       }
 
-      verifyDocumentProperties(doc, title, content, isPublic, true, tags);
+      const expected = {
+        title: title,
+        content: content,
+        isPublic: isPublic,
+        hasAccess: false,
+        tags: tags,
+      };
+
+      verifyDocumentProperties(doc, expected);
 
       assert(
         useDocumentStore.getState().currentDocument?.id === doc.id,
@@ -363,11 +425,21 @@ async function testCreateDocument(): Promise<TestSuiteResult> {
       .getState()
       .createDocument(title, content);
 
-    assert(isSuccess(result), 'Should succeed creating document without tags');
+    assertWithDetails(
+      isSuccess(result),
+      'Should succeed creating document without tags',
+      { error: isFailure(result) ? result.error : undefined }
+    );
     assert(result.data !== undefined, 'Should have document data');
 
     const doc = result.data!;
-    verifyDocumentProperties(doc, title, content, false, true, undefined);
+    const expected = {
+      title: title,
+      content: content,
+      isPublic: false,
+      hasAccess: false,
+    };
+    verifyDocumentProperties(doc, expected);
     verifySuccessState();
   });
 
@@ -379,14 +451,21 @@ async function testCreateDocument(): Promise<TestSuiteResult> {
       .getState()
       .createDocument(title, content, []);
 
-    assert(
+    assertWithDetails(
       isSuccess(result),
-      'Should succeed creating document with empty tags'
+      'Should succeed creating document with empty tags',
+      { error: isFailure(result) ? result.error : undefined }
     );
     assert(result.data !== undefined, 'Should have document data');
 
     const doc = result.data!;
-    verifyDocumentProperties(doc, title, content, false, true, []);
+    const expected = {
+      title: title,
+      content: content,
+      isPublic: false,
+      hasAccess: true,
+    };
+    verifyDocumentProperties(doc, expected);
     verifySuccessState();
   });
 
@@ -401,8 +480,12 @@ async function testCreateDocument(): Promise<TestSuiteResult> {
       .getState()
       .createDocument(title2, 'content2');
 
-    assert(isSuccess(result1), 'First document should succeed');
-    assert(isSuccess(result2), 'Second document should succeed');
+    assertWithDetails(isSuccess(result1), 'First document should succeed', {
+      error: isFailure(result1) ? result1.error : undefined,
+    });
+    assertWithDetails(isSuccess(result2), 'Second document should succeed', {
+      error: isFailure(result2) ? result2.error : undefined,
+    });
 
     const doc1 = result1.data!;
     const doc2 = result2.data!;
@@ -422,7 +505,9 @@ async function testCreateDocument(): Promise<TestSuiteResult> {
 
     const afterCreation = Date.now();
 
-    assert(isSuccess(result), 'Should succeed');
+    assertWithDetails(isSuccess(result), 'Should succeed', {
+      error: isFailure(result) ? result.error : undefined,
+    });
     const doc = result.data!;
     verifyTimestamps(doc, beforeCreation, afterCreation);
 
@@ -438,7 +523,9 @@ async function testCreateDocument(): Promise<TestSuiteResult> {
       .getState()
       .createDocument(title, 'content');
 
-    assert(isSuccess(result), 'Should succeed');
+    assertWithDetails(isSuccess(result), 'Should succeed', {
+      error: isFailure(result) ? result.error : undefined,
+    });
     const doc = result.data!;
     assert(doc.isPublic === false, 'isPublic should default to false');
   });
@@ -489,14 +576,22 @@ async function testGetDocument(): Promise<TestSuiteResult> {
       const createResult = await useDocumentStore
         .getState()
         .createDocument(title, content, tags, isPublic);
-      assert(isSuccess(createResult), 'Should create document first');
+      assertWithDetails(
+        isSuccess(createResult),
+        'Should create document first',
+        { error: isFailure(createResult) ? createResult.error : undefined }
+      );
       const docId = createResult.data!.id;
 
       await cleanupDocumentStore();
 
       const getResult = await useDocumentStore.getState().getDocument(docId);
 
-      assert(isSuccess(getResult), 'Should retrieve existing document');
+      assertWithDetails(
+        isSuccess(getResult),
+        'Should retrieve existing document',
+        { error: isFailure(getResult) ? getResult.error : undefined }
+      );
       assert(getResult.data !== null, 'Should return document (not null)');
       assert(getResult.data!.id === docId, 'Should have matching id');
       assert(
@@ -553,13 +648,19 @@ async function testGetDocument(): Promise<TestSuiteResult> {
     const createResult = await useDocumentStore
       .getState()
       .createDocument(title, content, undefined, true);
-    assert(isSuccess(createResult), 'Should create document first');
+    assertWithDetails(isSuccess(createResult), 'Should create document first', {
+      error: isFailure(createResult) ? createResult.error : undefined,
+    });
     const docId = createResult.data!.id;
 
     await cleanupDocumentStore();
 
     const getResult = await useDocumentStore.getState().getDocument(docId);
-    assert(isSuccess(getResult), 'Should retrieve existing document');
+    assertWithDetails(
+      isSuccess(getResult),
+      'Should retrieve existing document',
+      { error: isFailure(getResult) ? getResult.error : undefined }
+    );
     assert(getResult.data !== null, 'Should return document');
     assert(getResult.data!.title === title, 'Should have title');
     assert(getResult.data!.content === content, 'Should have content');
@@ -609,18 +710,30 @@ async function testDeleteDocument(): Promise<TestSuiteResult> {
       const createResult = await useDocumentStore
         .getState()
         .createDocument(title, content, undefined, isPublic);
-      assert(isSuccess(createResult), 'Should create document first');
+      assertWithDetails(
+        isSuccess(createResult),
+        'Should create document first',
+        { error: isFailure(createResult) ? createResult.error : undefined }
+      );
       const docId = createResult.data!.id;
 
       const deleteResult = await useDocumentStore
         .getState()
         .deleteDocument(docId);
 
-      assert(isSuccess(deleteResult), 'Should delete existing document');
+      assertWithDetails(
+        isSuccess(deleteResult),
+        'Should delete existing document',
+        { error: isFailure(deleteResult) ? deleteResult.error : undefined }
+      );
       assert(deleteResult.data === undefined, 'Should return void (undefined)');
 
       const getResult = await useDocumentStore.getState().getDocument(docId);
-      assert(isSuccess(getResult), 'getDocument should not throw error');
+      assertWithDetails(
+        isSuccess(getResult),
+        'getDocument should not throw error',
+        { error: isFailure(getResult) ? getResult.error : undefined }
+      );
       assert(
         getResult.data === null,
         'getDocument should return null after deletion'
@@ -728,7 +841,9 @@ async function testListDocuments(): Promise<TestSuiteResult> {
 
   await runner.run('List empty documents', async () => {
     const result = await useDocumentStore.getState().listDocuments();
-    assert(isSuccess(result), 'Should succeed with empty list');
+    assertWithDetails(isSuccess(result), 'Should succeed with empty list', {
+      error: isFailure(result) ? result.error : undefined,
+    });
     assert(Array.isArray(result.data), 'Result data should be array');
     assert(result.data!.length === 0, 'Should return empty array');
     assert(
@@ -747,12 +862,16 @@ async function testListDocuments(): Promise<TestSuiteResult> {
     const result1 = await useDocumentStore
       .getState()
       .createDocument(title1, 'content1', undefined, true);
-    assert(isSuccess(result1), 'Should create first document');
+    assertWithDetails(isSuccess(result1), 'Should create first document', {
+      error: isFailure(result1) ? result1.error : undefined,
+    });
 
     const result2 = await useDocumentStore
       .getState()
       .createDocument(title2, 'content2', undefined, false);
-    assert(isSuccess(result2), 'Should create second document');
+    assertWithDetails(isSuccess(result2), 'Should create second document', {
+      error: isFailure(result2) ? result2.error : undefined,
+    });
 
     const listResult = await useDocumentStore.getState().listDocuments();
 
@@ -1008,18 +1127,28 @@ async function testShareDocument(): Promise<TestSuiteResult> {
       const createResult = await useDocumentStore
         .getState()
         .createDocument(title, content, undefined, isPublic);
-      assert(isSuccess(createResult), `Should create ${suffix} document first`);
+      assertWithDetails(
+        isSuccess(createResult),
+        `Should create ${suffix} document first`,
+        { error: isFailure(createResult) ? createResult.error : undefined }
+      );
       const docId = createResult.data!.id;
 
       const shareResult = await useDocumentStore
         .getState()
         .shareDocument(docId, 'recipient');
 
-      assert(isSuccess(shareResult), 'Should share document successfully');
+      assertWithDetails(
+        isSuccess(shareResult),
+        'Should share document successfully',
+        { error: isFailure(shareResult) ? shareResult.error : undefined }
+      );
       assert(shareResult.data === undefined, 'Should return void (undefined)');
 
       const getResult = await useDocumentStore.getState().getDocument(docId);
-      assert(isSuccess(getResult), 'Should retrieve document');
+      assertWithDetails(isSuccess(getResult), 'Should retrieve document', {
+        error: isFailure(getResult) ? getResult.error : undefined,
+      });
       assert(getResult.data !== null, 'Should return document');
       const doc = getResult.data!;
       assert(Array.isArray(doc.access), 'Should have access array');
@@ -1162,26 +1291,38 @@ async function testUnshareDocument(): Promise<TestSuiteResult> {
       const createResult = await useDocumentStore
         .getState()
         .createDocument(title, content, undefined, isPublic);
-      assert(isSuccess(createResult), `Should create ${suffix} document first`);
+      assertWithDetails(
+        isSuccess(createResult),
+        `Should create ${suffix} document first`,
+        { error: isFailure(createResult) ? createResult.error : undefined }
+      );
       const docId = createResult.data!.id;
 
       const shareResult = await useDocumentStore
         .getState()
         .shareDocument(docId, 'recipient');
-      assert(isSuccess(shareResult), 'Should share document first');
+      assertWithDetails(isSuccess(shareResult), 'Should share document first', {
+        error: isFailure(shareResult) ? shareResult.error : undefined,
+      });
 
       const unshareResult = await useDocumentStore
         .getState()
         .unshareDocument(docId, 'recipient');
 
-      assert(isSuccess(unshareResult), 'Should unshare document successfully');
+      assertWithDetails(
+        isSuccess(unshareResult),
+        'Should unshare document successfully',
+        { error: isFailure(unshareResult) ? unshareResult.error : undefined }
+      );
       assert(
         unshareResult.data === undefined,
         'Should return void (undefined)'
       );
 
       const getResult = await useDocumentStore.getState().getDocument(docId);
-      assert(isSuccess(getResult), 'Should retrieve document');
+      assertWithDetails(isSuccess(getResult), 'Should retrieve document', {
+        error: isFailure(getResult) ? getResult.error : undefined,
+      });
       assert(getResult.data !== null, 'Should return document');
       const doc = getResult.data!;
       assert(Array.isArray(doc.access), 'Should have access array');
@@ -1333,6 +1474,9 @@ export async function testDocumentStore(): Promise<TestSuiteResult[]> {
 
   const suiteResults: TestSuiteResult[] = [];
 
+  await setupTestUser();
+  console.log('='.repeat(60) + '\n');
+
   const inputValidationResult = await testInputValidation();
   suiteResults.push(inputValidationResult);
   console.log('\n' + '='.repeat(60) + '\n');
@@ -1367,6 +1511,8 @@ export async function testDocumentStore(): Promise<TestSuiteResult[]> {
 
   // Print summary
   printTestSummary(suiteResults);
+
+  await cleanupTestUser();
 
   return suiteResults;
 }
