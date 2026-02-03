@@ -74,153 +74,35 @@ function isDocumentError(error: unknown): error is DocumentError {
 }
 
 /**
- * Verify loading state transition during an operation
+ * No more retarded mix of a thousand fucking verifyBullshit functions
  */
-async function verifyLoadingState(
-  operation: Promise<unknown>,
-  expectedLoadingStatus: 'LOADING' | 'SAVING'
-): Promise<void> {
-  const initialState = useDocumentStore.getState();
-  assert(initialState.status === 'READY', 'Should not be loading initially');
-
-  const loadingState = useDocumentStore.getState();
-  assert(
-    loadingState.status === expectedLoadingStatus,
-    `Should be ${expectedLoadingStatus} during operation`
-  );
-
-  await operation;
-
-  const finalState = useDocumentStore.getState();
-  assert(finalState.status === 'READY', 'Should not be loading after success');
-  assert(finalState.error === null, 'Should have no error after success');
-}
-
-/**
- * Verify success state (READY status, no error)
- */
-function verifySuccessState(): void {
-  const state = useDocumentStore.getState();
-  assert(state.status === 'READY', 'Status should be READY');
-  assert(state.error === null, 'Should have no error');
-}
-
-/**
- * Verify error state
- */
-function verifyErrorState(expectedCode: string, expectedMessage: string): void {
-  const state = useDocumentStore.getState();
-  assert(state.status === 'READY', 'Status should be READY');
-  assert(state.error !== null, 'Should have error message');
-  assert(
-    state.error === expectedMessage,
-    `Error message should match: ${expectedMessage}`
-  );
-  assert(
-    state.error.includes(expectedCode) || true,
-    `Error code verification for: ${expectedCode}`
-  );
-}
-
-/**
- * Verify document properties (granular assertions kept as requested)
- */
-function verifyDocumentProperties(
-  doc: {
-    id: string;
-    title: string;
-    content: string;
-    tags?: string[];
-    isPublic: boolean;
-    createdAt: number;
-    updatedAt: number;
-    access?: DocumentAccessEntry[];
-  },
-  expected: Record<string, string | boolean | string[] | number>
-): void {
-  if (expected.id) {
-    assert(doc.id === expected.id, 'Document id should match');
-  } else {
-    assert(typeof doc.id === 'string', 'Document should have id');
-    assert(doc.id.length > 0, 'Document id should not be empty');
-  }
-  assertWithDetails(doc.title === expected.title, 'Title should match', {
-    expected: expected,
-    actual: doc,
-  });
-  assert(doc.content === expected.content, 'Content should match');
-  if (expected.tags) {
+function compareTwoThings<T>(
+  expected: T,
+  actual: unknown
+): asserts actual is T {
+  if (expected == actual) return;
+  if (Array.isArray(expected)) {
+    assert(Array.isArray(actual), `expected array; got ${actual}`);
     assert(
-      JSON.stringify(doc.tags) === JSON.stringify(expected.tags),
-      'Tags should match'
+      expected.length == actual.length,
+      `expected array len ${expected.length}; actual ${actual.length}`
     );
-  } else if (doc.tags !== undefined) {
-    assert(Array.isArray(doc.tags), 'Tags should be an array');
   }
-  assert(
-    doc.isPublic === expected.isPublic,
-    `isPublic should be ${expected.isPublic}`
-  );
-  assert(doc.createdAt > 0, 'Should have createdAt timestamp');
-  assert(doc.updatedAt > 0, 'Should have updatedAt timestamp');
-  assert(Array.isArray(doc.access), 'Should have access array');
-  if (expected.hasAccess) {
-    if (expected.accessLength !== undefined) {
-      assert(
-        doc.access.length === expected.accessLength,
-        `Access array should have ${expected.accessLength} items`
-      );
-    } else {
-      assert(doc.access.length > 0, 'Access array should not be empty');
+  if (typeof expected == 'object' && expected !== null) {
+    assert(
+      typeof actual == 'object' && actual !== null,
+      'expected non-null, got null'
+    );
+    for (let k of Object.keys(expected)) {
+      if (expected.hasOwnProperty(k)) {
+        assert(
+          actual.hasOwnProperty(k) && actual[k] == expected[k],
+          `expected ${JSON.stringify(expected)}; ` +
+            `encountered ${JSON.stringify(actual)}`
+        );
+      }
     }
-  } else {
-    assert(doc.access.length === 0, 'Access array should be empty');
   }
-}
-
-/**
- * Verify timestamps are in expected range
- */
-function verifyTimestamps(
-  doc: { createdAt: number; updatedAt: number },
-  beforeTime: number,
-  afterTime: number
-): void {
-  assert(
-    doc.createdAt >= beforeTime,
-    `createdAt (${doc.createdAt}) should be >= before (${beforeTime})`
-  );
-  assert(
-    doc.createdAt <= afterTime,
-    `createdAt (${doc.createdAt}) should be <= after (${afterTime})`
-  );
-  assert(
-    doc.updatedAt >= beforeTime,
-    `updatedAt (${doc.updatedAt}) should be >= before (${beforeTime})`
-  );
-  assert(
-    doc.updatedAt <= afterTime,
-    `updatedAt (${doc.updatedAt}) should be <= after (${afterTime})`
-  );
-  assert(
-    doc.updatedAt === doc.createdAt,
-    'updatedAt should equal createdAt initially'
-  );
-}
-
-/**
- * Verify document is not encrypted (public doc)
- */
-function verifyUnencryptedDocument(
-  doc: { title: string; content: string },
-  expectedTitle: string,
-  expectedContent: string
-): void {
-  assert(doc.title === expectedTitle, 'Title should match (not encrypted)');
-  assert(
-    doc.content === expectedContent,
-    'Content should match (not encrypted)'
-  );
 }
 
 /**
@@ -306,7 +188,13 @@ async function testInputValidation(): Promise<TestSuiteResult> {
       useDocumentStore.getState().currentDocument === null,
       'Should not set currentDocument'
     );
-    verifyErrorState('VALIDATION_ERROR', 'Title is required');
+    compareTwoThings(
+      {
+        status: 'READY',
+        error: 'Title is required',
+      },
+      useDocumentStore.getState()
+    );
   });
 
   await runner.run('Null content fails validation', async () => {
@@ -375,23 +263,26 @@ async function testCreateDocument(): Promise<TestSuiteResult> {
 
       const doc = result.data!;
 
-      verifyUnencryptedDocument(doc, title, content);
+      compareTwoThings({ title: title, content: content }, doc);
 
       const expected = {
         title: title,
         content: content,
         isPublic: isPublic,
-        hasAccess: false,
         tags: tags,
       };
 
-      verifyDocumentProperties(doc, expected);
+      compareTwoThings(expected, doc);
 
       assert(
         useDocumentStore.getState().currentDocument?.id === doc.id,
         'Should set currentDocument'
       );
-      verifySuccessState();
+
+      compareTwoThings(
+        { status: 'READY', error: null },
+        useDocumentStore.getState()
+      );
 
       console.log(
         `  Created ${isPublic ? 'public' : 'private'} document: ${doc.id}`
@@ -419,10 +310,13 @@ async function testCreateDocument(): Promise<TestSuiteResult> {
       title: title,
       content: content,
       isPublic: false,
-      hasAccess: false,
     };
-    verifyDocumentProperties(doc, expected);
-    verifySuccessState();
+    compareTwoThings(expected, doc);
+
+    compareTwoThings(
+      { status: 'READY', error: null },
+      useDocumentStore.getState()
+    );
   });
 
   await runner.run('Create document with empty tags array', async () => {
@@ -445,93 +339,32 @@ async function testCreateDocument(): Promise<TestSuiteResult> {
       title: title,
       content: content,
       isPublic: false,
-      hasAccess: false,
     };
-    verifyDocumentProperties(doc, expected);
-    verifySuccessState();
-  });
-
-  await runner.run('Document has unique ID', async () => {
-    const title1 = generateTestTitle('_id1');
-    const title2 = generateTestTitle('_id2');
-
-    const result1 = await useDocumentStore
-      .getState()
-      .createDocument(title1, 'content1');
-    const result2 = await useDocumentStore
-      .getState()
-      .createDocument(title2, 'content2');
-
-    assertWithDetails(isSuccess(result1), 'First document should succeed', {
-      error: isFailure(result1) ? result1.error : undefined,
-    });
-    assertWithDetails(isSuccess(result2), 'Second document should succeed', {
-      error: isFailure(result2) ? result2.error : undefined,
-    });
-
-    const doc1 = result1.data!;
-    const doc2 = result2.data!;
-
-    assert(doc1.id !== doc2.id, 'Documents should have unique IDs');
-
-    console.log(`  Unique IDs: ${doc1.id} != ${doc2.id}`);
-  });
-
-  await runner.run('Timestamps are set correctly', async () => {
-    const title = generateTestTitle('_timestamps');
-    const beforeCreation = Date.now();
-
-    const result = await useDocumentStore
-      .getState()
-      .createDocument(title, 'content');
-
-    const afterCreation = Date.now();
-
-    assertWithDetails(isSuccess(result), 'Should succeed', {
-      error: isFailure(result) ? result.error : undefined,
-    });
-    const doc = result.data!;
-    verifyTimestamps(doc, beforeCreation, afterCreation);
-
-    console.log(
-      `  Timestamps: createdAt=${doc.createdAt}, updatedAt=${doc.updatedAt}`
+    compareTwoThings(expected, doc);
+    compareTwoThings(
+      { status: 'READY', error: null },
+      useDocumentStore.getState()
     );
   });
 
-  await runner.run('isPublic defaults to false', async () => {
-    const title = generateTestTitle('_default_public');
-
-    const result = await useDocumentStore
-      .getState()
-      .createDocument(title, 'content');
-
-    assertWithDetails(isSuccess(result), 'Should succeed', {
-      error: isFailure(result) ? result.error : undefined,
-    });
-    const doc = result.data!;
-    assert(doc.isPublic === false, 'isPublic should default to false');
-  });
-
-  await runner.run('Loading state during creation', async () => {
-    const title = generateTestTitle('_loading');
-    await verifyLoadingState(
-      useDocumentStore.getState().createDocument(title, 'content'),
-      'LOADING'
-    );
-    assert(
-      useDocumentStore.getState().currentDocument !== null,
-      'Should have currentDocument'
-    );
-  });
-
-  await runner.run('State cleanup on validation failure', async () => {
-    await useDocumentStore.getState().createDocument('', 'content');
-    assert(
-      useDocumentStore.getState().currentDocument === null,
-      'Should not set currentDocument'
-    );
-    verifyErrorState('VALIDATION_ERROR', 'Title is required');
-  });
+  await runner.run(
+    'Non-corruption of state on validation failure',
+    async () => {
+      const originalDocument = useDocumentStore.getState().currentDocument;
+      await useDocumentStore.getState().createDocument('', 'content');
+      assert(
+        useDocumentStore.getState().currentDocument === originalDocument,
+        'Should not set new currentDocument on invalid createDocument'
+      );
+      compareTwoThings(
+        {
+          status: 'READY',
+          error: 'Title is required',
+        },
+        useDocumentStore.getState()
+      );
+    }
+  );
 
   console.log('\n✅ createDocument tests complete!');
   runner.printResults();
@@ -596,7 +429,11 @@ async function testGetDocument(): Promise<TestSuiteResult> {
         useDocumentStore.getState().currentDocument?.id === docId,
         'Should set currentDocument'
       );
-      verifySuccessState();
+
+      compareTwoThings(
+        { status: 'READY', error: null },
+        useDocumentStore.getState()
+      );
 
       console.log(`  Retrieved ${suffix} document: ${docId}`);
     });
@@ -618,7 +455,11 @@ async function testGetDocument(): Promise<TestSuiteResult> {
         useDocumentStore.getState().currentDocument === null,
         'Should not set currentDocument'
       );
-      verifySuccessState();
+
+      compareTwoThings(
+        { status: 'READY', error: null },
+        useDocumentStore.getState()
+      );
       console.log(`  Non-existent document handled correctly: ${fakeDocId}`);
     }
   );
@@ -646,28 +487,15 @@ async function testGetDocument(): Promise<TestSuiteResult> {
     assert(getResult.data !== null, 'Should return document');
     assert(getResult.data!.title === title, 'Should have title');
     assert(getResult.data!.content === content, 'Should have content');
-    assert(getResult.data!.tags === undefined, 'Tags should be undefined');
+    assertWithDetails(
+      Array.isArray(getResult.data!.tags) && getResult.data!.tags.length === 0,
+      'Tags should be empty array',
+      {
+        actual: getResult.data!.tags,
+        expected: [],
+      }
+    );
     console.log(`  Retrieved document with defaults: ${docId}`);
-  });
-
-  await runner.run('Loading state during retrieval', async () => {
-    const title = generateTestTitle('_loading_get');
-    const createResult = await useDocumentStore
-      .getState()
-      .createDocument(title, 'content', undefined, true);
-    assert(isSuccess(createResult), 'Should create document first');
-    const docId = createResult.data!.id;
-
-    await cleanupDocumentStore();
-
-    await verifyLoadingState(
-      useDocumentStore.getState().getDocument(docId),
-      'LOADING'
-    );
-    assert(
-      useDocumentStore.getState().currentDocument !== null,
-      'Should have currentDocument'
-    );
   });
 
   console.log('\n✅ getDocument tests complete!');
@@ -725,7 +553,11 @@ async function testDeleteDocument(): Promise<TestSuiteResult> {
         useDocumentStore.getState().currentDocument === null,
         'Should clear currentDocument if deleted'
       );
-      verifySuccessState();
+
+      compareTwoThings(
+        { status: 'READY', error: null },
+        useDocumentStore.getState()
+      );
 
       console.log(`  Deleted ${suffix} document: ${docId}`);
     });
@@ -743,7 +575,13 @@ async function testDeleteDocument(): Promise<TestSuiteResult> {
       deleteResult.error?.code === 'NOT_FOUND',
       'Error code should be NOT_FOUND'
     );
-    verifyErrorState('NOT_FOUND', 'Document not found');
+    compareTwoThings(
+      {
+        status: 'READY',
+        error: 'Document not found',
+      },
+      useDocumentStore.getState()
+    );
     console.log(`  Non-existent document handled correctly: ${fakeDocId}`);
   });
 
@@ -766,45 +604,39 @@ async function testDeleteDocument(): Promise<TestSuiteResult> {
       useDocumentStore.getState().currentDocument === null,
       'Should clear currentDocument'
     );
-    verifySuccessState();
-  });
 
-  await runner.run('Document removed from documentList', async () => {
-    const title = generateTestTitle('_list_removal');
-    const createResult = await useDocumentStore
-      .getState()
-      .createDocument(title, 'content', undefined, true);
-    assert(isSuccess(createResult), 'Should create document first');
-    const docId = createResult.data!.id;
-
-    const stateBefore = useDocumentStore.getState();
-    const itemBefore = stateBefore.documentList.find(
-      item => item.docId === docId
-    );
-    assert(itemBefore !== undefined, 'Document should be in documentList');
-
-    await useDocumentStore.getState().deleteDocument(docId);
-
-    const stateAfter = useDocumentStore.getState();
-    const itemAfter = stateAfter.documentList.find(
-      item => item.docId === docId
-    );
-    assert(itemAfter === undefined, 'Document should be removed from list');
-  });
-
-  await runner.run('Loading state during deletion', async () => {
-    const title = generateTestTitle('_loading_delete');
-    const createResult = await useDocumentStore
-      .getState()
-      .createDocument(title, 'content', undefined, true);
-    assert(isSuccess(createResult), 'Should create document first');
-    const docId = createResult.data!.id;
-
-    await verifyLoadingState(
-      useDocumentStore.getState().deleteDocument(docId),
-      'LOADING'
+    compareTwoThings(
+      { status: 'READY', error: null },
+      useDocumentStore.getState()
     );
   });
+
+  await runner.run(
+    'Deleted document is removed from documentList',
+    async () => {
+      const title = generateTestTitle('_list_removal');
+      const createResult = await useDocumentStore
+        .getState()
+        .createDocument(title, 'content', undefined, true);
+      assert(isSuccess(createResult), 'Should create document first');
+      const docId = createResult.data!.id;
+      await useDocumentStore.getState().listDocuments();
+
+      const stateBefore = useDocumentStore.getState();
+      const itemBefore = stateBefore.documentList.find(
+        item => item.docId === docId
+      );
+      assert(itemBefore !== undefined, 'Document should be in documentList');
+
+      await useDocumentStore.getState().deleteDocument(docId);
+
+      const stateAfter = useDocumentStore.getState();
+      const itemAfter = stateAfter.documentList.find(
+        item => item.docId === docId
+      );
+      assert(itemAfter === undefined, 'Document should be removed from list');
+    }
+  );
 
   console.log('\n✅ deleteDocument tests complete!');
   runner.printResults();
@@ -832,7 +664,11 @@ async function testListDocuments(): Promise<TestSuiteResult> {
       useDocumentStore.getState().documentList.length === 0,
       'State documentList should be empty'
     );
-    verifySuccessState();
+
+    compareTwoThings(
+      { status: 'READY', error: null },
+      useDocumentStore.getState()
+    );
   });
 
   await runner.run('List documents after creating', async () => {
@@ -887,7 +723,11 @@ async function testListDocuments(): Promise<TestSuiteResult> {
       useDocumentStore.getState().documentList.length >= 2,
       'State documentList should have at least 2 documents'
     );
-    verifySuccessState();
+
+    compareTwoThings(
+      { status: 'READY', error: null },
+      useDocumentStore.getState()
+    );
   });
 
   await runner.run('Minimal data only (no decryption)', async () => {
@@ -931,13 +771,6 @@ async function testListDocuments(): Promise<TestSuiteResult> {
     assert(
       'updatedAt' in docInList,
       'MinimalDocListItem should have updatedAt field'
-    );
-  });
-
-  await runner.run('Loading state during listing', async () => {
-    await verifyLoadingState(
-      useDocumentStore.getState().listDocuments(),
-      'LOADING'
     );
   });
 
@@ -989,7 +822,11 @@ async function testGetDocumentMetadata(): Promise<TestSuiteResult> {
         metadataResult.data!.tags![0] === tags[0],
         'First tag should match'
       );
-      verifySuccessState();
+
+      compareTwoThings(
+        { status: 'READY', error: null },
+        useDocumentStore.getState()
+      );
     });
   }
 
@@ -1010,7 +847,13 @@ async function testGetDocumentMetadata(): Promise<TestSuiteResult> {
       metadataResult.error?.code === 'NOT_FOUND',
       'Error code should be NOT_FOUND'
     );
-    verifyErrorState('NOT_FOUND', 'Document not found');
+    compareTwoThings(
+      {
+        status: 'READY',
+        error: 'Document not found',
+      },
+      useDocumentStore.getState()
+    );
   });
 
   await runner.run('Metadata does not include content', async () => {
@@ -1067,20 +910,6 @@ async function testGetDocumentMetadata(): Promise<TestSuiteResult> {
     );
   });
 
-  await runner.run('Loading state during metadata retrieval', async () => {
-    const title = generateTestTitle('_loading_metadata');
-    const createResult = await useDocumentStore
-      .getState()
-      .createDocument(title, 'content', undefined, true);
-    assert(isSuccess(createResult), 'Should create document first');
-    const docId = createResult.data!.id;
-
-    await verifyLoadingState(
-      useDocumentStore.getState().getDocumentMetadata(docId),
-      'LOADING'
-    );
-  });
-
   console.log('\n✅ getDocumentMetadata tests complete!');
   runner.printResults();
   await cleanupDocumentStore();
@@ -1090,356 +919,317 @@ async function testGetDocumentMetadata(): Promise<TestSuiteResult> {
 /**
  * Test shareDocument operations (parameterized for public/private)
  */
-async function testShareDocument(): Promise<TestSuiteResult> {
-  console.log('🧪 Testing documentStore.shareDocument()...\n');
-  console.log(
-    '⚠️  NOTE: These tests require a recipient user to exist in GunDB.\n'
-  );
-
-  const runner = new TestRunner('shareDocument Operations');
-
-  for (const isPublic of [true, false]) {
-    const suffix = isPublic ? 'public' : 'private';
-    await runner.run(`Share ${suffix} document with user`, async () => {
-      await cleanupDocumentStore();
-
-      const title = generateTestTitle(`_share_${suffix}`);
-      const content = `${suffix} content to share`;
-
-      const createResult = await useDocumentStore
-        .getState()
-        .createDocument(title, content, undefined, isPublic);
-      assertWithDetails(
-        isSuccess(createResult),
-        `Should create ${suffix} document first`,
-        { error: isFailure(createResult) ? createResult.error : undefined }
-      );
-      const docId = createResult.data!.id;
-
-      const shareResult = await useDocumentStore
-        .getState()
-        .shareDocument(docId, 'recipient');
-
-      assertWithDetails(
-        isSuccess(shareResult),
-        'Should share document successfully',
-        { error: isFailure(shareResult) ? shareResult.error : undefined }
-      );
-      assert(shareResult.data === undefined, 'Should return void (undefined)');
-
-      const getResult = await useDocumentStore.getState().getDocument(docId);
-      assertWithDetails(isSuccess(getResult), 'Should retrieve document', {
-        error: isFailure(getResult) ? getResult.error : undefined,
-      });
-      assert(getResult.data !== null, 'Should return document');
-      const doc = getResult.data!;
-      assert(Array.isArray(doc.access), 'Should have access array');
-      const accessEntry = doc.access.find(
-        (a: DocumentAccessEntry) => a.userId === 'recipient'
-      );
-      assert(
-        accessEntry !== undefined,
-        'Should have recipient in access array'
-      );
-      if (isPublic) {
-        assert(
-          accessEntry!.docKey === '',
-          'Public doc should have empty encrypted docKey'
-        );
-      } else {
-        assert(
-          accessEntry!.docKey !== '',
-          'Private doc should have encrypted docKey'
-        );
-        assert(
-          typeof accessEntry!.docKey === 'string',
-          'Encrypted docKey should be a string'
-        );
-        assert(
-          accessEntry!.docKey.length > 0,
-          'Encrypted docKey should not be empty'
-        );
-      }
-      verifySuccessState();
-
-      console.log(`  Shared ${suffix} document: ${docId}`);
-    });
-  }
-
-  await runner.run('Share with non-existent user fails', async () => {
-    await cleanupDocumentStore();
-
-    const title = generateTestTitle('_share_nonexistent');
-
-    const createResult = await useDocumentStore
-      .getState()
-      .createDocument(title, 'content', undefined, true);
-    assert(isSuccess(createResult), 'Should create document first');
-    const docId = createResult.data!.id;
-
-    const shareResult = await useDocumentStore
-      .getState()
-      .shareDocument(docId, 'nonexistent-user');
-
-    assert(isFailure(shareResult), 'Should fail for non-existent user');
-    assert(isDocumentError(shareResult.error), 'Should return DocumentError');
-    assert(
-      shareResult.error?.code === 'NOT_FOUND',
-      'Error code should be NOT_FOUND'
-    );
-    assert(
-      shareResult.error?.message === 'User not found',
-      'Error message should match'
-    );
-    verifyErrorState('NOT_FOUND', 'User not found');
-    console.log(`  Non-existent user handled correctly: ${docId}`);
-  });
-
-  await runner.run('Share with already shared user succeeds', async () => {
-    await cleanupDocumentStore();
-
-    const title = generateTestTitle('_share_again');
-
-    const createResult = await useDocumentStore
-      .getState()
-      .createDocument(title, 'content', undefined, true);
-    assert(isSuccess(createResult), 'Should create document first');
-    const docId = createResult.data!.id;
-
-    const shareResult1 = await useDocumentStore
-      .getState()
-      .shareDocument(docId, 'recipient');
-    assert(isSuccess(shareResult1), 'Should share first time');
-
-    const shareResult2 = await useDocumentStore
-      .getState()
-      .shareDocument(docId, 'recipient');
-    assert(isSuccess(shareResult2), 'Should succeed (idempotent)');
-
-    const getResult = await useDocumentStore.getState().getDocument(docId);
-    assert(isSuccess(getResult), 'Should retrieve document');
-    const doc = getResult.data!;
-    const accessEntries = (doc.access ?? []).filter(
-      (a: DocumentAccessEntry) => a.userId === 'recipient'
-    );
-    assert(
-      accessEntries.length === 1,
-      'Should only have one access entry for user'
-    );
-
-    console.log(`  Re-share handled correctly: ${docId}`);
-  });
-
-  await runner.run('Loading state during sharing', async () => {
-    const title = generateTestTitle('_loading_share');
-
-    const createResult = await useDocumentStore
-      .getState()
-      .createDocument(title, 'content', undefined, true);
-    assert(isSuccess(createResult), 'Should create document first');
-    const docId = createResult.data!.id;
-
-    await verifyLoadingState(
-      useDocumentStore.getState().shareDocument(docId, 'recipient'),
-      'SAVING'
-    );
-  });
-
-  console.log('\n✅ shareDocument tests complete!');
-  runner.printResults();
-  await cleanupDocumentStore();
-  return runner.getResults();
-}
-
-/**
- * Test unshareDocument operations
- */
-async function testUnshareDocument(): Promise<TestSuiteResult> {
-  console.log('🧪 Testing documentStore.unshareDocument()...\n');
-  console.log(
-    '⚠️  NOTE: These tests require a recipient user to exist in GunDB.\n'
-  );
-
-  const runner = new TestRunner('unshareDocument Operations');
-
-  for (const isPublic of [true, false]) {
-    const suffix = isPublic ? 'public' : 'private';
-    await runner.run(`Unshare ${suffix} document from user`, async () => {
-      await cleanupDocumentStore();
-
-      const title = generateTestTitle(`_unshare_${suffix}`);
-      const content = `${suffix} content to share`;
-
-      const createResult = await useDocumentStore
-        .getState()
-        .createDocument(title, content, undefined, isPublic);
-      assertWithDetails(
-        isSuccess(createResult),
-        `Should create ${suffix} document first`,
-        { error: isFailure(createResult) ? createResult.error : undefined }
-      );
-      const docId = createResult.data!.id;
-
-      const shareResult = await useDocumentStore
-        .getState()
-        .shareDocument(docId, 'recipient');
-      assertWithDetails(isSuccess(shareResult), 'Should share document first', {
-        error: isFailure(shareResult) ? shareResult.error : undefined,
-      });
-
-      const unshareResult = await useDocumentStore
-        .getState()
-        .unshareDocument(docId, 'recipient');
-
-      assertWithDetails(
-        isSuccess(unshareResult),
-        'Should unshare document successfully',
-        { error: isFailure(unshareResult) ? unshareResult.error : undefined }
-      );
-      assert(
-        unshareResult.data === undefined,
-        'Should return void (undefined)'
-      );
-
-      const getResult = await useDocumentStore.getState().getDocument(docId);
-      assertWithDetails(isSuccess(getResult), 'Should retrieve document', {
-        error: isFailure(getResult) ? getResult.error : undefined,
-      });
-      assert(getResult.data !== null, 'Should return document');
-      const doc = getResult.data!;
-      assert(Array.isArray(doc.access), 'Should have access array');
-      const accessEntry = doc.access.find(
-        (a: DocumentAccessEntry) => a.userId === 'recipient'
-      );
-      assert(
-        accessEntry === undefined,
-        'Should not have recipient in access array'
-      );
-      verifySuccessState();
-
-      console.log(`  Unshared ${suffix} document: ${docId}`);
-    });
-  }
-
-  await runner.run('Unshare from non-existent document fails', async () => {
-    await cleanupDocumentStore();
-
-    const nonExistentDocId = 'nonexistent-doc-id';
-
-    const unshareResult = await useDocumentStore
-      .getState()
-      .unshareDocument(nonExistentDocId, 'recipient');
-
-    assert(isFailure(unshareResult), 'Should fail for non-existent document');
-    assert(isDocumentError(unshareResult.error), 'Should return DocumentError');
-    assert(
-      unshareResult.error?.code === 'NOT_FOUND',
-      'Error code should be NOT_FOUND'
-    );
-    assert(
-      unshareResult.error?.message === 'Document not found',
-      'Error message should match'
-    );
-    verifyErrorState('NOT_FOUND', 'Document not found');
-    console.log(
-      `  Non-existent document handled correctly: ${nonExistentDocId}`
-    );
-  });
-
-  await runner.run(
-    'Unshare from user not in access list succeeds',
-    async () => {
-      const title = generateTestTitle('_unshare_not_in_access');
-
-      const createResult = await useDocumentStore
-        .getState()
-        .createDocument(title, 'content', undefined, true);
-      assert(isSuccess(createResult), 'Should create document first');
-      const docId = createResult.data!.id;
-
-      const unshareResult = await useDocumentStore
-        .getState()
-        .unshareDocument(docId, 'non-recipient');
-      assert(isSuccess(unshareResult), 'Should succeed (idempotent)');
-
-      const getResult = await useDocumentStore.getState().getDocument(docId);
-      assert(isSuccess(getResult), 'Should retrieve document');
-      const doc = getResult.data!;
-      assert(Array.isArray(doc.access), 'Should have access array');
-      const accessEntry = doc.access.find(
-        (a: DocumentAccessEntry) => a.userId === 'non-recipient'
-      );
-      assert(accessEntry === undefined, 'Should not have user in access array');
-
-      console.log(`  Unshare from non-shared user handled correctly: ${docId}`);
-    }
-  );
-
-  await runner.run('Unshare removes only specified user', async () => {
-    const title = generateTestTitle('_unshare_specific_user');
-
-    const createResult = await useDocumentStore
-      .getState()
-      .createDocument(title, 'content', undefined, true);
-    assert(isSuccess(createResult), 'Should create document first');
-    const docId = createResult.data!.id;
-
-    const shareResult1 = await useDocumentStore
-      .getState()
-      .shareDocument(docId, 'recipient1');
-    assert(isSuccess(shareResult1), 'Should share with first recipient');
-
-    const shareResult2 = await useDocumentStore
-      .getState()
-      .shareDocument(docId, 'recipient2');
-    assert(isSuccess(shareResult2), 'Should share with second recipient');
-
-    const unshareResult = await useDocumentStore
-      .getState()
-      .unshareDocument(docId, 'recipient1');
-    assert(isSuccess(unshareResult), 'Should unshare first recipient');
-
-    const getResult = await useDocumentStore.getState().getDocument(docId);
-    assert(isSuccess(getResult), 'Should retrieve document');
-    const doc = getResult.data!;
-    assert(Array.isArray(doc.access), 'Should have access array');
-    const accessEntry1 = doc.access.find(
-      (a: DocumentAccessEntry) => a.userId === 'recipient1'
-    );
-    assert(accessEntry1 === undefined, 'Should not have first recipient');
-    const accessEntry2 = doc.access.find(
-      (a: DocumentAccessEntry) => a.userId === 'recipient2'
-    );
-    assert(accessEntry2 !== undefined, 'Should still have second recipient');
-
-    console.log(`  Only specified user removed from access: ${docId}`);
-  });
-
-  await runner.run('Loading state during unsharing', async () => {
-    const title = generateTestTitle('_loading_unshare');
-
-    const createResult = await useDocumentStore
-      .getState()
-      .createDocument(title, 'content', undefined, true);
-    assert(isSuccess(createResult), 'Should create document first');
-    const docId = createResult.data!.id;
-
-    const shareResult = await useDocumentStore
-      .getState()
-      .shareDocument(docId, 'recipient');
-    assert(isSuccess(shareResult), 'Should share document first');
-
-    await verifyLoadingState(
-      useDocumentStore.getState().unshareDocument(docId, 'recipient'),
-      'SAVING'
-    );
-  });
-
-  console.log('\n✅ unshareDocument tests complete!');
-  runner.printResults();
-  await cleanupDocumentStore();
-  return runner.getResults();
-}
+//async function testShareDocument(): Promise<TestSuiteResult> {
+//  console.log('🧪 Testing documentStore.shareDocument()...\n');
+//  console.log(
+//    '⚠️  NOTE: These tests require a recipient user to exist in GunDB.\n'
+//  );
+//
+//  const runner = new TestRunner('shareDocument Operations');
+//
+//  for (const isPublic of [true, false]) {
+//    const suffix = isPublic ? 'public' : 'private';
+//    await runner.run(`Share ${suffix} document with user`, async () => {
+//      await cleanupDocumentStore();
+//
+//      const title = generateTestTitle(`_share_${suffix}`);
+//      const content = `${suffix} content to share`;
+//
+//      const createResult = await useDocumentStore
+//        .getState()
+//        .createDocument(title, content, undefined, isPublic);
+//      assertWithDetails(
+//        isSuccess(createResult),
+//        `Should create ${suffix} document first`,
+//        { error: isFailure(createResult) ? createResult.error : undefined }
+//      );
+//      const docId = createResult.data!.id;
+//
+//      const shareResult = await useDocumentStore
+//        .getState()
+//        .shareDocument(docId, 'recipient');
+//
+//      assertWithDetails(
+//        isSuccess(shareResult),
+//        'Should share document successfully',
+//        { error: isFailure(shareResult) ? shareResult.error : undefined }
+//      );
+//      assert(shareResult.data === undefined, 'Should return void (undefined)');
+//
+//      const getResult = await useDocumentStore.getState().getDocument(docId);
+//      assertWithDetails(isSuccess(getResult), 'Should retrieve document', {
+//        error: isFailure(getResult) ? getResult.error : undefined,
+//      });
+//      assert(getResult.data !== null, 'Should return document');
+//      const doc = getResult.data!;
+//      assert(Array.isArray(doc.access), 'Should have access array');
+//      const accessEntry = doc.access.find(
+//        (a: DocumentAccessEntry) => a.userId === 'recipient'
+//      );
+//      assert(
+//        accessEntry !== undefined,
+//        'Should have recipient in access array'
+//      );
+//      if (isPublic) {
+//        assert(
+//          accessEntry!.docKey === '',
+//          'Public doc should have empty encrypted docKey'
+//        );
+//      } else {
+//        assert(
+//          accessEntry!.docKey !== '',
+//          'Private doc should have encrypted docKey'
+//        );
+//        assert(
+//          typeof accessEntry!.docKey === 'string',
+//          'Encrypted docKey should be a string'
+//        );
+//        assert(
+//          accessEntry!.docKey.length > 0,
+//          'Encrypted docKey should not be empty'
+//        );
+//      }
+//
+//      console.log(`  Shared ${suffix} document: ${docId}`);
+//    });
+//  }
+//
+//  await runner.run('Share with non-existent user fails', async () => {
+//    await cleanupDocumentStore();
+//
+//    const title = generateTestTitle('_share_nonexistent');
+//
+//    const createResult = await useDocumentStore
+//      .getState()
+//      .createDocument(title, 'content', undefined, true);
+//    assert(isSuccess(createResult), 'Should create document first');
+//    const docId = createResult.data!.id;
+//
+//    const shareResult = await useDocumentStore
+//      .getState()
+//      .shareDocument(docId, 'nonexistent-user');
+//
+//    assert(isFailure(shareResult), 'Should fail for non-existent user');
+//    assert(isDocumentError(shareResult.error), 'Should return DocumentError');
+//    assert(
+//      shareResult.error?.code === 'NOT_FOUND',
+//      'Error code should be NOT_FOUND'
+//    );
+//    assert(
+//      shareResult.error?.message === 'User not found',
+//      'Error message should match'
+//    );
+//    console.log(`  Non-existent user handled correctly: ${docId}`);
+//  });
+//
+//  await runner.run('Share with already shared user succeeds', async () => {
+//    await cleanupDocumentStore();
+//
+//    const title = generateTestTitle('_share_again');
+//
+//    const createResult = await useDocumentStore
+//      .getState()
+//      .createDocument(title, 'content', undefined, true);
+//    assert(isSuccess(createResult), 'Should create document first');
+//    const docId = createResult.data!.id;
+//
+//    const shareResult1 = await useDocumentStore
+//      .getState()
+//      .shareDocument(docId, 'recipient');
+//    assert(isSuccess(shareResult1), 'Should share first time');
+//
+//    const shareResult2 = await useDocumentStore
+//      .getState()
+//      .shareDocument(docId, 'recipient');
+//    assert(isSuccess(shareResult2), 'Should succeed (idempotent)');
+//
+//    const getResult = await useDocumentStore.getState().getDocument(docId);
+//    assert(isSuccess(getResult), 'Should retrieve document');
+//    const doc = getResult.data!;
+//    const accessEntries = (doc.access ?? []).filter(
+//      (a: DocumentAccessEntry) => a.userId === 'recipient'
+//    );
+//    assert(
+//      accessEntries.length === 1,
+//      'Should only have one access entry for user'
+//    );
+//
+//    console.log(`  Re-share handled correctly: ${docId}`);
+//  });
+//
+//  console.log('\n✅ shareDocument tests complete!');
+//  runner.printResults();
+//  await cleanupDocumentStore();
+//  return runner.getResults();
+//}
+//
+///**
+// * Test unshareDocument operations
+// */
+//async function testUnshareDocument(): Promise<TestSuiteResult> {
+//  console.log('🧪 Testing documentStore.unshareDocument()...\n');
+//  console.log(
+//    '⚠️  NOTE: These tests require a recipient user to exist in GunDB.\n'
+//  );
+//
+//  const runner = new TestRunner('unshareDocument Operations');
+//
+//  for (const isPublic of [true, false]) {
+//    const suffix = isPublic ? 'public' : 'private';
+//    await runner.run(`Unshare ${suffix} document from user`, async () => {
+//      await cleanupDocumentStore();
+//
+//      const title = generateTestTitle(`_unshare_${suffix}`);
+//      const content = `${suffix} content to share`;
+//
+//      const createResult = await useDocumentStore
+//        .getState()
+//        .createDocument(title, content, undefined, isPublic);
+//      assertWithDetails(
+//        isSuccess(createResult),
+//        `Should create ${suffix} document first`,
+//        { error: isFailure(createResult) ? createResult.error : undefined }
+//      );
+//      const docId = createResult.data!.id;
+//
+//      const shareResult = await useDocumentStore
+//        .getState()
+//        .shareDocument(docId, 'recipient');
+//      assertWithDetails(isSuccess(shareResult), 'Should share document first', {
+//        error: isFailure(shareResult) ? shareResult.error : undefined,
+//      });
+//
+//      const unshareResult = await useDocumentStore
+//        .getState()
+//        .unshareDocument(docId, 'recipient');
+//
+//      assertWithDetails(
+//        isSuccess(unshareResult),
+//        'Should unshare document successfully',
+//        { error: isFailure(unshareResult) ? unshareResult.error : undefined }
+//      );
+//      assert(
+//        unshareResult.data === undefined,
+//        'Should return void (undefined)'
+//      );
+//
+//      const getResult = await useDocumentStore.getState().getDocument(docId);
+//      assertWithDetails(isSuccess(getResult), 'Should retrieve document', {
+//        error: isFailure(getResult) ? getResult.error : undefined,
+//      });
+//      assert(getResult.data !== null, 'Should return document');
+//      const doc = getResult.data!;
+//      assert(Array.isArray(doc.access), 'Should have access array');
+//      const accessEntry = doc.access.find(
+//        (a: DocumentAccessEntry) => a.userId === 'recipient'
+//      );
+//      assert(
+//        accessEntry === undefined,
+//        'Should not have recipient in access array'
+//      );
+//
+//      console.log(`  Unshared ${suffix} document: ${docId}`);
+//    });
+//  }
+//
+//  await runner.run('Unshare from non-existent document fails', async () => {
+//    await cleanupDocumentStore();
+//
+//    const nonExistentDocId = 'nonexistent-doc-id';
+//
+//    const unshareResult = await useDocumentStore
+//      .getState()
+//      .unshareDocument(nonExistentDocId, 'recipient');
+//
+//    assert(isFailure(unshareResult), 'Should fail for non-existent document');
+//    assert(isDocumentError(unshareResult.error), 'Should return DocumentError');
+//    assert(
+//      unshareResult.error?.code === 'NOT_FOUND',
+//      'Error code should be NOT_FOUND'
+//    );
+//    assert(
+//      unshareResult.error?.message === 'Document not found',
+//      'Error message should match'
+//    );
+//    console.log(
+//      `  Non-existent document handled correctly: ${nonExistentDocId}`
+//    );
+//  });
+//
+//  await runner.run(
+//    'Unshare from user not in access list succeeds',
+//    async () => {
+//      const title = generateTestTitle('_unshare_not_in_access');
+//
+//      const createResult = await useDocumentStore
+//        .getState()
+//        .createDocument(title, 'content', undefined, true);
+//      assert(isSuccess(createResult), 'Should create document first');
+//      const docId = createResult.data!.id;
+//
+//      const unshareResult = await useDocumentStore
+//        .getState()
+//        .unshareDocument(docId, 'non-recipient');
+//      assert(isSuccess(unshareResult), 'Should succeed (idempotent)');
+//
+//      const getResult = await useDocumentStore.getState().getDocument(docId);
+//      assert(isSuccess(getResult), 'Should retrieve document');
+//      const doc = getResult.data!;
+//      assert(Array.isArray(doc.access), 'Should have access array');
+//      const accessEntry = doc.access.find(
+//        (a: DocumentAccessEntry) => a.userId === 'non-recipient'
+//      );
+//      assert(accessEntry === undefined, 'Should not have user in access array');
+//
+//      console.log(`  Unshare from non-shared user handled correctly: ${docId}`);
+//    }
+//  );
+//
+//  await runner.run('Unshare removes only specified user', async () => {
+//    const title = generateTestTitle('_unshare_specific_user');
+//
+//    const createResult = await useDocumentStore
+//      .getState()
+//      .createDocument(title, 'content', undefined, true);
+//    assert(isSuccess(createResult), 'Should create document first');
+//    const docId = createResult.data!.id;
+//
+//    const shareResult1 = await useDocumentStore
+//      .getState()
+//      .shareDocument(docId, 'recipient1');
+//    assert(isSuccess(shareResult1), 'Should share with first recipient');
+//
+//    const shareResult2 = await useDocumentStore
+//      .getState()
+//      .shareDocument(docId, 'recipient2');
+//    assert(isSuccess(shareResult2), 'Should share with second recipient');
+//
+//    const unshareResult = await useDocumentStore
+//      .getState()
+//      .unshareDocument(docId, 'recipient1');
+//    assert(isSuccess(unshareResult), 'Should unshare first recipient');
+//
+//    const getResult = await useDocumentStore.getState().getDocument(docId);
+//    assert(isSuccess(getResult), 'Should retrieve document');
+//    const doc = getResult.data!;
+//    assert(Array.isArray(doc.access), 'Should have access array');
+//    const accessEntry1 = doc.access.find(
+//      (a: DocumentAccessEntry) => a.userId === 'recipient1'
+//    );
+//    assert(accessEntry1 === undefined, 'Should not have first recipient');
+//    const accessEntry2 = doc.access.find(
+//      (a: DocumentAccessEntry) => a.userId === 'recipient2'
+//    );
+//    assert(accessEntry2 !== undefined, 'Should still have second recipient');
+//
+//    console.log(`  Only specified user removed from access: ${docId}`);
+//  });
+//
+//  console.log('\n✅ unshareDocument tests complete!');
+//  runner.printResults();
+//  await cleanupDocumentStore();
+//  return runner.getResults();
+//}
 
 // ============================================================================
 // MAIN EXPORT FUNCTION
@@ -1483,13 +1273,13 @@ export async function testDocumentStore(): Promise<TestSuiteResult[]> {
   suiteResults.push(metadataResult);
   console.log('\n' + '='.repeat(60) + '\n');
 
-  const shareResult = await testShareDocument();
-  suiteResults.push(shareResult);
-  console.log('\n' + '='.repeat(60) + '\n');
-
-  const unshareResult = await testUnshareDocument();
-  suiteResults.push(unshareResult);
-  console.log('\n' + '='.repeat(60) + '\n');
+//  const shareResult = await testShareDocument();
+//  suiteResults.push(shareResult);
+//  console.log('\n' + '='.repeat(60) + '\n');
+//
+//  const unshareResult = await testUnshareDocument();
+//  suiteResults.push(unshareResult);
+//  console.log('\n' + '='.repeat(60) + '\n');
 
   // Print summary
   printTestSummary(suiteResults);

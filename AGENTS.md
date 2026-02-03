@@ -166,6 +166,10 @@ When reviewing code or AI agent output, ask:
 - [ ] Is this creating security vulnerabilities (especially with encryption)?
 - [ ] Can this be simplified by using the library more directly?
 - [ ] Are there test delays that mask lack of GunDB understanding?
+- DO NOT WASTE MY TIME WRITING TESTS FOR TRIVIAL SHIT. Test should be focused on
+IMPORTANT THINGS ONLY. DO NOT WRITE TESTS TO VALIDATE DEFAULTS OR TYPES SPECIFIED
+IN TYPE ANNOTATIONS AND FUNCTION DEFINITIONS.
+- Do not shit out insane amounts of useless code for shit that doesn't fucking matter.
 
 ## Specific Library Guidelines
 
