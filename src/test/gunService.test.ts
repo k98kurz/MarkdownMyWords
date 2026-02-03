@@ -290,6 +290,156 @@ async function testErrorHandling(): Promise<TestSuiteResult> {
 }
 
 /**
+ * Test private data operations (writePrivateData, readPrivateData)
+ */
+async function testPrivateDataOperations(): Promise<TestSuiteResult> {
+  console.log('🧪 Testing Private Data Operations...\n');
+
+  const runner = new TestRunner('Private Data Operations');
+  const gun = gunService.getGun();
+
+  if (!gun) {
+    throw new Error(
+      'GunDB not initialized - cannot test private data operations'
+    );
+  }
+
+  const timestamp = Date.now();
+  const testUser = `testuser_private_${timestamp}`;
+  const testPass = 'testpass123';
+  const plainPath = ['secret', 'note'];
+  const testData = 'confidential_secret_data_123';
+
+  await runner.task('Private data e2e', async () => {
+    await gunService.createUser(testUser, testPass);
+    await gunService.authenticateUser(testUser, testPass);
+    await gunService.writeProfile();
+    await gunService.writePrivateData(plainPath, testData);
+    const decrypted = await gunService.readPrivateData(plainPath);
+    if (decrypted !== testData) {
+      throw new Error(
+        `Data mismatch: expected "${testData}", got "${decrypted}"`
+      );
+    }
+    console.log(`  Data written and read successfully: "${decrypted}"`);
+  });
+
+  await runner.run('Write with nested paths', async () => {
+    const nestedPath = ['contacts', 'alice', 'username'];
+    const nestedData = 'alice_username_test';
+    await gunService.writePrivateData(nestedPath, nestedData);
+    const decrypted = await gunService.readPrivateData(nestedPath);
+    if (decrypted !== nestedData) {
+      throw new Error(
+        `Nested data mismatch: expected "${nestedData}", got "${decrypted}"`
+      );
+    }
+    console.log(`  Nested path works correctly: [${nestedPath.join(', ')}]`);
+  });
+
+  await runner.run('Write empty string', async () => {
+    const emptyPath = ['empty', 'test'];
+    const emptyData = '';
+    await gunService.writePrivateData(emptyPath, emptyData);
+    const decrypted = await gunService.readPrivateData(emptyPath);
+    if (decrypted !== emptyData) {
+      throw new Error(
+        `Empty string mismatch: expected "${emptyData}", got "${decrypted}"`
+      );
+    }
+    console.log(`  Empty string handled correctly`);
+  });
+
+  await runner.run('Write string with special characters', async () => {
+    const specialPath = ['special', 'chars'];
+    const specialData = 'Hello 世界! 🎉 Special: @#$%^&*()';
+    await gunService.writePrivateData(specialPath, specialData);
+    const decrypted = await gunService.readPrivateData(specialPath);
+    if (decrypted !== specialData) {
+      throw new Error(
+        `Special chars mismatch: expected "${specialData}", got "${decrypted}"`
+      );
+    }
+    console.log(`  Special characters handled correctly`);
+  });
+
+  await runner.run('Overwrite existing data', async () => {
+    const overwritePath = ['overwrite', 'test'];
+    const originalData = 'original_data';
+    const newData = 'new_data';
+
+    await gunService.writePrivateData(overwritePath, originalData);
+    const firstRead = await gunService.readPrivateData(overwritePath);
+    if (firstRead !== originalData) {
+      throw new Error(`Initial write failed`);
+    }
+
+    await gunService.writePrivateData(overwritePath, newData);
+    const secondRead = await gunService.readPrivateData(overwritePath);
+    if (secondRead !== newData) {
+      throw new Error(
+        `Overwrite failed: expected "${newData}", got "${secondRead}"`
+      );
+    }
+    console.log(`  Data overwriting works correctly`);
+  });
+
+  await runner.run('Path hashing consistency', async () => {
+    const pathPart1 = await gunService.getPrivatePathPart('consistent');
+    const pathPart2 = await gunService.getPrivatePathPart('consistent');
+    if (pathPart1 !== pathPart2) {
+      throw new Error('Path hashing is inconsistent');
+    }
+    console.log(`  Path hashing is consistent across calls`);
+  });
+
+  await runner.run('Error when reading non-existent data', async () => {
+    const nonExistentPath = ['nonexistent', 'path', '12345'];
+    try {
+      await gunService.readPrivateData(nonExistentPath);
+      throw new Error('Should have thrown an error for non-existent data');
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        (error.message.includes('not found') ||
+          error.message.includes('decrypted'))
+      ) {
+        console.log(`  Correctly throws error for non-existent data`);
+      } else {
+        throw error;
+      }
+    }
+  });
+
+  await runner.task('Cleanup test user', async () => {
+    gun.user().leave();
+    await new Promise(resolve => setTimeout(resolve, 500));
+  });
+
+  await runner.run('Error when writing without authentication', async () => {
+    const testPath = ['noauth', 'test'];
+    const testData = 'should_fail';
+    try {
+      await gunService.writePrivateData(testPath, testData);
+      throw new Error('Should have thrown an error without authentication');
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message.includes('keypair not available')
+      ) {
+        console.log(`  Correctly throws error without authentication`);
+      } else {
+        throw error;
+      }
+    }
+  });
+
+  console.log('\n✅ Private data operations tests complete!');
+  runner.printResults();
+  return runner.getResults();
+}
+
+/**
  * Test connection state management
  */
 async function testConnectionState(): Promise<TestSuiteResult> {
@@ -351,6 +501,10 @@ export async function testGunService(): Promise<TestSuiteResult[]> {
 
   const listResult = await testListItems();
   suiteResults.push(listResult);
+  console.log('\n' + '='.repeat(60) + '\n');
+
+  const privateDataResult = await testPrivateDataOperations();
+  suiteResults.push(privateDataResult);
   console.log('\n' + '='.repeat(60) + '\n');
 
   const errorResult = await testErrorHandling();

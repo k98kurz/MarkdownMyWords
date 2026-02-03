@@ -440,14 +440,18 @@ class GunService {
       throw new Error('SEA not available');
     }
     const gun = this.getGun();
-    const userNode = gun.user();
-    const userState = userNode.is;
+    const user = gun.user();
 
-    if (!userState || !('sea' in userState) || !userState.sea) {
+    if (
+      !user._ ||
+      typeof user._ !== 'object' ||
+      !('sea' in user._) ||
+      !user._.sea
+    ) {
       throw new Error('User cryptographic keypair not available');
     }
 
-    const sea = userState.sea as ISEAPair;
+    const sea = user._.sea as ISEAPair;
     const result = await SEA.work(plainPath, sea);
     if (!result) {
       throw new Error('Failed to hash path part');
@@ -480,25 +484,20 @@ class GunService {
   ): Promise<void> {
     const gun = this.getGun();
     const privatePath = await this.getPrivatePath(plainPath);
-    const user = gun.user();
 
-    let node: unknown = user;
-    for (const part of privatePath) {
-      const getNode = (node as Record<string, unknown>).get as (
-        key: string
-      ) => unknown;
-      node = getNode(part);
-    }
+    const node = privatePath.reduce(
+      (path: unknown, part) => (path as GunNodeRef).get(part),
+      gun.user()
+    ) as GunNodeRef;
 
-    return new Promise<void>(async (resolve, reject) => {
-      const userState = user.is;
-      if (!userState || !('sea' in userState) || !userState.sea) {
+    await new Promise<void>(async (resolve, reject) => {
+      const SEA = Gun.SEA;
+      if (!gun.user()._ || !('sea' in gun.user()._)) {
         reject(new Error('User cryptographic keypair not available'));
         return;
       }
 
-      const sea = userState.sea as ISEAPair;
-      const SEA = Gun.SEA;
+      const sea = gun.user()!._!.sea;
       const ciphertext = await SEA?.encrypt(plaintext, sea);
       if (!ciphertext) {
         reject(new Error('SEA.encrypt failed: returned undefined'));
@@ -531,23 +530,19 @@ class GunService {
   ): Promise<string> {
     const gun = this.getGun();
     const path = hashedPath || (await this.getPrivatePath(plainPath));
-    const user = gun.user();
-    let node: unknown = user;
-    for (const part of path) {
-      const getNode = (node as Record<string, unknown>).get as (
-        key: string
-      ) => unknown;
-      node = getNode(part);
-    }
+
+    const node = path.reduce(
+      (p: unknown, part) => (p as GunNodeRef).get(part),
+      gun.user()
+    ) as GunNodeRef;
 
     return await new Promise<string>((resolve, reject) => {
-      const userState = user.is;
-      if (!userState || !('sea' in userState) || !userState.sea) {
+      if (!gun.user()._ || !('sea' in gun.user()._)) {
         reject(new Error('User cryptographic keypair not available'));
         return;
       }
 
-      const sea = userState.sea as ISEAPair;
+      const sea = gun.user()!._!.sea;
       const onceNode = node as { once: (cb: (data: unknown) => void) => void };
       onceNode.once(async (ciphertext: unknown) => {
         if (ciphertext === undefined) {
