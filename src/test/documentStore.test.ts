@@ -13,11 +13,8 @@ import {
   sleep,
 } from '@/utils/testRunner';
 import { isFailure, isSuccess } from '@/utils/functionalResult';
-import type {
-  DocumentError,
-  MinimalDocListItem,
-  //DocumentAccessEntry,
-} from '@/types/document';
+import { clearGunDBLocalStorage } from '@/utils/clearGunDB';
+import type { DocumentError, MinimalDocListItem } from '@/types/document';
 
 const TEST_USERNAME = 'testuser_doc_tests';
 const TEST_PASSWORD = 'testpass123';
@@ -76,10 +73,7 @@ function isDocumentError(error: unknown): error is DocumentError {
 /**
  * No more retarded mix of a thousand fucking verifyBullshit functions
  */
-function compareTwoThings(
-  expected: unknown,
-  actual: unknown
-) {
+function compareTwoThings(expected: unknown, actual: unknown) {
   if (expected == actual) return;
   if (Array.isArray(expected)) {
     assert(Array.isArray(actual), `expected array; got ${actual}`);
@@ -100,7 +94,7 @@ function compareTwoThings(
       if (Object.prototype.hasOwnProperty.call(expectedObj, k)) {
         assert(
           Object.prototype.hasOwnProperty.call(actualObj, k) &&
-          actualObj[k] == expectedObj[k],
+            actualObj[k] == expectedObj[k],
           `expected ${JSON.stringify(expected)}; ` +
             `encountered ${JSON.stringify(actual)}`
         );
@@ -124,6 +118,15 @@ async function cleanupDocumentStore(): Promise<void> {
 
 async function setupTestUser(): Promise<void> {
   console.log('🔐 Setting up test user...');
+
+  await clearGunDBLocalStorage({
+    logout: true,
+    clearIndexedDB: true,
+    clearLocalStorage: true,
+    clearSessionStorage: true,
+  });
+  await sleep(500);
+
   const gun = gunService.getGun();
 
   if (gun && gun.user()) {
@@ -153,8 +156,15 @@ async function cleanupTestUser(): Promise<void> {
   if (gun && gun.user()) {
     gun.user().leave();
     await sleep(500);
-    console.log('  ✅ Logged out test user\n');
+    console.log('  Logged out test user');
   }
+  await clearGunDBLocalStorage({
+    logout: true,
+    clearIndexedDB: true,
+    clearLocalStorage: true,
+    clearSessionStorage: true,
+  });
+  console.log('  GunDB cleared');
 }
 
 // ============================================================================
@@ -683,14 +693,14 @@ async function testListDocuments(): Promise<TestSuiteResult> {
 
     const result1 = await useDocumentStore
       .getState()
-      .createDocument(title1, 'content1', undefined, true);
+      .createDocument(title1, 'content1', [], true);
     assertWithDetails(isSuccess(result1), 'Should create first document', {
       error: isFailure(result1) ? result1.error : undefined,
     });
 
     const result2 = await useDocumentStore
       .getState()
-      .createDocument(title2, 'content2', undefined, false);
+      .createDocument(title2, 'content2', [], false);
     assertWithDetails(isSuccess(result2), 'Should create second document', {
       error: isFailure(result2) ? result2.error : undefined,
     });
@@ -909,8 +919,8 @@ async function testGetDocumentMetadata(): Promise<TestSuiteResult> {
     assert(isSuccess(metadataResult), 'Should get metadata successfully');
     assert(metadataResult.data!.title === title, 'Should return title');
     assert(
-      metadataResult.data!.tags === undefined,
-      'Tags should be undefined if not provided'
+      metadataResult.data!.tags.length === 0,
+      'Tags should be empty if not provided'
     );
   });
 
@@ -1257,6 +1267,10 @@ export async function testDocumentStore(): Promise<TestSuiteResult[]> {
   suiteResults.push(inputValidationResult);
   console.log('\n' + '='.repeat(60) + '\n');
 
+  const listResult = await testListDocuments();
+  suiteResults.push(listResult);
+  console.log('\n' + '='.repeat(60) + '\n');
+
   const createResult = await testCreateDocument();
   suiteResults.push(createResult);
   console.log('\n' + '='.repeat(60) + '\n');
@@ -1269,21 +1283,17 @@ export async function testDocumentStore(): Promise<TestSuiteResult[]> {
   suiteResults.push(deleteResult);
   console.log('\n' + '='.repeat(60) + '\n');
 
-  const listResult = await testListDocuments();
-  suiteResults.push(listResult);
-  console.log('\n' + '='.repeat(60) + '\n');
-
   const metadataResult = await testGetDocumentMetadata();
   suiteResults.push(metadataResult);
   console.log('\n' + '='.repeat(60) + '\n');
 
-//  const shareResult = await testShareDocument();
-//  suiteResults.push(shareResult);
-//  console.log('\n' + '='.repeat(60) + '\n');
-//
-//  const unshareResult = await testUnshareDocument();
-//  suiteResults.push(unshareResult);
-//  console.log('\n' + '='.repeat(60) + '\n');
+  //  const shareResult = await testShareDocument();
+  //  suiteResults.push(shareResult);
+  //  console.log('\n' + '='.repeat(60) + '\n');
+  //
+  //  const unshareResult = await testUnshareDocument();
+  //  suiteResults.push(unshareResult);
+  //  console.log('\n' + '='.repeat(60) + '\n');
 
   // Print summary
   printTestSummary(suiteResults);
