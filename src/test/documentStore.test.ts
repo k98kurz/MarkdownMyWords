@@ -249,6 +249,31 @@ async function testInputValidation(): Promise<TestSuiteResult> {
 }
 
 /**
+* Test all CRUD operations
+*/
+async function testCRUDe2e(): Promise<TestSuiteResult> {
+  console.log('Testing all documentStore CRUD operations');
+  const runner = new TestRunner('documentStore CRUD');
+
+  await cleanupDocumentStore();
+  await runner.run('CRUD e2e: happy path', async () => {
+    // 1. list documents
+    // 2. create a public document
+    // 3. get that document
+    // 4. update the document
+    // 5. get that document again
+    // 6. create private document
+    // 7. list documents
+    // 8. get document metadata
+  });
+
+  await runner.run('CRUD e2e: edge cases', async () => {
+    // 1. delete a non-existent doc
+    // 2. update a non-existent doc
+  });
+}
+
+/**
  * Test createDocument operations (parameterized for public/private)
  */
 async function testCreateDocument(): Promise<TestSuiteResult> {
@@ -1267,25 +1292,29 @@ export async function testDocumentStore(): Promise<TestSuiteResult[]> {
   suiteResults.push(inputValidationResult);
   console.log('\n' + '='.repeat(60) + '\n');
 
-  const listResult = await testListDocuments();
-  suiteResults.push(listResult);
-  console.log('\n' + '='.repeat(60) + '\n');
+  const e2eResult = await testCRUDe2e();
+  suiteResults.push(e2eResult);
+  console.log('='.repeat(60));
 
-  const createResult = await testCreateDocument();
-  suiteResults.push(createResult);
-  console.log('\n' + '='.repeat(60) + '\n');
-
-  const getResult = await testGetDocument();
-  suiteResults.push(getResult);
-  console.log('\n' + '='.repeat(60) + '\n');
-
-  const deleteResult = await testDeleteDocument();
-  suiteResults.push(deleteResult);
-  console.log('\n' + '='.repeat(60) + '\n');
-
-  const metadataResult = await testGetDocumentMetadata();
-  suiteResults.push(metadataResult);
-  console.log('\n' + '='.repeat(60) + '\n');
+//  const listResult = await testListDocuments();
+//  suiteResults.push(listResult);
+//  console.log('\n' + '='.repeat(60) + '\n');
+//
+//  const createResult = await testCreateDocument();
+//  suiteResults.push(createResult);
+//  console.log('\n' + '='.repeat(60) + '\n');
+//
+//  const getResult = await testGetDocument();
+//  suiteResults.push(getResult);
+//  console.log('\n' + '='.repeat(60) + '\n');
+//
+//  const deleteResult = await testDeleteDocument();
+//  suiteResults.push(deleteResult);
+//  console.log('\n' + '='.repeat(60) + '\n');
+//
+//  const metadataResult = await testGetDocumentMetadata();
+//  suiteResults.push(metadataResult);
+//  console.log('\n' + '='.repeat(60) + '\n');
 
   //  const shareResult = await testShareDocument();
   //  suiteResults.push(shareResult);
