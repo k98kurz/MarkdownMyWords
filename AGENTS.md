@@ -2,7 +2,8 @@
 
 ## Process Notes
 
-1. Do not run `npm run dev` or `npm test`. They are not functional/safe for agentic code development. A human will test manually.
+1. Do not run `npm run dev` or `npm test`. They are not functional/safe for
+agentic code development. A human will test manually.
 2. Use `npm run build` and linting to check for syntax errors.
 
 ## Core Principles
@@ -100,6 +101,7 @@ Type-safe error handling utility at `src/utils/functionalResult.ts` for operatio
 that may fail. Use for predictable error types and composable operations.
 
 Notes:
+
 - **DO NOT** use `pipe` with a single operation. That is retarded nonsense. `pipe` is
 for **multiple** operations.
 - **DO NOT** write the same `transformError` helper function a thousand times in a
@@ -163,6 +165,7 @@ When reviewing code or AI agent output, ask:
 - [ ] Does this break the library's intended usage patterns?
 - [ ] Is this creating security vulnerabilities (especially with encryption)?
 - [ ] Can this be simplified by using the library more directly?
+- [ ] Are there test delays that mask lack of GunDB understanding?
 
 ## Specific Library Guidelines
 
@@ -256,3 +259,16 @@ When reviewing code or AI agent output, ask:
 - **NEVER** run `npm run dev` or any development server commands
 - **NEVER** run test commands like `npm run test` unless explicitly requested
 - All development and testing should be done through proper code review and static analysis
+
+### NEVER USE ARTIFICIAL DELAYS IN TESTS
+
+- **FORBIDDEN**: Any `setTimeout` in test files without explicit instruction from
+a human
+- **FORBIDDEN**: Adding delays before `.once()` or `.on()` to "wait for data"
+- **FORBIDDEN**: Adding delays after `await gunService.authenticateUser(...)` to
+"wait for auth synchronization"
+- **GUNDB LOADS SYNCHRONOUSLY** from local storage - use callbacks, not delays
+- **EXCEPTION**: `.map()` with timeouts is documented in `code_references/gundb.md`
+as it is required for the mechanism
+- Many AI agents have tried "fixing" their broken GunDB code by adding exponentially
+increasing delays, and it NEVER works. DO NOT DO THIS.
