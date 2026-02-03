@@ -1,7 +1,8 @@
 import Gun from 'gun';
 import 'gun/sea';
-import type { IGunInstance, ISEAPair } from 'gun/types';
+import type { IGunInstance } from 'gun/types';
 import { gunService } from './gunService';
+import { getUserSEA } from '../utils/seaHelpers';
 
 /**
  * SEA instance type (from GunDB)
@@ -36,20 +37,6 @@ function createEncryptionError(
     message,
     details,
   };
-}
-
-function getUserSEA(user: unknown): ISEAPair | undefined {
-  if (
-    user &&
-    typeof user === 'object' &&
-    '_' in user &&
-    user._ &&
-    typeof user._ === 'object' &&
-    'sea' in user._
-  ) {
-    return user._.sea as ISEAPair;
-  }
-  return undefined;
 }
 
 /**

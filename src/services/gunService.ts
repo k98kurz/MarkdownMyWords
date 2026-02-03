@@ -10,6 +10,7 @@ import 'gun/sea'; // GunDB SEA for encryption
 import 'gun/lib/radix'; // Radix for storage
 import 'gun/lib/radisk'; // Radisk for IndexedDB
 import { retryWithBackoff } from '../utils/retryHelper';
+import { getUserSEA } from '../utils/seaHelpers';
 import type { GunInstance, GunConfig, GunError } from '../types/gun';
 import { GunErrorCode, GunNodeRef, GunAck } from '../types/gun';
 import type { IGunUserInstance, ISEAPair } from 'gun/types';
@@ -492,12 +493,12 @@ class GunService {
 
     await new Promise<void>(async (resolve, reject) => {
       const SEA = Gun.SEA;
-      if (!gun.user()._ || !('sea' in gun.user()._)) {
+      const sea = getUserSEA(gun.user());
+      if (!sea) {
         reject(new Error('User cryptographic keypair not available'));
         return;
       }
 
-      const sea = gun.user()!._!.sea;
       const ciphertext = await SEA?.encrypt(plaintext, sea);
       if (!ciphertext) {
         reject(new Error('SEA.encrypt failed: returned undefined'));
@@ -537,12 +538,12 @@ class GunService {
     ) as GunNodeRef;
 
     return await new Promise<string>((resolve, reject) => {
-      if (!gun.user()._ || !('sea' in gun.user()._)) {
+      const sea = getUserSEA(gun.user());
+      if (!sea) {
         reject(new Error('User cryptographic keypair not available'));
         return;
       }
 
-      const sea = gun.user()!._!.sea;
       const onceNode = node as { once: (cb: (data: unknown) => void) => void };
       onceNode.once(async (ciphertext: unknown) => {
         if (ciphertext === undefined) {
