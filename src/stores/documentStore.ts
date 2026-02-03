@@ -14,6 +14,7 @@ import type {
   SharedDocNotification,
 } from '../types/document';
 import { gunService } from '../services/gunService';
+import { GunNodeRef, GunAck } from '../types/gun';
 import { encryptionService } from '../services/encryptionService';
 
 const transformError = (error: unknown): DocumentError => {
@@ -218,7 +219,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           encryptedContent =
             (await encryptionService.encrypt(content, docKey)) ?? content;
           if (tags && tags.length > 0 && tagsCSV) {
-            tagsCSV = await encryptionService.encrypt(tagsCSV, docKey!);
+            tagsCSV = await encryptionService.encrypt(tagsCSV, docKey!) ?? '';
           }
 
           await gunService.writePrivateData(['docKeys', docId], docKey);
@@ -243,8 +244,8 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         };
 
         await new Promise<void>((resolve, reject) => {
-          docNode.put(documentForStorage, (ack: unknown) => {
-            if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
+          docNode.put(documentForStorage, (ack: GunAck) => {
+            if (ack.err) {
               reject(new Error(`Failed to save document: ${String(ack.err)}`));
             } else {
               resolve();
@@ -472,8 +473,8 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         updatedDoc.updatedAt = Date.now();
 
         await new Promise<void>((resolve, reject) => {
-          docNode.put(updatedDoc, (ack: unknown) => {
-            if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
+          docNode.put(updatedDoc, (ack: GunAck) => {
+            if (ack.err) {
               reject(
                 new Error(`Failed to update document: ${String(ack.err)}`)
               );
@@ -579,8 +580,8 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         const doc = docData as Partial<Document>;
 
         await new Promise<void>((resolve, reject) => {
-          docNode.put(null, (ack: unknown) => {
-            if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
+          docNode.put(null, (ack: GunAck) => {
+            if (ack.err) {
               reject(
                 new Error(`Failed to delete document: ${String(ack.err)}`)
               );
@@ -591,18 +592,18 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         });
 
         if (!doc.isPublic) {
-          const privatePath = await gunService['getPrivatePath']([
+          const privatePath = await gunService.getPrivatePath([
             'docKeys',
             docId,
           ]);
           const node = privatePath.reduce(
-            (n, part) => (n as GunNodeRef).get(part),
+            (n: unknown, part) => (n as GunNodeRef).get(part),
             userNode
           ) as GunNodeRef;
 
           await new Promise<void>((resolve, reject) => {
-            node.put(null, (ack: unknown) => {
-              if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
+            node.put(null, (ack: GunAck) => {
+              if (ack.err) {
                 reject(
                   new Error(`Failed to delete document key: ${String(ack.err)}`)
                 );
@@ -867,8 +868,8 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         );
 
         await new Promise<void>((resolve, reject) => {
-          docNode.put({ access: updatedAccess }, (ack: unknown) => {
-            if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
+          docNode.put({ access: updatedAccess }, (ack: GunAck) => {
+            if (ack.err) {
               reject(new Error(`Failed to share document: ${String(ack.err)}`));
             } else {
               resolve();
@@ -930,8 +931,8 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         const updatedAccess = currentAccess.filter(a => a.userId !== userId);
 
         await new Promise<void>((resolve, reject) => {
-          docNode.put({ access: updatedAccess }, (ack: unknown) => {
-            if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
+          docNode.put({ access: updatedAccess }, (ack: GunAck) => {
+            if (ack.err) {
               reject(
                 new Error(`Failed to unshare document: ${String(ack.err)}`)
               );

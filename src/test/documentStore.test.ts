@@ -16,7 +16,7 @@ import { isFailure, isSuccess } from '@/utils/functionalResult';
 import type {
   DocumentError,
   MinimalDocListItem,
-  DocumentAccessEntry,
+  //DocumentAccessEntry,
 } from '@/types/document';
 
 const TEST_USERNAME = 'testuser_doc_tests';
@@ -76,10 +76,10 @@ function isDocumentError(error: unknown): error is DocumentError {
 /**
  * No more retarded mix of a thousand fucking verifyBullshit functions
  */
-function compareTwoThings<T>(
-  expected: T,
+function compareTwoThings(
+  expected: unknown,
   actual: unknown
-): asserts actual is T {
+) {
   if (expected == actual) return;
   if (Array.isArray(expected)) {
     assert(Array.isArray(actual), `expected array; got ${actual}`);
@@ -93,10 +93,14 @@ function compareTwoThings<T>(
       typeof actual == 'object' && actual !== null,
       'expected non-null, got null'
     );
-    for (let k of Object.keys(expected)) {
-      if (expected.hasOwnProperty(k)) {
+    const expectedObj = expected as Record<string, unknown>;
+    const actualObj = actual as Record<string, unknown>;
+
+    for (let k of Object.keys(expectedObj)) {
+      if (Object.prototype.hasOwnProperty.call(expectedObj, k)) {
         assert(
-          actual.hasOwnProperty(k) && actual[k] == expected[k],
+          Object.prototype.hasOwnProperty.call(actualObj, k) &&
+          actualObj[k] == expectedObj[k],
           `expected ${JSON.stringify(expected)}; ` +
             `encountered ${JSON.stringify(actual)}`
         );
