@@ -18,13 +18,7 @@ function App() {
   const [currentDocId, setCurrentDocId] = useState<string | undefined>(
     undefined
   );
-  const {
-    status: docStatus,
-    error: docError,
-    listDocuments,
-    clearError: clearDocError,
-    clearCurrentDocument,
-  } = useDocumentStore();
+  const { listDocuments, clearCurrentDocument } = useDocumentStore();
 
   // Set up global error handlers
   useEffect(() => {
@@ -73,11 +67,6 @@ function App() {
     }
   }, [isAuthenticated]);
 
-  const handleRetry = () => {
-    clearDocError();
-    listDocuments();
-  };
-
   const handleCreateNew = () => {
     clearCurrentDocument();
     setCurrentDocId(undefined);
@@ -96,24 +85,6 @@ function App() {
     await listDocuments();
   };
 
-  const renderDocumentStatus = () => {
-    if (docStatus === 'LOADING' && view === 'list') {
-      return <div className="loading">Loading documents...</div>;
-    }
-    if (docError) {
-      return (
-        <div className="error">
-          <p>{docError}</p>
-          <button onClick={handleRetry}>Retry</button>
-        </div>
-      );
-    }
-    if (docStatus === 'SAVING') {
-      return <div className="saving">Saving...</div>;
-    }
-    return null;
-  };
-
   return (
     <div className="app">
       <header className="app-header">
@@ -126,7 +97,6 @@ function App() {
           <div className="loading">Loading...</div>
         ) : isAuthenticated ? (
           <div className="app-content">
-            {renderDocumentStatus()}
             <>
               {view === 'list' ? (
                 <DocumentList

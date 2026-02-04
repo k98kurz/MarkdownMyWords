@@ -50,18 +50,21 @@ export function EditorPane({
           {enableViewSwitch && (
             <div className="view-switcher">
               <button
+                type="button"
                 className={`view-button ${viewMode === 'edit' ? 'active' : ''}`}
                 onClick={() => handleViewChange('edit')}
               >
                 Edit
               </button>
               <button
+                type="button"
                 className={`view-button ${viewMode === 'preview' ? 'active' : ''}`}
                 onClick={() => handleViewChange('preview')}
               >
                 Preview
               </button>
               <button
+                type="button"
                 className={`view-button ${viewMode === 'split' ? 'active' : ''}`}
                 onClick={() => handleViewChange('split')}
               >

@@ -83,12 +83,27 @@ const transformError = (error: unknown): DocumentError => {
   };
 };
 
-function arrayToCSV(tags?: string[]): string {
-  return tags && tags.length > 0 ? tags.join(',') : '';
+function arrayToCSV(tags?: string[] | unknown): string {
+  if (Array.isArray(tags)) {
+    return (tags as string[]).join(',');
+  }
+  if (typeof tags === 'string') {
+    return tags;
+  }
+  return '';
 }
 
-function csvToArray(tags?: string): string[] {
-  return !!tags ? tags.split(',') : [];
+function csvToArray(tags?: string | unknown): string[] {
+  if (Array.isArray(tags)) {
+    return (tags as string[]).filter(t => t.length > 0);
+  }
+  if (typeof tags === 'string' && tags.trim()) {
+    return tags
+      .split(',')
+      .map(t => t.trim())
+      .filter(t => t.length > 0);
+  }
+  return [];
 }
 
 function validateTagsNoCommas(tags: string[] | undefined): void {
@@ -211,7 +226,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       tags?: string[],
       isPublic?: boolean
     ): Promise<Result<Document, DocumentError>> => {
-      set({ status: 'LOADING', error: null });
+      set({ status: 'SAVING', error: null });
 
       const result = (await tryCatch(async () => {
         if (!title?.trim()) {
