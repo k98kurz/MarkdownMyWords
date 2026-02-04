@@ -285,7 +285,7 @@ class GunService {
 
   /**
    * Write user profile for discovery by other users
-   * Stores the user's epub at their user node
+   * Stores the user's epub and username at their user node
    * Reference: code_references/gundb.md:49-58
    */
   async writeProfile(): Promise<void> {
@@ -294,17 +294,47 @@ class GunService {
     const userState = userNode.is;
 
     if (!userState || !('epub' in userState) || !userState.epub) {
-      throw new Error('User session not available or ephemeral key missing');
+      throw new Error('User session not available or ECDH key missing');
     }
 
-    const epub = userState.epub;
+    const profileData: { epub: string; username?: string } = {
+      epub: userState.epub,
+    };
+
+    if (userState.alias && typeof userState.alias === 'string') {
+      profileData.username = userState.alias;
+    }
 
     return new Promise<void>((resolve, reject) => {
-      userNode.put({ epub }, (ack: GunAck) => {
+      userNode.put(profileData, (ack: GunAck) => {
         if (ack.err) {
           reject(new Error(`Profile storage failed: ${ack.err}`));
         } else {
           resolve();
+        }
+      });
+    });
+  }
+
+  /**
+   * Read username from user profile for session restoration
+   * @returns Promise resolving to username string
+   */
+  async readUsername(): Promise<string> {
+    const gun = this.getGun();
+    const userNode = gun.user();
+    const userState = userNode.is;
+
+    if (!userState || !userState.pub) {
+      throw new Error('User session not available');
+    }
+
+    return new Promise<string>((resolve, reject) => {
+      gun.get(`~${userState.pub}`).once((data: unknown) => {
+        if (data && typeof data === 'object' && 'username' in data) {
+          resolve((data as { username: string }).username);
+        } else {
+          reject(new Error('Username not found in user profile'));
         }
       });
     });
