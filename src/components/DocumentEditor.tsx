@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useDocumentStore } from '../stores/documentStore';
 import { EditorArea } from './EditorArea';
+import { ConfirmModal } from './ConfirmModal';
 
 interface DocumentEditorProps {
   docId?: string;
@@ -16,6 +17,7 @@ export function DocumentEditor({ docId, onClose }: DocumentEditorProps) {
     getDocument,
     createDocument,
     updateDocument,
+    deleteDocument,
     clearError: clearDocError,
   } = useDocumentStore();
 
@@ -23,6 +25,7 @@ export function DocumentEditor({ docId, onClose }: DocumentEditorProps) {
   const [content, setContent] = useState('');
   const [tags, setTags] = useState('');
   const [isPublic, setIsPublic] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     if (docId) {
@@ -84,6 +87,17 @@ export function DocumentEditor({ docId, onClose }: DocumentEditorProps) {
     }
   };
 
+  const handleDelete = async () => {
+    if (!docId) {
+      return;
+    }
+
+    const result = await deleteDocument(docId);
+    if (result.success && onClose) {
+      onClose();
+    }
+  };
+
   if (docId && loadingDocId === docId && !currentDocument) {
     return <div className="loading">Loading document...</div>;
   }
@@ -140,6 +154,16 @@ export function DocumentEditor({ docId, onClose }: DocumentEditorProps) {
           </div>
 
           <div className="editor-actions">
+            {docId && onClose && (
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={docStatus === 'SAVING'}
+                className="delete"
+              >
+                Delete
+              </button>
+            )}
             {onClose && (
               <button type="button" onClick={handleCancel}>
                 Cancel
@@ -155,6 +179,17 @@ export function DocumentEditor({ docId, onClose }: DocumentEditorProps) {
           </div>
         </div>
       </form>
+
+      <ConfirmModal
+        isOpen={showDeleteConfirm}
+        title="Delete Document"
+        message="Are you sure you want to delete this document? This action cannot be undone."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={handleDelete}
+        onClose={() => setShowDeleteConfirm(false)}
+        isDangerous
+      />
     </div>
   );
 }
