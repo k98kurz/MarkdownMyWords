@@ -1,66 +1,55 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { useDocumentStore } from '../stores/documentStore';
 import { ConfirmModal } from './ConfirmModal';
 
-interface DocumentListProps {
-  onDocumentSelect?: (docId: string) => void;
-  onCreateNew?: () => void;
-}
-
-export function DocumentList({
-  onDocumentSelect,
-  onCreateNew,
-}: DocumentListProps) {
+export function DocumentList() {
   const {
     documentList,
     status,
     error,
+    loadedMetadata,
+    enrichedDocs,
     getDocumentMetadata,
     clearError,
     listDocuments,
     deleteDocument,
+    setLoadedMetadata,
+    setDocumentMetadata,
   } = useDocumentStore();
 
-  const [loadedMetadata, setLoadedMetadata] = useState<Set<string>>(new Set());
   const [loadingMetadata, setLoadingMetadata] = useState<Set<string>>(
     new Set()
   );
-  const [enrichedDocs, setEnrichedDocs] = useState<
-    Map<string, { title?: string; tags?: string[] }>
-  >(new Map());
   const [metadataErrors, setMetadataErrors] = useState<Set<string>>(new Set());
   const observerRef = useRef<IntersectionObserver | null>(null);
   const itemRefs = useRef<Map<string, HTMLLIElement>>(new Map());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [docToDelete, setDocToDelete] = useState<string | undefined>(undefined);
+  const hasLoadedList = useRef(false);
 
   const loadDocumentMetadata = useCallback(
     async (docId: string) => {
-      setLoadingMetadata(prev => new Set(prev).add(docId));
+      setLoadingMetadata((prev: Set<string>) => new Set(prev).add(docId));
 
       try {
         const result = await getDocumentMetadata(docId);
 
         if (result.success && result.data) {
-          setLoadedMetadata(prev => new Set(prev).add(docId));
-          setEnrichedDocs(prev =>
-            new Map(prev).set(docId, {
-              title: result.data.title,
-              tags: result.data.tags,
-            })
-          );
+          setLoadedMetadata(docId);
+          setDocumentMetadata(docId, result.data.title, result.data.tags);
         }
-      } catch (error) {
-        setMetadataErrors(prev => new Set(prev).add(docId));
+      } catch {
+        setMetadataErrors((prev: Set<string>) => new Set(prev).add(docId));
       } finally {
-        setLoadingMetadata(prev => {
+        setLoadingMetadata((prev: Set<string>) => {
           const newSet = new Set(prev);
           newSet.delete(docId);
           return newSet;
         });
       }
     },
-    [getDocumentMetadata]
+    [getDocumentMetadata, setLoadedMetadata, setDocumentMetadata]
   );
 
   useEffect(() => {
@@ -90,6 +79,18 @@ export function DocumentList({
       }
     };
   }, [loadedMetadata, loadingMetadata, loadDocumentMetadata]);
+
+  // Load documents when component mounts (e.g., when navigating back to /docs)
+  useEffect(() => {
+    if (!hasLoadedList.current) {
+      hasLoadedList.current = true;
+      listDocuments().catch(err => {
+        if (err.code !== 'NETWORK_ERROR') {
+          console.error('Failed to list documents:', err);
+        }
+      });
+    }
+  }, [listDocuments]);
 
   const handleRetry = () => {
     clearError();
@@ -143,11 +144,9 @@ export function DocumentList({
     return (
       <div className="empty-state">
         <p>No documents yet. Create your first document!</p>
-        {onCreateNew && (
-          <button className="create-button" onClick={onCreateNew}>
-            Create New Document
-          </button>
-        )}
+        <Link to="/doc/new" className="create-button">
+          Create New Document
+        </Link>
       </div>
     );
   }
@@ -156,11 +155,9 @@ export function DocumentList({
     <div className="document-list">
       <div className="document-list-header">
         <h2>Your Documents</h2>
-        {onCreateNew && (
-          <button className="create-button" onClick={onCreateNew}>
-            Create New Document
-          </button>
-        )}
+        <Link to="/doc/new" className="create-button">
+          Create New Document
+        </Link>
       </div>
       <ul>
         {documentList.map(doc => (
@@ -215,12 +212,12 @@ export function DocumentList({
                 </div>
 
                 <div className="document-item-actions">
-                  <button
+                  <Link
+                    to={`/doc/${doc.docId}`}
                     className="action-button action-button--primary"
-                    onClick={() => onDocumentSelect?.(doc.docId)}
                   >
                     Open
-                  </button>
+                  </Link>
                   <button className="action-button action-button--secondary">
                     Sharing
                   </button>

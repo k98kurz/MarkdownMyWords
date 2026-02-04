@@ -130,6 +130,8 @@ interface DocumentState {
     title?: string;
     tags?: string[];
   }>;
+  loadedMetadata: Set<string>;
+  enrichedDocs: Map<string, { title?: string; tags?: string[] }>;
   status: 'READY' | 'LOADING' | 'SAVING';
   error: string | null;
   loadingDocId?: string;
@@ -153,6 +155,11 @@ interface DocumentActions {
 
   // Current document helpers
   clearCurrentDocument: () => void;
+
+  // Metadata helpers
+  setLoadedMetadata: (docId: string) => void;
+  setDocumentMetadata: (docId: string, title: string, tags?: string[]) => void;
+  clearMetadata: () => void;
 
   // Document CRUD operations
   createDocument: (
@@ -195,6 +202,8 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
   (set, get) => ({
     currentDocument: null,
     documentList: [],
+    loadedMetadata: new Set(),
+    enrichedDocs: new Map(),
     status: 'READY',
     error: null,
 
@@ -221,6 +230,26 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       });
     },
 
+    // Metadata helpers
+    setLoadedMetadata: (docId: string) => {
+      set((state: DocumentState) => ({
+        loadedMetadata: new Set(state.loadedMetadata).add(docId),
+      }));
+    },
+
+    setDocumentMetadata: (docId: string, title: string, tags?: string[]) => {
+      set((state: DocumentState) => ({
+        enrichedDocs: new Map(state.enrichedDocs).set(docId, { title, tags }),
+      }));
+    },
+
+    clearMetadata: () => {
+      set({
+        loadedMetadata: new Set(),
+        enrichedDocs: new Map(),
+      });
+    },
+
     createDocument: async (
       title: string,
       content: string,
@@ -230,8 +259,8 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       set({ status: 'SAVING', error: null });
 
       const result = (await tryCatch(async () => {
-        console.log("documentStore.createDocument called...");
-        console.log({title, content, tags, isPublic});
+        console.log('documentStore.createDocument called...');
+        console.log({ title, content, tags, isPublic });
         if (!title?.trim()) {
           throw new Error('Title is required');
         }
