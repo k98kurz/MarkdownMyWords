@@ -23,6 +23,7 @@ function App() {
     error: docError,
     listDocuments,
     clearError: clearDocError,
+    clearCurrentDocument,
   } = useDocumentStore();
 
   // Set up global error handlers
@@ -78,6 +79,7 @@ function App() {
   };
 
   const handleCreateNew = () => {
+    clearCurrentDocument();
     setCurrentDocId(undefined);
     setView('editor');
   };
@@ -88,13 +90,14 @@ function App() {
   };
 
   const handleCloseEditor = async () => {
+    clearCurrentDocument();
     setView('list');
     setCurrentDocId(undefined);
     await listDocuments();
   };
 
   const renderDocumentStatus = () => {
-    if (docStatus === 'LOADING') {
+    if (docStatus === 'LOADING' && view === 'list') {
       return <div className="loading">Loading documents...</div>;
     }
     if (docError) {
@@ -124,21 +127,19 @@ function App() {
         ) : isAuthenticated ? (
           <div className="app-content">
             {renderDocumentStatus()}
-            {docStatus === 'READY' && (
-              <>
-                {view === 'list' ? (
-                  <DocumentList
-                    onDocumentSelect={handleDocumentSelect}
-                    onCreateNew={handleCreateNew}
-                  />
-                ) : (
-                  <DocumentEditor
-                    docId={currentDocId}
-                    onClose={handleCloseEditor}
-                  />
-                )}
-              </>
-            )}
+            <>
+              {view === 'list' ? (
+                <DocumentList
+                  onDocumentSelect={handleDocumentSelect}
+                  onCreateNew={handleCreateNew}
+                />
+              ) : (
+                <DocumentEditor
+                  docId={currentDocId}
+                  onClose={handleCloseEditor}
+                />
+              )}
+            </>
           </div>
         ) : (
           <div className="app-content">

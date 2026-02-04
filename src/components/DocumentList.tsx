@@ -23,6 +23,10 @@ export function DocumentList({
   const [loadingMetadata, setLoadingMetadata] = useState<Set<string>>(
     new Set()
   );
+  const [enrichedDocs, setEnrichedDocs] = useState<
+    Map<string, { title?: string; tags?: string[] }>
+  >(new Map());
+  const [metadataErrors, setMetadataErrors] = useState<Set<string>>(new Set());
   const observerRef = useRef<IntersectionObserver | null>(null);
   const itemRefs = useRef<Map<string, HTMLLIElement>>(new Map());
 
@@ -35,7 +39,15 @@ export function DocumentList({
 
         if (result.success && result.data) {
           setLoadedMetadata(prev => new Set(prev).add(docId));
+          setEnrichedDocs(prev =>
+            new Map(prev).set(docId, {
+              title: result.data.title,
+              tags: result.data.tags,
+            })
+          );
         }
+      } catch (error) {
+        setMetadataErrors(prev => new Set(prev).add(docId));
       } finally {
         setLoadingMetadata(prev => {
           const newSet = new Set(prev);
@@ -78,13 +90,6 @@ export function DocumentList({
   const handleRetry = () => {
     clearError();
     listDocuments();
-  };
-
-  const handleDocumentClick = (docId: string) => {
-    if (!loadedMetadata.has(docId)) {
-      loadDocumentMetadata(docId);
-    }
-    onDocumentSelect?.(docId);
   };
 
   const setItemRef = (docId: string, element: HTMLLIElement | null) => {
@@ -144,26 +149,63 @@ export function DocumentList({
             key={doc.docId}
             data-doc-id={doc.docId}
             ref={el => setItemRef(doc.docId, el)}
-            onClick={() => handleDocumentClick(doc.docId)}
             className="document-item"
           >
             {loadingMetadata.has(doc.docId) ? (
-              <div className="loading-meta">Loading...</div>
+              <div className="document-item-main">
+                <div className="loading-meta">Loading...</div>
+              </div>
+            ) : metadataErrors.has(doc.docId) ? (
+              <div className="document-item-main">
+                <div className="document-item-header">
+                  <strong className="document-title document-title--error">
+                    Error loading doc metadata
+                  </strong>
+                  <span className="doc-meta">
+                    {new Date(doc.updatedAt).toLocaleDateString()}
+                  </span>
+                </div>
+              </div>
             ) : (
               <>
-                <strong>{doc.title || 'Untitled'}</strong>
-                {doc.tags && doc.tags.length > 0 && (
-                  <div className="document-tags">
-                    {doc.tags.map(tag => (
-                      <span key={tag} className="tag">
-                        {tag}
-                      </span>
-                    ))}
+                <div className="document-item-main">
+                  <div className="document-item-header">
+                    <strong className="document-title">
+                      {enrichedDocs.get(doc.docId)?.title || 'Untitled'}
+                    </strong>
+                    <span className="doc-meta">
+                      {new Date(doc.updatedAt).toLocaleDateString()}
+                    </span>
                   </div>
-                )}
-                <span className="doc-meta">
-                  {new Date(doc.updatedAt).toLocaleDateString()}
-                </span>
+
+                  {(() => {
+                    const tags = enrichedDocs.get(doc.docId)?.tags;
+                    if (tags && tags.length > 0) {
+                      return (
+                        <div className="document-tags">
+                          {tags.map(tag => (
+                            <span key={tag} className="tag">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+                </div>
+
+                <div className="document-item-actions">
+                  <button
+                    className="action-button action-button--primary"
+                    onClick={() => onDocumentSelect?.(doc.docId)}
+                  >
+                    Open
+                  </button>
+                  <button className="action-button action-button--secondary">
+                    Sharing
+                  </button>
+                </div>
               </>
             )}
           </li>
