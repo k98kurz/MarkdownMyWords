@@ -11,7 +11,7 @@ import { DocumentEditor } from './components/DocumentEditor';
 import { NotFound } from './components/NotFound';
 
 function App() {
-  const { isAuthenticated, isLoading, checkSession, logout, user } =
+  const { isAuthenticated, isLoading, checkSession, logout, user, username } =
     useAuthStore();
   const { setError } = useErrorStore();
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -56,7 +56,9 @@ function App() {
     <div className="app">
       <header className="app-header">
         <h1>MarkdownMyWords</h1>
-        {isAuthenticated && <AuthComponent user={user} onLogout={logout} />}
+        {isAuthenticated && (
+          <AuthComponent user={user} username={username} onLogout={logout} />
+        )}
       </header>
 
       <main className="app-main">
