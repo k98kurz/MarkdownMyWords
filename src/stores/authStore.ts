@@ -350,9 +350,23 @@ export const useAuthStore = create<AuthState>(set => ({
     // Handle session check result
     const handleSessionResult = match(
       () => {
-        // Session valid - get user and update state
-        const userResult = getAuthenticatedUser();
-        handleAuthResult(userResult, set);
+        handleAuthResult(getAuthenticatedUser(), set);
+
+        // Try to load username from user node
+        gunService
+          .readUsername()
+          .then(username => {
+            const gun = gunService.getGun();
+            if (gun) {
+              const gunUser = gun.user();
+              if (gunUser && gunUser.is) {
+                gunUser.is.alias = username;
+              }
+            }
+          })
+          .catch(() => {
+            console.warn('Username not found in profile, using public key');
+          });
       },
       () => {
         set({
