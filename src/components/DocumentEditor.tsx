@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useDocumentStore } from '../stores/documentStore';
+import { EditorArea } from './EditorArea';
 
 interface DocumentEditorProps {
   docId?: string;
@@ -10,6 +11,7 @@ export function DocumentEditor({ docId, onClose }: DocumentEditorProps) {
   const {
     currentDocument,
     status: docStatus,
+    loadingDocId,
     error: docError,
     getDocument,
     createDocument,
@@ -30,8 +32,18 @@ export function DocumentEditor({ docId, onClose }: DocumentEditorProps) {
           setContent(result.data.content || '');
           setTags(result.data.tags?.join(', ') || '');
           setIsPublic(result.data.isPublic);
+        } else {
+          setTitle('');
+          setContent('');
+          setTags('');
+          setIsPublic(false);
         }
       });
+    } else {
+      setTitle('');
+      setContent('');
+      setTags('');
+      setIsPublic(false);
     }
   }, [docId, getDocument]);
 
@@ -72,7 +84,7 @@ export function DocumentEditor({ docId, onClose }: DocumentEditorProps) {
     }
   };
 
-  if (docStatus === 'LOADING' && docId && !currentDocument) {
+  if (docId && loadingDocId === docId && !currentDocument) {
     return <div className="loading">Loading document...</div>;
   }
 
@@ -80,11 +92,6 @@ export function DocumentEditor({ docId, onClose }: DocumentEditorProps) {
     <div className="document-editor">
       <div className="editor-header">
         <h2>{docId ? 'Edit Document' : 'New Document'}</h2>
-        {onClose && (
-          <button className="close-btn" onClick={handleCancel}>
-            Close
-          </button>
-        )}
       </div>
 
       {docError && (
@@ -136,14 +143,15 @@ export function DocumentEditor({ docId, onClose }: DocumentEditorProps) {
           </div>
         )}
 
-        <div className="form-group">
-          <label htmlFor="doc-content">Content</label>
-          <textarea
-            id="doc-content"
-            value={content}
-            onChange={e => setContent(e.target.value)}
-            placeholder="Write your markdown here..."
-            rows={15}
+        <div className="form-group editor-group">
+          <EditorArea
+            title={title}
+            content={content}
+            onContentChange={setContent}
+            onTitleChange={setTitle}
+            enableViewSwitch={true}
+            defaultViewMode="edit"
+            isReadOnly={false}
           />
         </div>
 

@@ -116,6 +116,7 @@ interface DocumentState {
   }>;
   status: 'READY' | 'LOADING' | 'SAVING';
   error: string | null;
+  loadingDocId?: string;
 }
 
 /**
@@ -127,9 +128,15 @@ interface DocumentActions {
   setSaving: () => void;
   setReady: () => void;
 
+  // Loading state helpers
+  setLoadingDocId: (docId: string | undefined) => void;
+
   // Error helpers
   setError: (error: string) => void;
   clearError: () => void;
+
+  // Current document helpers
+  clearCurrentDocument: () => void;
 
   // Document CRUD operations
   createDocument: (
@@ -180,9 +187,23 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
     setSaving: () => set({ status: 'SAVING', error: null }),
     setReady: () => set({ status: 'READY' }),
 
+    // Loading state helpers
+    setLoadingDocId: (docId: string | undefined) =>
+      set({ loadingDocId: docId }),
+
     // Error helpers
     setError: (error: string) => set({ status: 'READY', error }),
     clearError: () => set({ error: null }),
+
+    // Current document helpers
+    clearCurrentDocument: () => {
+      set({
+        currentDocument: null,
+        status: 'READY',
+        error: null,
+        loadingDocId: undefined,
+      });
+    },
 
     createDocument: async (
       title: string,
@@ -280,7 +301,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
     getDocument: async (
       docId: string
     ): Promise<Result<Document | null, DocumentError>> => {
-      set({ status: 'LOADING', error: null });
+      set({ status: 'LOADING', error: null, loadingDocId: docId });
 
       const result = (await tryCatch(async () => {
         const gun = gunService.getGun();
@@ -362,6 +383,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
             currentDocument: doc,
             status: 'READY',
             error: null,
+            loadingDocId: undefined,
           });
         },
         (error: DocumentError) => {
@@ -370,11 +392,13 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
               currentDocument: null,
               status: 'READY',
               error: null,
+              loadingDocId: undefined,
             });
           } else {
             set({
               status: 'READY',
               error: error.message,
+              loadingDocId: undefined,
             });
           }
         }

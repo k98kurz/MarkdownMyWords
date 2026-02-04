@@ -1,0 +1,37 @@
+import { EditorPane } from './EditorPane';
+
+interface EditorAreaProps {
+  docId?: string;
+  title: string;
+  content: string;
+  onContentChange: (content: string) => void;
+  onTitleChange: (title: string) => void;
+  enableViewSwitch?: boolean;
+  defaultViewMode?: 'edit' | 'preview' | 'split';
+  isReadOnly?: boolean;
+}
+
+export function EditorArea({
+  title,
+  content,
+  onContentChange,
+  onTitleChange,
+  enableViewSwitch = true,
+  defaultViewMode = 'edit',
+  isReadOnly = false,
+}: EditorAreaProps) {
+  return (
+    <div className="editor-area editor-area--single">
+      <EditorPane
+        title={title}
+        content={content}
+        onContentChange={onContentChange}
+        onTitleChange={onTitleChange}
+        showHeader={false}
+        enableViewSwitch={enableViewSwitch}
+        defaultViewMode={defaultViewMode}
+        isReadOnly={isReadOnly}
+      />
+    </div>
+  );
+}
