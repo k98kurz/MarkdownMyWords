@@ -1143,7 +1143,7 @@ h1 {
 
 .editor-area--single {
   min-height: 350px;
-  max-height: 60vh;
+  max-height: 70vh;
 }
 
 /* Document Editor Container */
@@ -1314,7 +1314,6 @@ h1 {
 .pane-content--split {
   display: flex;
   gap: 1px;
-  background: rgba(255, 255, 255, 0.1);
 }
 
 .view-pane {
