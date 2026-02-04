@@ -90,10 +90,6 @@ export function DocumentEditor({ docId, onClose }: DocumentEditorProps) {
 
   return (
     <div className="document-editor">
-      <div className="editor-header">
-        <h2>{docId ? 'Edit Document' : 'New Document'}</h2>
-      </div>
-
       {docError && (
         <div className="error">
           <p>{docError}</p>
@@ -107,42 +103,6 @@ export function DocumentEditor({ docId, onClose }: DocumentEditorProps) {
           handleSave();
         }}
       >
-        <div className="form-group">
-          <label htmlFor="doc-title">Title</label>
-          <input
-            id="doc-title"
-            type="text"
-            value={title}
-            onChange={e => setTitle(e.target.value)}
-            placeholder="Document title"
-          />
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="doc-tags">Tags (comma-separated)</label>
-          <input
-            id="doc-tags"
-            type="text"
-            value={tags}
-            onChange={e => setTags(e.target.value)}
-            placeholder="tag1, tag2, tag3"
-          />
-        </div>
-
-        {!docId && (
-          <div className="form-group checkbox-group">
-            <label htmlFor="doc-public">
-              <input
-                id="doc-public"
-                type="checkbox"
-                checked={isPublic}
-                onChange={e => setIsPublic(e.target.checked)}
-              />
-              Public document (not encrypted)
-            </label>
-          </div>
-        )}
-
         <div className="form-group editor-group">
           <EditorArea
             title={title}
@@ -155,19 +115,44 @@ export function DocumentEditor({ docId, onClose }: DocumentEditorProps) {
           />
         </div>
 
-        <div className="editor-actions">
-          {onClose && (
-            <button type="button" onClick={handleCancel}>
-              Cancel
+        <div className="tags-and-actions">
+          <div className="form-group form-group--inline">
+            <label htmlFor="doc-tags">Tags:</label>
+            <input
+              id="doc-tags"
+              type="text"
+              value={tags}
+              onChange={e => setTags(e.target.value)}
+              placeholder="tag1, tag2, tag3"
+            />
+          </div>
+
+          <div className="form-group form-group--inline privacy-dropdown">
+            <label htmlFor="doc-privacy">Privacy:</label>
+            <select
+              id="doc-privacy"
+              value={isPublic ? 'public' : 'private'}
+              onChange={e => setIsPublic(e.target.value === 'public')}
+            >
+              <option value="private">Private (encrypted)</option>
+              <option value="public">Public (not encrypted)</option>
+            </select>
+          </div>
+
+          <div className="editor-actions">
+            {onClose && (
+              <button type="button" onClick={handleCancel}>
+                Cancel
+              </button>
+            )}
+            <button
+              type="submit"
+              disabled={docStatus === 'SAVING'}
+              className="primary"
+            >
+              {docStatus === 'SAVING' ? 'Saving...' : 'Save'}
             </button>
-          )}
-          <button
-            type="submit"
-            disabled={docStatus === 'SAVING'}
-            className="primary"
-          >
-            {docStatus === 'SAVING' ? 'Saving...' : 'Save'}
-          </button>
+          </div>
         </div>
       </form>
     </div>

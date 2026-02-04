@@ -27,7 +27,6 @@ export function EditorArea({
         content={content}
         onContentChange={onContentChange}
         onTitleChange={onTitleChange}
-        showHeader={false}
         enableViewSwitch={enableViewSwitch}
         defaultViewMode={defaultViewMode}
         isReadOnly={isReadOnly}
