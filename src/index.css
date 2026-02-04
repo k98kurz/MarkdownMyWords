@@ -585,6 +585,141 @@ h1 {
   border-color: #535bf2;
 }
 
+/* Confirm Modal Styles */
+.confirm-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1500;
+  padding: 1rem;
+}
+
+.confirm-modal {
+  background-color: #1a1a1a;
+  border-radius: 8px;
+  max-width: 500px;
+  width: 100%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.confirm-modal--dangerous {
+  border: 1px solid rgba(255, 107, 107, 0.3);
+}
+
+.confirm-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.confirm-modal--dangerous .confirm-modal-header {
+  border-bottom: 1px solid rgba(255, 107, 107, 0.2);
+}
+
+.confirm-modal-header h2 {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 1.25rem;
+}
+
+.confirm-modal--dangerous .confirm-modal-header h2 {
+  color: #ff6b6b;
+}
+
+.confirm-modal-close {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 2rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+}
+
+.confirm-modal-close:hover {
+  color: rgba(255, 255, 255, 1);
+}
+
+.confirm-modal-content {
+  padding: 1.5rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.confirm-modal-message {
+  color: rgba(255, 255, 255, 0.85);
+  line-height: 1.6;
+  font-size: 1rem;
+}
+
+.confirm-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  padding: 1.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.confirm-modal--dangerous .confirm-modal-footer {
+  border-top: 1px solid rgba(255, 107, 107, 0.2);
+}
+
+.confirm-modal-button {
+  padding: 0.75rem 1.5rem;
+  background-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.confirm-modal-button:hover {
+  background-color: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.confirm-modal-button.primary {
+  background-color: #646cff;
+  border-color: #646cff;
+  color: white;
+}
+
+.confirm-modal-button.primary:hover {
+  background-color: #535bf2;
+  border-color: #535bf2;
+}
+
+.confirm-modal-button--danger {
+  background-color: #ff6b6b;
+  border-color: #ff6b6b;
+  color: white;
+}
+
+.confirm-modal-button--danger:hover {
+  background-color: #ff5252;
+  border-color: #ff5252;
+}
+
 /* Status Bar Styles */
 .status-bar {
   position: fixed;
@@ -971,6 +1106,18 @@ h1 {
   border-color: rgba(255, 255, 255, 0.3);
 }
 
+.action-button--danger {
+  background-color: rgba(255, 107, 107, 0.3);
+  border-color: rgba(255, 107, 107, 0.6);
+  color: #ff6b6b;
+}
+
+.action-button--danger:hover {
+  background-color: rgba(255, 107, 107, 0.4);
+  border-color: #ff6b6b;
+  color: #ff5252;
+}
+
 .loading-meta {
   color: rgba(255, 255, 255, 0.5);
   font-style: italic;
@@ -1049,6 +1196,23 @@ h1 {
 .editor-actions button.primary:hover {
   background-color: #535bf2;
   border-color: #535bf2;
+}
+
+.editor-actions button.delete {
+  background-color: rgba(255, 107, 107, 0.3);
+  color: #ff6b6b;
+  border-color: rgba(255, 107, 107, 0.6);
+}
+
+.editor-actions button.delete:hover:not(:disabled) {
+  background-color: rgba(255, 107, 107, 0.4);
+  border-color: #ff6b6b;
+  color: #ff5252;
+}
+
+.editor-actions button.delete:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .editor-actions button:disabled {

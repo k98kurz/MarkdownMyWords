@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useDocumentStore } from '../stores/documentStore';
+import { ConfirmModal } from './ConfirmModal';
 
 interface DocumentListProps {
   onDocumentSelect?: (docId: string) => void;
@@ -17,6 +18,7 @@ export function DocumentList({
     getDocumentMetadata,
     clearError,
     listDocuments,
+    deleteDocument,
   } = useDocumentStore();
 
   const [loadedMetadata, setLoadedMetadata] = useState<Set<string>>(new Set());
@@ -29,6 +31,8 @@ export function DocumentList({
   const [metadataErrors, setMetadataErrors] = useState<Set<string>>(new Set());
   const observerRef = useRef<IntersectionObserver | null>(null);
   const itemRefs = useRef<Map<string, HTMLLIElement>>(new Map());
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [docToDelete, setDocToDelete] = useState<string | undefined>(undefined);
 
   const loadDocumentMetadata = useCallback(
     async (docId: string) => {
@@ -90,6 +94,21 @@ export function DocumentList({
   const handleRetry = () => {
     clearError();
     listDocuments();
+  };
+
+  const handleDelete = (docId: string) => {
+    setDocToDelete(docId);
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!docToDelete) return;
+    const result = await deleteDocument(docToDelete);
+    if (result.success) {
+      await listDocuments();
+      setDocToDelete(undefined);
+      setShowDeleteConfirm(false);
+    }
   };
 
   const setItemRef = (docId: string, element: HTMLLIElement | null) => {
@@ -205,12 +224,32 @@ export function DocumentList({
                   <button className="action-button action-button--secondary">
                     Sharing
                   </button>
+                  <button
+                    className="action-button action-button--danger"
+                    onClick={() => handleDelete(doc.docId)}
+                  >
+                    Delete
+                  </button>
                 </div>
               </>
             )}
           </li>
         ))}
       </ul>
+
+      <ConfirmModal
+        isOpen={showDeleteConfirm}
+        title="Delete Document"
+        message="Are you sure you want to delete this document? This action cannot be undone."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={confirmDelete}
+        onClose={() => {
+          setShowDeleteConfirm(false);
+          setDocToDelete(undefined);
+        }}
+        isDangerous
+      />
     </div>
   );
 }
