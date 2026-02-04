@@ -267,7 +267,7 @@ async function writeProfile(gun: GunInstance): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     const userSession = gun.user().is;
     if (!userSession?.epub) {
-      reject(new Error('User session not available or ephemeral key missing'));
+      reject(new Error('User session not available or ECDH key missing'));
       return;
     }
     gun.user().put({ epub: userSession.epub }, (ack: unknown) => {
