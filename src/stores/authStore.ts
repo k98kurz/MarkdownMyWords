@@ -40,6 +40,7 @@ export type { AuthError, AuthenticatedUser };
  */
 interface AuthState {
   // State - Replace 'any' with proper types
+  username: string | null;
   user: IGunUserInstance | null;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -214,6 +215,7 @@ const handleAuthResult = <T>(
  */
 export const useAuthStore = create<AuthState>(set => ({
   // Initial state
+  username: null,
   user: null,
   isAuthenticated: false,
   isLoading: false,
@@ -319,13 +321,12 @@ export const useAuthStore = create<AuthState>(set => ({
   checkSession: async () => {
     set({ isLoading: true });
 
-    const result = await tryCatch(async () => {
+    const recallResult = await tryCatch(() => {
       const gun = gunService.getGun();
       if (!gun) {
         throw new Error('GunDB not initialized');
       }
 
-      // Simplified session checking - single timeout instead of dual timeouts
       return new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(() => {
           reject(new Error('Session check timeout'));
@@ -333,51 +334,38 @@ export const useAuthStore = create<AuthState>(set => ({
 
         gun.user().recall({ sessionStorage: true }, (_ack: unknown) => {
           clearTimeout(timeout);
-
-          // Check user state synchronously after recall completes
-          setTimeout(() => {
-            const gunUser = gun.user();
-            if (gunUser.is?.pub) {
-              resolve();
-            } else {
-              reject(new Error('No authenticated session'));
-            }
-          }, 100); // Give GunDB time to process the recall
+          const gunUser = gun.user();
+          if (gunUser.is?.pub) {
+            resolve();
+          } else {
+            reject(new Error('No authenticated session'));
+          }
         });
       });
     }, transformAuthError);
 
-    // Handle session check result
-    const handleSessionResult = match(
+    match(
       () => {
         handleAuthResult(getAuthenticatedUser(), set);
-
-        // Try to load username from user node
-        gunService
-          .readUsername()
-          .then(username => {
-            const gun = gunService.getGun();
-            if (gun) {
-              const gunUser = gun.user();
-              if (gunUser && gunUser.is) {
-                gunUser.is.alias = username;
-              }
-            }
-          })
-          .catch(() => {
-            console.warn('Username not found in profile, using public key');
-          });
       },
       () => {
         set({
           isLoading: false,
           isAuthenticated: false,
           user: null,
+          username: null,
           error: null,
         });
       }
-    );
+    )(recallResult);
 
-    handleSessionResult(result);
+    if (recallResult.success) {
+      try {
+        const username = await gunService.readUsername();
+        set({ username });
+      } catch {
+        set({ username: null });
+      }
+    }
   },
 }));
