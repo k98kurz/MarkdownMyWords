@@ -7,12 +7,17 @@ import { ErrorModal } from './components/ErrorModal';
 import { useErrorStore } from './stores/errorStore';
 import { StatusBar } from './components/StatusBar';
 import { DocumentList } from './components/DocumentList';
+import { DocumentEditor } from './components/DocumentEditor';
 
 function App() {
   const { isAuthenticated, isLoading, checkSession, logout, user } =
     useAuthStore();
   const { setError } = useErrorStore();
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [view, setView] = useState<'list' | 'editor'>('list');
+  const [currentDocId, setCurrentDocId] = useState<string | undefined>(
+    undefined
+  );
   const {
     status: docStatus,
     error: docError,
@@ -72,6 +77,22 @@ function App() {
     listDocuments();
   };
 
+  const handleCreateNew = () => {
+    setCurrentDocId(undefined);
+    setView('editor');
+  };
+
+  const handleDocumentSelect = (docId: string) => {
+    setCurrentDocId(docId);
+    setView('editor');
+  };
+
+  const handleCloseEditor = async () => {
+    setView('list');
+    setCurrentDocId(undefined);
+    await listDocuments();
+  };
+
   const renderDocumentStatus = () => {
     if (docStatus === 'LOADING') {
       return <div className="loading">Loading documents...</div>;
@@ -103,7 +124,21 @@ function App() {
         ) : isAuthenticated ? (
           <div className="app-content">
             {renderDocumentStatus()}
-            {docStatus === 'READY' && <DocumentList />}
+            {docStatus === 'READY' && (
+              <>
+                {view === 'list' ? (
+                  <DocumentList
+                    onDocumentSelect={handleDocumentSelect}
+                    onCreateNew={handleCreateNew}
+                  />
+                ) : (
+                  <DocumentEditor
+                    docId={currentDocId}
+                    onClose={handleCloseEditor}
+                  />
+                )}
+              </>
+            )}
           </div>
         ) : (
           <div className="app-content">

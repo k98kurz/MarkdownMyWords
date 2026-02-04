@@ -3,9 +3,13 @@ import { useDocumentStore } from '../stores/documentStore';
 
 interface DocumentListProps {
   onDocumentSelect?: (docId: string) => void;
+  onCreateNew?: () => void;
 }
 
-export function DocumentList({ onDocumentSelect }: DocumentListProps) {
+export function DocumentList({
+  onDocumentSelect,
+  onCreateNew,
+}: DocumentListProps) {
   const {
     documentList,
     status,
@@ -113,13 +117,27 @@ export function DocumentList({ onDocumentSelect }: DocumentListProps) {
 
   if (documentList.length === 0) {
     return (
-      <p className="empty">No documents yet. Create your first document!</p>
+      <div className="empty-state">
+        <p>No documents yet. Create your first document!</p>
+        {onCreateNew && (
+          <button className="create-button" onClick={onCreateNew}>
+            Create New Document
+          </button>
+        )}
+      </div>
     );
   }
 
   return (
     <div className="document-list">
-      <h2>Your Documents</h2>
+      <div className="document-list-header">
+        <h2>Your Documents</h2>
+        {onCreateNew && (
+          <button className="create-button" onClick={onCreateNew}>
+            Create New Document
+          </button>
+        )}
+      </div>
       <ul>
         {documentList.map(doc => (
           <li
