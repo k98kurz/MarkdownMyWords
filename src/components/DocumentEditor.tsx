@@ -1,14 +1,12 @@
 import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useDocumentStore } from '../stores/documentStore';
 import { EditorArea } from './EditorArea';
 import { ConfirmModal } from './ConfirmModal';
 
-interface DocumentEditorProps {
-  docId?: string;
-  onClose?: () => void;
-}
-
-export function DocumentEditor({ docId, onClose }: DocumentEditorProps) {
+export function DocumentEditor() {
+  const { docId } = useParams<{ docId?: string }>();
+  const navigate = useNavigate();
   const {
     currentDocument,
     status: docStatus,
@@ -26,20 +24,23 @@ export function DocumentEditor({ docId, onClose }: DocumentEditorProps) {
   const [tags, setTags] = useState('');
   const [isPublic, setIsPublic] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
-    if (docId) {
+    if (docId && docId !== 'new') {
       getDocument(docId).then(result => {
         if (result.success && result.data) {
           setTitle(result.data.title || '');
           setContent(result.data.content || '');
           setTags(result.data.tags?.join(', ') || '');
           setIsPublic(result.data.isPublic);
+          setNotFound(false);
         } else {
           setTitle('');
           setContent('');
           setTags('');
           setIsPublic(false);
+          setNotFound(true);
         }
       });
     } else {
@@ -47,13 +48,14 @@ export function DocumentEditor({ docId, onClose }: DocumentEditorProps) {
       setContent('');
       setTags('');
       setIsPublic(false);
+      setNotFound(false);
     }
   }, [docId, getDocument]);
 
   const handleSave = async () => {
     clearDocError();
 
-    if (docId) {
+    if (docId && docId !== 'new') {
       const result = await updateDocument(docId, {
         title: title || 'Untitled',
         content: content || '',
@@ -75,31 +77,39 @@ export function DocumentEditor({ docId, onClose }: DocumentEditorProps) {
         return;
       }
 
-      if (onClose) {
-        onClose();
-      }
+      navigate('/docs');
     }
   };
 
   const handleCancel = () => {
-    if (onClose) {
-      onClose();
-    }
+    navigate('/docs');
   };
 
   const handleDelete = async () => {
-    if (!docId) {
+    if (!docId || docId === 'new') {
       return;
     }
 
     const result = await deleteDocument(docId);
-    if (result.success && onClose) {
-      onClose();
+    if (result.success) {
+      navigate('/docs');
     }
   };
 
-  if (docId && loadingDocId === docId && !currentDocument) {
+  if (docId && loadingDocId === docId && !currentDocument && !notFound) {
     return <div className="loading">Loading document...</div>;
+  }
+
+  if (notFound) {
+    return (
+      <div className="not-found">
+        <h1>Document Not Found</h1>
+        <p>The document you're looking for doesn't exist.</p>
+        <button onClick={() => navigate('/docs')} className="primary">
+          Go to Documents
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -154,7 +164,7 @@ export function DocumentEditor({ docId, onClose }: DocumentEditorProps) {
           </div>
 
           <div className="editor-actions">
-            {docId && onClose && (
+            {docId && docId !== 'new' && (
               <button
                 type="button"
                 onClick={() => setShowDeleteConfirm(true)}
@@ -164,11 +174,9 @@ export function DocumentEditor({ docId, onClose }: DocumentEditorProps) {
                 Delete
               </button>
             )}
-            {onClose && (
-              <button type="button" onClick={handleCancel}>
-                Cancel
-              </button>
-            )}
+            <button type="button" onClick={handleCancel}>
+              Cancel
+            </button>
             <button
               type="submit"
               disabled={docStatus === 'SAVING'}

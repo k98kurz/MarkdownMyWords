@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
-import { useDocumentStore } from './stores/documentStore';
 import { AuthModal } from './components/AuthModal';
 import { AuthComponent } from './components/AuthComponent';
 import { ErrorModal } from './components/ErrorModal';
@@ -8,17 +8,13 @@ import { useErrorStore } from './stores/errorStore';
 import { StatusBar } from './components/StatusBar';
 import { DocumentList } from './components/DocumentList';
 import { DocumentEditor } from './components/DocumentEditor';
+import { NotFound } from './components/NotFound';
 
 function App() {
   const { isAuthenticated, isLoading, checkSession, logout, user } =
     useAuthStore();
   const { setError } = useErrorStore();
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [view, setView] = useState<'list' | 'editor'>('list');
-  const [currentDocId, setCurrentDocId] = useState<string | undefined>(
-    undefined
-  );
-  const { listDocuments, clearCurrentDocument } = useDocumentStore();
 
   // Set up global error handlers
   useEffect(() => {
@@ -46,17 +42,6 @@ function App() {
     });
   }, [checkSession, setError]);
 
-  // Load documents when user authenticates
-  useEffect(() => {
-    if (isAuthenticated) {
-      listDocuments().catch(err => {
-        if (err.code !== 'NETWORK_ERROR') {
-          setError(err.message);
-        }
-      });
-    }
-  }, [isAuthenticated, listDocuments, setError]);
-
   // Show auth modal if not authenticated
   // Keep modal open during loading and only close on successful authentication
   useEffect(() => {
@@ -66,24 +51,6 @@ function App() {
       setShowAuthModal(true);
     }
   }, [isAuthenticated]);
-
-  const handleCreateNew = () => {
-    clearCurrentDocument();
-    setCurrentDocId(undefined);
-    setView('editor');
-  };
-
-  const handleDocumentSelect = (docId: string) => {
-    setCurrentDocId(docId);
-    setView('editor');
-  };
-
-  const handleCloseEditor = async () => {
-    clearCurrentDocument();
-    setView('list');
-    setCurrentDocId(undefined);
-    await listDocuments();
-  };
 
   return (
     <div className="app">
@@ -97,19 +64,13 @@ function App() {
           <div className="loading">Loading...</div>
         ) : isAuthenticated ? (
           <div className="app-content">
-            <>
-              {view === 'list' ? (
-                <DocumentList
-                  onDocumentSelect={handleDocumentSelect}
-                  onCreateNew={handleCreateNew}
-                />
-              ) : (
-                <DocumentEditor
-                  docId={currentDocId}
-                  onClose={handleCloseEditor}
-                />
-              )}
-            </>
+            <Routes>
+              <Route path="/" element={<Navigate to="/docs" replace />} />
+              <Route path="/docs" element={<DocumentList />} />
+              <Route path="/doc/new" element={<DocumentEditor />} />
+              <Route path="/doc/:docId" element={<DocumentEditor />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
           </div>
         ) : (
           <div className="app-content">
