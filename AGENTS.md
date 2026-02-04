@@ -5,6 +5,8 @@
 1. Do not run `npm run dev` or `npm test`. They are not functional/safe for
 agentic code development. A human will test manually.
 2. Use `npm run build` and linting to check for syntax errors.
+3. Do not reference anything in the `.old/` directory as it contains outdated
+and deprecated information.
 
 ## Core Principles
 
@@ -42,7 +44,7 @@ libraries over rewriting or reimplementing them. This is especially true for:
 
 The previous AI agents reimplemented SEA's encryption incorrectly:
 
-1. **Generated ephemeral key pairs** instead of using SEA's built-in ECDH
+1. **Generated ephemeral key pairs** instead of using SEA's built-in ECDH keys (epriv and epub)
 2. **Used public keys as passphrases** for self-encryption (completely insecure!)
 3. **Broke the encryption API** by changing return types and parameters
 4. **Ignored SEA's automatic encryption/decryption** for user data storage
@@ -228,12 +230,6 @@ IN TYPE ANNOTATIONS AND FUNCTION DEFINITIONS.
 **REMEMBER**: The best code is the code you don't have to write. Libraries exist for a reason - use them!
 
 ## Code Style Rules
-
-### STOP REMOVING SEMICOLONS
-
-- **DO NOT** remove existing semicolons from code
-- **ALWAYS USE SEMICOLONS** at the end of every line of TypeScript/JavaScript
-- Preserve the existing code formatting style
 
 ### NEVER USE "any" TYPE OR "as any" ASSERTIONS
 

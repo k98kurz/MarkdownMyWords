@@ -185,7 +185,7 @@ class EncryptionService {
    * Encrypt data with SEA's ECDH for a specific recipient
    * @param data - string plaintext data
    * @param recipientEpub - Recipient's epub
-   * @param senderPair - Sender's ephemeral key pair
+   * @param senderPair - Sender's ECDH key pair
    * @returns Promise resolving to encrypted key string
    */
   async encryptECDH(data: string, recipientEpub: string): Promise<string> {
