@@ -3,6 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useDocumentStore } from '../stores/documentStore';
 import { EditorArea } from './EditorArea';
 import { ConfirmModal } from './ConfirmModal';
+import { Button } from './ui/Button';
+import { Input } from './ui/Input';
+import { Label } from './ui/Label';
 
 export function DocumentEditor() {
   const { docId } = useParams<{ docId?: string }>();
@@ -97,27 +100,33 @@ export function DocumentEditor() {
   };
 
   if (docId && loadingDocId === docId && !currentDocument && !notFound) {
-    return <div className="loading">Loading document...</div>;
+    return (
+      <div className="px-8 py-16 text-center text-lg">Loading document...</div>
+    );
   }
 
   if (notFound) {
     return (
-      <div className="not-found">
-        <h1>Document Not Found</h1>
-        <p>The document you're looking for doesn't exist.</p>
-        <button onClick={() => navigate('/docs')} className="primary">
-          Go to Documents
-        </button>
+      <div className="flex min-h-[50vh] flex-col items-center justify-center px-4">
+        <h1 className="mb-4 text-2xl font-bold text-card-foreground">
+          Document Not Found
+        </h1>
+        <p className="mb-8 text-muted-foreground">
+          The document you're looking for doesn't exist.
+        </p>
+        <Button onClick={() => navigate('/docs')}>Go to Documents</Button>
       </div>
     );
   }
 
   return (
-    <div className="document-editor">
+    <div className="flex flex-col gap-4">
       {docError && (
-        <div className="error">
+        <div className="rounded-md bg-rose-500/10 p-4 text-rose-500 border border-rose-500/20">
           <p>{docError}</p>
-          <button onClick={clearDocError}>Dismiss</button>
+          <Button variant="ghost" size="sm" onClick={clearDocError}>
+            Dismiss
+          </Button>
         </div>
       )}
 
@@ -127,7 +136,7 @@ export function DocumentEditor() {
           handleSave();
         }}
       >
-        <div className="form-group editor-group">
+        <div className="mb-4 h-[500px]">
           <EditorArea
             title={title}
             content={content}
@@ -139,10 +148,10 @@ export function DocumentEditor() {
           />
         </div>
 
-        <div className="tags-and-actions">
-          <div className="form-group form-group--inline">
-            <label htmlFor="doc-tags">Tags:</label>
-            <input
+        <div className="flex flex-wrap items-end gap-4 rounded-lg border border-border bg-card p-4">
+          <div className="flex-1 min-w-[200px]">
+            <Label htmlFor="doc-tags">Tags:</Label>
+            <Input
               id="doc-tags"
               type="text"
               value={tags}
@@ -151,39 +160,40 @@ export function DocumentEditor() {
             />
           </div>
 
-          <div className="form-group form-group--inline privacy-dropdown">
-            <label htmlFor="doc-privacy">Privacy:</label>
+          <div className="min-w-[180px]">
+            <Label htmlFor="doc-privacy">Privacy:</Label>
             <select
               id="doc-privacy"
               value={isPublic ? 'public' : 'private'}
               onChange={e => setIsPublic(e.target.value === 'public')}
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-card-foreground focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
             >
               <option value="private">Private (encrypted)</option>
               <option value="public">Public (not encrypted)</option>
             </select>
           </div>
 
-          <div className="editor-actions">
+          <div className="flex gap-2">
             {docId && docId !== 'new' && (
-              <button
-                type="button"
+              <Button
+                variant="danger"
                 onClick={() => setShowDeleteConfirm(true)}
                 disabled={docStatus === 'SAVING'}
-                className="delete"
               >
                 Delete
-              </button>
+              </Button>
             )}
-            <button type="button" onClick={handleCancel}>
+            <Button variant="secondary" type="button" onClick={handleCancel}>
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="primary"
               type="submit"
               disabled={docStatus === 'SAVING'}
-              className="primary"
+              isLoading={docStatus === 'SAVING'}
             >
-              {docStatus === 'SAVING' ? 'Saving...' : 'Save'}
-            </button>
+              Save
+            </Button>
           </div>
         </div>
       </form>

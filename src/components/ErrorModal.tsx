@@ -1,23 +1,14 @@
-/**
- * Error Modal Component
- *
- * Modal for displaying errors with proper JSON serialization
- * and copy-to-clipboard functionality.
- */
-
 import { useState } from 'react';
 import { useErrorStore } from '../stores/errorStore';
+import { Modal } from './ui/Modal';
+import { Button } from './ui/Button';
 
-/**
- * Safely stringify an error, handling circular references
- */
 function safeStringify(error: unknown, space: number = 2): string {
   const seen = new WeakSet();
 
   return JSON.stringify(
     error,
     (_key, value) => {
-      // Handle circular references
       if (typeof value === 'object' && value !== null) {
         if (seen.has(value)) {
           return '[Circular Reference]';
@@ -25,17 +16,14 @@ function safeStringify(error: unknown, space: number = 2): string {
         seen.add(value);
       }
 
-      // Handle functions
       if (typeof value === 'function') {
         return `[Function: ${value.name || 'anonymous'}]`;
       }
 
-      // Handle undefined
       if (value === undefined) {
         return '[undefined]';
       }
 
-      // Handle Error objects specially
       if (value instanceof Error) {
         return {
           name: value.name,
@@ -60,9 +48,6 @@ export function ErrorModal() {
 
   const errorJson = safeStringify(error.error);
 
-  /**
-   * Copy error to clipboard
-   */
   const handleCopy = async () => {
     try {
       const errorText = `Error: ${error.message}\n\nTimestamp: ${new Date(error.timestamp).toISOString()}\n\nFull Error:\n${errorJson}`;
@@ -71,81 +56,67 @@ export function ErrorModal() {
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error('Failed to copy to clipboard:', err);
-      // Fallback for older browsers
-      const textArea = document.createElement('textarea');
-      textArea.value = errorJson;
-      textArea.style.position = 'fixed';
-      textArea.style.opacity = '0';
-      document.body.appendChild(textArea);
-      textArea.select();
-      try {
-        document.execCommand('copy');
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      } catch (fallbackErr) {
-        console.error('Fallback copy failed:', fallbackErr);
-      }
-      document.body.removeChild(textArea);
     }
   };
 
   return (
-    <div className="error-modal-overlay" onClick={closeModal}>
-      <div className="error-modal" onClick={e => e.stopPropagation()}>
-        <div className="error-modal-header">
-          <h2>⚠️ Error</h2>
-          <button
-            className="error-modal-close"
-            onClick={closeModal}
-            aria-label="Close"
-          >
-            ×
-          </button>
+    <Modal isOpen={isOpen} onClose={closeModal} className="max-w-2xl">
+      <div className="p-6">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-xl font-semibold text-rose-500">⚠️ Error</h2>
         </div>
 
-        <div className="error-modal-content">
-          <div className="error-message-section">
-            <h3>Error Message</h3>
-            <div className="error-message-text">{error.message}</div>
+        <div className="mb-4 space-y-4">
+          <div>
+            <h3 className="mb-2 text-sm font-medium text-card-foreground">
+              Error Message
+            </h3>
+            <div className="rounded-md bg-muted px-4 py-3 text-card-foreground">
+              {error.message}
+            </div>
           </div>
 
           {error.stack && (
-            <div className="error-stack-section">
-              <h3>Stack Trace</h3>
-              <pre className="error-stack">{error.stack}</pre>
+            <div>
+              <h3 className="mb-2 text-sm font-medium text-card-foreground">
+                Stack Trace
+              </h3>
+              <pre className="overflow-auto rounded-md bg-muted p-4 text-xs text-card-foreground/90">
+                {error.stack}
+              </pre>
             </div>
           )}
 
-          <div className="error-details-section">
-            <div className="error-details-header">
-              <h3>Full Error Details</h3>
-              <button
-                className="copy-button"
-                onClick={handleCopy}
-                title="Copy error to clipboard"
-              >
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-sm font-medium text-card-foreground">
+                Full Error Details
+              </h3>
+              <Button size="sm" variant="secondary" onClick={handleCopy}>
                 {copied ? '✓ Copied!' : '📋 Copy'}
-              </button>
+              </Button>
             </div>
-            <pre className="error-json">{errorJson}</pre>
+            <pre className="max-h-64 overflow-auto rounded-md bg-muted p-4 text-xs text-card-foreground/90">
+              {errorJson}
+            </pre>
           </div>
 
-          <div className="error-timestamp">
+          <div className="text-muted-foreground">
             <small>
               Error occurred at: {new Date(error.timestamp).toLocaleString()}
             </small>
           </div>
         </div>
 
-        <div className="error-modal-footer">
-          <button className="error-modal-button" onClick={clearError}>
+        <div className="flex justify-end gap-3">
+          <Button variant="secondary" onClick={clearError}>
             Dismiss
-          </button>
-          <button className="error-modal-button primary" onClick={closeModal}>
+          </Button>
+          <Button variant="primary" onClick={closeModal}>
             Close
-          </button>
+          </Button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

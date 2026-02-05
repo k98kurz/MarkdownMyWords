@@ -2,6 +2,8 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useDocumentStore } from '../stores/documentStore';
 import { ConfirmModal } from './ConfirmModal';
+import { Button } from './ui/Button';
+import { Badge } from './ui/Badge';
 
 export function DocumentList() {
   const {
@@ -80,7 +82,6 @@ export function DocumentList() {
     };
   }, [loadedMetadata, loadingMetadata, loadDocumentMetadata]);
 
-  // Load documents when component mounts (e.g., when navigating back to /docs)
   useEffect(() => {
     if (!hasLoadedList.current) {
       hasLoadedList.current = true;
@@ -128,23 +129,31 @@ export function DocumentList() {
   };
 
   if (status === 'LOADING' && documentList.length === 0) {
-    return <div className="loading">Loading documents...</div>;
+    return (
+      <div className="px-8 py-8 text-center text-lg">Loading documents...</div>
+    );
   }
 
   if (error && documentList.length === 0) {
     return (
-      <div className="error">
-        <p>{error}</p>
-        <button onClick={handleRetry}>Retry</button>
+      <div className="px-8 py-8 text-center">
+        <p className="mb-4">{error}</p>
+        <Button onClick={handleRetry}>Retry</Button>
       </div>
     );
   }
 
   if (documentList.length === 0) {
     return (
-      <div className="empty-state">
-        <p>No documents yet. Create your first document!</p>
-        <Link to="/doc/new" className="create-button">
+      <div className="px-8 py-16 text-center text-muted-foreground">
+        <p className="mb-0 text-lg">
+          No documents yet. Create your first document!
+        </p>
+        <Link
+          to="/doc/new"
+          className="mt-6 inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#535bf2]"
+          style={{ backgroundColor: '#646cff' }}
+        >
           Create New Document
         </Link>
       </div>
@@ -152,44 +161,52 @@ export function DocumentList() {
   }
 
   return (
-    <div className="document-list">
-      <div className="document-list-header">
-        <h2>Your Documents</h2>
-        <Link to="/doc/new" className="create-button">
+    <div>
+      <div className="mb-6 flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-card-foreground">
+          Your Documents
+        </h2>
+        <Link
+          to="/doc/new"
+          className="inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#535bf2]"
+          style={{ backgroundColor: '#646cff' }}
+        >
           Create New Document
         </Link>
       </div>
-      <ul>
+      <ul className="flex flex-col gap-3">
         {documentList.map(doc => (
           <li
             key={doc.docId}
             data-doc-id={doc.docId}
             ref={el => setItemRef(doc.docId, el)}
-            className="document-item"
+            className="flex items-center justify-between gap-4 rounded-md border border-border bg-accent/3 px-4 py-4 transition-all hover:bg-accent/6 hover:border-border/20"
           >
             {loadingMetadata.has(doc.docId) ? (
-              <div className="document-item-main">
-                <div className="loading-meta">Loading...</div>
+              <div className="flex min-w-0 flex-1">
+                <div className="text-muted-foreground/50 italic text-sm">
+                  Loading...
+                </div>
               </div>
             ) : metadataErrors.has(doc.docId) ? (
-              <div className="document-item-main">
-                <div className="document-item-header">
-                  <strong className="document-title document-title--error">
+              <div className="flex min-w-0 flex-1">
+                <div className="flex items-center gap-3">
+                  <strong className="text-rose-500 text-sm">
                     Error loading doc metadata
                   </strong>
-                  <span className="doc-meta">
+                  <span className="text-muted-foreground/50 text-sm">
                     {new Date(doc.updatedAt).toLocaleDateString()}
                   </span>
                 </div>
               </div>
             ) : (
               <>
-                <div className="document-item-main">
-                  <div className="document-item-header">
-                    <strong className="document-title">
+                <div className="flex min-w-0 flex-1">
+                  <div className="mb-2 flex items-center gap-3">
+                    <strong className="text-base font-semibold text-card-foreground">
                       {enrichedDocs.get(doc.docId)?.title || 'Untitled'}
                     </strong>
-                    <span className="doc-meta">
+                    <span className="text-muted-foreground/50 text-sm">
                       {new Date(doc.updatedAt).toLocaleDateString()}
                     </span>
                   </div>
@@ -198,11 +215,9 @@ export function DocumentList() {
                     const tags = enrichedDocs.get(doc.docId)?.tags;
                     if (tags && tags.length > 0) {
                       return (
-                        <div className="document-tags">
+                        <div className="flex flex-wrap gap-2">
                           {tags.map(tag => (
-                            <span key={tag} className="tag">
-                              {tag}
-                            </span>
+                            <Badge key={tag}>{tag}</Badge>
                           ))}
                         </div>
                       );
@@ -211,22 +226,24 @@ export function DocumentList() {
                   })()}
                 </div>
 
-                <div className="document-item-actions">
+                <div className="flex gap-2 ml-4">
                   <Link
                     to={`/doc/${doc.docId}`}
-                    className="action-button action-button--primary"
+                    className="inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#535bf2]"
+                    style={{ backgroundColor: '#646cff' }}
                   >
                     Open
                   </Link>
-                  <button className="action-button action-button--secondary">
+                  <Button size="sm" variant="secondary">
                     Sharing
-                  </button>
-                  <button
-                    className="action-button action-button--danger"
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="danger"
                     onClick={() => handleDelete(doc.docId)}
                   >
                     Delete
-                  </button>
+                  </Button>
                 </div>
               </>
             )}

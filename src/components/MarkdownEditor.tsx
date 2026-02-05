@@ -76,5 +76,5 @@ export function MarkdownEditor({
     }
   }, [value]);
 
-  return <div className="markdown-editor" ref={containerRef} />;
+  return <div className="h-full w-full" ref={containerRef} />;
 }

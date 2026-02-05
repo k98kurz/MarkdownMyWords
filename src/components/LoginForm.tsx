@@ -1,11 +1,9 @@
-/**
- * Login Form Component
- *
- * Form for user login with validation.
- */
-
 import { useState, FormEvent } from 'react';
 import { useAuthStore } from '../stores/authStore';
+import { Input } from './ui/Input';
+import { Label } from './ui/Label';
+import { Button } from './ui/Button';
+import { Spinner } from './ui/Spinner';
 
 interface LoginFormProps {
   onSuccess?: () => void;
@@ -21,18 +19,13 @@ export function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormProps) {
 
   const { login, isLoading, error, clearError } = useAuthStore();
 
-  /**
-   * Validate form inputs
-   */
   const validate = (): boolean => {
     const errors: Record<string, string> = {};
 
-    // Username validation
     if (!username || username.trim().length === 0) {
       errors.username = 'Username is required';
     }
 
-    // Password validation
     if (!password || password.length === 0) {
       errors.password = 'Password is required';
     }
@@ -41,9 +34,6 @@ export function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormProps) {
     return Object.keys(errors).length === 0;
   };
 
-  /**
-   * Handle form submission
-   */
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     clearError();
@@ -58,27 +48,27 @@ export function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormProps) {
         onSuccess();
       }
     } catch (err) {
-      // Error is handled by the auth store (shows inline error message)
-      // Prevent error from bubbling up to global error handlers
       console.error('Login error:', err);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="login-form">
-      <h2>Log In</h2>
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <h2 className="text-center text-xl font-semibold text-card-foreground">
+        Log In
+      </h2>
 
       {isLoading && (
-        <div className="loading-overlay">
-          <div className="loading-spinner"></div>
-          <span>Logging in...</span>
+        <div className="flex items-center justify-center gap-2 py-4">
+          <Spinner size="sm" />
+          <span className="text-sm text-muted-foreground">Logging in...</span>
         </div>
       )}
 
-      <div className={isLoading ? 'loading-content' : ''}>
-        <div className="form-group">
-          <label htmlFor="login-username">Username</label>
-          <input
+      <div className="space-y-4">
+        <div>
+          <Label htmlFor="login-username">Username</Label>
+          <Input
             id="login-username"
             type="text"
             value={username}
@@ -95,15 +85,18 @@ export function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormProps) {
             disabled={isLoading}
             placeholder="Enter username"
             autoComplete="username"
+            error={!!validationErrors.username}
           />
           {validationErrors.username && (
-            <span className="error-message">{validationErrors.username}</span>
+            <p className="mt-1 text-xs text-rose-500">
+              {validationErrors.username}
+            </p>
           )}
         </div>
 
-        <div className="form-group">
-          <label htmlFor="login-password">Password</label>
-          <input
+        <div>
+          <Label htmlFor="login-password">Password</Label>
+          <Input
             id="login-password"
             type="password"
             value={password}
@@ -120,33 +113,38 @@ export function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormProps) {
             disabled={isLoading}
             placeholder="Enter password"
             autoComplete="current-password"
+            error={!!validationErrors.password}
           />
           {validationErrors.password && (
-            <span className="error-message">{validationErrors.password}</span>
+            <p className="mt-1 text-xs text-rose-500">
+              {validationErrors.password}
+            </p>
           )}
         </div>
 
-        {error && <div className="error-message global-error">{error}</div>}
+        {error && (
+          <div className="rounded-md bg-rose-500/10 p-3 text-center text-sm text-rose-500 border border-rose-500/20">
+            {error}
+          </div>
+        )}
 
-        <button type="submit" disabled={isLoading} className="submit-button">
-          {isLoading ? (
-            <>
-              <span className="button-spinner"></span>
-              Logging in...
-            </>
-          ) : (
-            'Log In'
-          )}
-        </button>
+        <Button
+          type="submit"
+          disabled={isLoading}
+          className="w-full"
+          isLoading={isLoading}
+        >
+          Log In
+        </Button>
 
         {onSwitchToRegister && (
-          <div className="form-footer">
-            <p>
+          <div className="pt-4 text-center border-t border-border">
+            <p className="text-sm text-muted-foreground">
               Don't have an account?{' '}
               <button
                 type="button"
                 onClick={onSwitchToRegister}
-                className="link-button"
+                className="font-medium text-primary-600 hover:text-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={isLoading}
               >
                 Create account
