@@ -159,6 +159,7 @@ interface DocumentActions {
   // Metadata helpers
   setLoadedMetadata: (docId: string) => void;
   setDocumentMetadata: (docId: string, title: string, tags?: string[]) => void;
+  clearDocumentMetadata: (docId: string) => void;
   clearMetadata: () => void;
 
   // Document CRUD operations
@@ -241,6 +242,19 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       set((state: DocumentState) => ({
         enrichedDocs: new Map(state.enrichedDocs).set(docId, { title, tags }),
       }));
+    },
+
+    clearDocumentMetadata: (docId: string) => {
+      set((state: DocumentState) => {
+        const newLoadedMetadata = new Set(state.loadedMetadata);
+        newLoadedMetadata.delete(docId);
+        const newEnrichedDocs = new Map(state.enrichedDocs);
+        newEnrichedDocs.delete(docId);
+        return {
+          loadedMetadata: newLoadedMetadata,
+          enrichedDocs: newEnrichedDocs,
+        };
+      });
     },
 
     clearMetadata: () => {

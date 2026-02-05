@@ -19,6 +19,7 @@ export function DocumentEditor() {
     createDocument,
     updateDocument,
     deleteDocument,
+    clearDocumentMetadata,
     clearError: clearDocError,
   } = useDocumentStore();
 
@@ -68,6 +69,8 @@ export function DocumentEditor() {
       if (!result.success) {
         return;
       }
+
+      clearDocumentMetadata(docId);
     } else {
       const result = await createDocument(
         title || 'Untitled',
