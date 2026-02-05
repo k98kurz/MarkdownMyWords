@@ -1,8 +1,5 @@
-/**
- * Confirm Modal Component
- *
- * Reusable confirmation modal for destructive actions.
- */
+import { Modal } from './ui/Modal';
+import { Button } from './ui/Button';
 
 interface ConfirmModalProps {
   isOpen: boolean;
@@ -25,48 +22,36 @@ export function ConfirmModal({
   onClose,
   isDangerous = false,
 }: ConfirmModalProps) {
-  if (!isOpen) {
-    return null;
-  }
-
   const handleConfirm = () => {
     onConfirm();
     onClose();
   };
 
   return (
-    <div className="confirm-modal-overlay" onClick={onClose}>
-      <div
-        className={`confirm-modal ${isDangerous ? 'confirm-modal--dangerous' : ''}`}
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="confirm-modal-header">
-          <h2>{title}</h2>
-          <button
-            className="confirm-modal-close"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            ×
-          </button>
+    <Modal isOpen={isOpen} onClose={onClose} className="max-w-md">
+      <div className="p-6">
+        <div className="mb-4">
+          <h2 className="text-xl font-semibold text-card-foreground">
+            {title}
+          </h2>
         </div>
 
-        <div className="confirm-modal-content">
-          <div className="confirm-modal-message">{message}</div>
+        <div className="mb-6">
+          <p className="text-card-foreground/80">{message}</p>
         </div>
 
-        <div className="confirm-modal-footer">
-          <button className="confirm-modal-button" onClick={onClose}>
+        <div className="flex justify-end gap-3">
+          <Button variant="secondary" onClick={onClose}>
             {cancelLabel}
-          </button>
-          <button
-            className={`confirm-modal-button ${isDangerous ? 'confirm-modal-button--danger' : 'primary'}`}
+          </Button>
+          <Button
+            variant={isDangerous ? 'danger' : 'primary'}
             onClick={handleConfirm}
           >
             {confirmLabel}
-          </button>
+          </Button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

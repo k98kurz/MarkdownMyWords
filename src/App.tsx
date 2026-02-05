@@ -16,7 +16,6 @@ function App() {
   const { setError } = useErrorStore();
   const [showAuthModal, setShowAuthModal] = useState(false);
 
-  // Set up global error handlers
   useEffect(() => {
     const handleError = (event: ErrorEvent) => {
       setError(event.error || event.message);
@@ -35,15 +34,12 @@ function App() {
     };
   }, [setError]);
 
-  // Check for existing session on mount
   useEffect(() => {
     checkSession().catch(error => {
       setError(error);
     });
   }, [checkSession, setError]);
 
-  // Show auth modal if not authenticated
-  // Keep modal open during loading and only close on successful authentication
   useEffect(() => {
     if (isAuthenticated) {
       setShowAuthModal(false);
@@ -53,19 +49,21 @@ function App() {
   }, [isAuthenticated]);
 
   return (
-    <div className="app">
-      <header className="app-header">
-        <h1>MarkdownMyWords</h1>
+    <div className="min-h-screen pb-12">
+      <header className="flex items-center justify-between border-b border-border px-6 py-3">
+        <h1 className="text-xl font-semibold text-card-foreground">
+          MarkdownMyWords
+        </h1>
         {isAuthenticated && (
           <AuthComponent user={user} username={username} onLogout={logout} />
         )}
       </header>
 
-      <main className="app-main">
+      <main>
         {isLoading ? (
-          <div className="loading">Loading...</div>
+          <div className="px-8 py-16 text-center text-lg">Loading...</div>
         ) : isAuthenticated ? (
-          <div className="app-content">
+          <div className="px-8 py-8">
             <Routes>
               <Route path="/" element={<Navigate to="/docs" replace />} />
               <Route path="/docs" element={<DocumentList />} />
@@ -75,8 +73,10 @@ function App() {
             </Routes>
           </div>
         ) : (
-          <div className="app-content">
-            <p>Please log in to continue.</p>
+          <div className="px-8 py-16 text-center">
+            <p className="text-lg text-muted-foreground">
+              Please log in to continue.
+            </p>
           </div>
         )}
       </main>

@@ -1,11 +1,8 @@
-/**
- * Register Form Component
- *
- * Form for user registration with validation.
- */
-
 import { useState, FormEvent } from 'react';
 import { useAuthStore } from '../stores/authStore';
+import { Input } from './ui/Input';
+import { Label } from './ui/Label';
+import { Button } from './ui/Button';
 
 interface RegisterFormProps {
   onSuccess?: () => void;
@@ -25,13 +22,9 @@ export function RegisterForm({
 
   const { register, isLoading, error, clearError } = useAuthStore();
 
-  /**
-   * Validate form inputs
-   */
   const validate = (): boolean => {
     const errors: Record<string, string> = {};
 
-    // Username validation
     if (!username || username.trim().length === 0) {
       errors.username = 'Username is required';
     } else if (username.trim().length < 3) {
@@ -41,14 +34,12 @@ export function RegisterForm({
         'Username can only contain letters, numbers, and underscores';
     }
 
-    // Password validation
     if (!password || password.length === 0) {
       errors.password = 'Password is required';
     } else if (password.length < 6) {
       errors.password = 'Password must be at least 6 characters';
     }
 
-    // Confirm password validation
     if (!confirmPassword || confirmPassword.length === 0) {
       errors.confirmPassword = 'Please confirm your password';
     } else if (password !== confirmPassword) {
@@ -59,9 +50,6 @@ export function RegisterForm({
     return Object.keys(errors).length === 0;
   };
 
-  /**
-   * Handle form submission
-   */
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     clearError();
@@ -76,27 +64,32 @@ export function RegisterForm({
         onSuccess();
       }
     } catch (err) {
-      // Error is handled by the auth store (shows inline error message)
-      // Prevent error from bubbling up to global error handlers
       console.error('Registration error:', err);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="register-form">
-      <h2>Create Account</h2>
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <h2 className="text-center text-xl font-semibold text-card-foreground">
+        Create Account
+      </h2>
 
       {isLoading && (
-        <div className="loading-overlay">
-          <div className="loading-spinner"></div>
-          <span>Creating Account...</span>
+        <div className="flex items-center justify-center gap-2 py-4">
+          <Button
+            variant="ghost"
+            disabled
+            className="pointer-events-none opacity-100"
+          >
+            Creating Account...
+          </Button>
         </div>
       )}
 
-      <div className={isLoading ? 'loading-content' : ''}>
-        <div className="form-group">
-          <label htmlFor="register-username">Username</label>
-          <input
+      <div className="space-y-4">
+        <div>
+          <Label htmlFor="register-username">Username</Label>
+          <Input
             id="register-username"
             type="text"
             value={username}
@@ -113,15 +106,18 @@ export function RegisterForm({
             disabled={isLoading}
             placeholder="Enter username"
             autoComplete="username"
+            error={!!validationErrors.username}
           />
           {validationErrors.username && (
-            <span className="error-message">{validationErrors.username}</span>
+            <p className="mt-1 text-xs text-rose-500">
+              {validationErrors.username}
+            </p>
           )}
         </div>
 
-        <div className="form-group">
-          <label htmlFor="register-password">Password</label>
-          <input
+        <div>
+          <Label htmlFor="register-password">Password</Label>
+          <Input
             id="register-password"
             type="password"
             value={password}
@@ -138,15 +134,18 @@ export function RegisterForm({
             disabled={isLoading}
             placeholder="Enter password"
             autoComplete="new-password"
+            error={!!validationErrors.password}
           />
           {validationErrors.password && (
-            <span className="error-message">{validationErrors.password}</span>
+            <p className="mt-1 text-xs text-rose-500">
+              {validationErrors.password}
+            </p>
           )}
         </div>
 
-        <div className="form-group">
-          <label htmlFor="register-confirm-password">Confirm Password</label>
-          <input
+        <div>
+          <Label htmlFor="register-confirm-password">Confirm Password</Label>
+          <Input
             id="register-confirm-password"
             type="password"
             value={confirmPassword}
@@ -163,35 +162,38 @@ export function RegisterForm({
             disabled={isLoading}
             placeholder="Confirm password"
             autoComplete="new-password"
+            error={!!validationErrors.confirmPassword}
           />
           {validationErrors.confirmPassword && (
-            <span className="error-message">
+            <p className="mt-1 text-xs text-rose-500">
               {validationErrors.confirmPassword}
-            </span>
+            </p>
           )}
         </div>
 
-        {error && <div className="error-message global-error">{error}</div>}
+        {error && (
+          <div className="rounded-md bg-rose-500/10 p-3 text-center text-sm text-rose-500 border border-rose-500/20">
+            {error}
+          </div>
+        )}
 
-        <button type="submit" disabled={isLoading} className="submit-button">
-          {isLoading ? (
-            <>
-              <span className="button-spinner"></span>
-              Creating Account...
-            </>
-          ) : (
-            'Create Account'
-          )}
-        </button>
+        <Button
+          type="submit"
+          disabled={isLoading}
+          className="w-full"
+          isLoading={isLoading}
+        >
+          Create Account
+        </Button>
 
         {onSwitchToLogin && (
-          <div className="form-footer">
-            <p>
+          <div className="pt-4 text-center border-t border-border">
+            <p className="text-sm text-muted-foreground">
               Already have an account?{' '}
               <button
                 type="button"
                 onClick={onSwitchToLogin}
-                className="link-button"
+                className="font-medium text-primary-600 hover:text-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={isLoading}
               >
                 Log in

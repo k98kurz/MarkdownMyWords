@@ -21,7 +21,7 @@ export function EditorArea({
   isReadOnly = false,
 }: EditorAreaProps) {
   return (
-    <div className="editor-area editor-area--single">
+    <div className="flex h-full w-full flex-col">
       <EditorPane
         title={title}
         content={content}

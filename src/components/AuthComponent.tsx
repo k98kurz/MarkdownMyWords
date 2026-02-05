@@ -1,12 +1,6 @@
-/**
- * Auth Component
- *
- * Displays authenticated user info with dropdown logout option.
- * Positioned in the top-right of the app header.
- */
-
 import { useState, useEffect, useRef } from 'react';
 import type { IGunUserInstance } from 'gun/types';
+import { useTheme } from '../providers/ThemeProvider';
 
 interface AuthComponentProps {
   user: IGunUserInstance | null;
@@ -19,6 +13,7 @@ export function AuthComponent({
   username,
   onLogout,
 }: AuthComponentProps) {
+  const { theme, setTheme } = useTheme();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -29,7 +24,6 @@ export function AuthComponent({
         ? user.is.pub.substring(0, 20) + '...'
         : 'User';
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -49,7 +43,6 @@ export function AuthComponent({
     };
   }, [isDropdownOpen]);
 
-  // Close dropdown on Escape key
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -71,21 +64,37 @@ export function AuthComponent({
     onLogout();
   };
 
+  const handleThemeToggle = () => {
+    setTheme(theme === 'light' ? 'dark' : 'light');
+    setIsDropdownOpen(false);
+  };
+
   return (
-    <div className="auth-component" ref={dropdownRef}>
+    <div className="relative" ref={dropdownRef}>
       <button
-        className="auth-trigger"
         onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+        className="inline-flex items-center gap-2 rounded-md border border-primary-500/30 bg-primary-500/10 px-3 py-2 text-sm font-medium text-card-foreground transition-all hover:bg-primary-500/20 hover:border-primary-500/50"
         aria-expanded={isDropdownOpen}
         aria-haspopup="true"
       >
         <span>{displayName}</span>
-        <span className="dropdown-arrow">{isDropdownOpen ? '▲' : '▼'}</span>
+        <span className="text-xs text-muted-foreground">
+          {isDropdownOpen ? '▲' : '▼'}
+        </span>
       </button>
 
       {isDropdownOpen && (
-        <div className="auth-dropdown">
-          <button className="dropdown-item" onClick={handleLogout}>
+        <div className="absolute right-0 top-full z-50 mt-2 min-w-[150px] overflow-hidden rounded-md border border-border bg-card shadow-lg">
+          <button
+            onClick={handleThemeToggle}
+            className="w-full px-4 py-3 text-left text-sm text-card-foreground transition-colors hover:bg-accent"
+          >
+            {theme === 'light' ? '🌙 Dark Mode' : '☀️ Light Mode'}
+          </button>
+          <button
+            onClick={handleLogout}
+            className="w-full border-t border-border px-4 py-3 text-left text-sm text-card-foreground transition-colors hover:bg-accent"
+          >
             Logout
           </button>
         </div>

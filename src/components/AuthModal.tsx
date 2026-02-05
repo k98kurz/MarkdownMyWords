@@ -1,12 +1,7 @@
-/**
- * Auth Modal Component
- *
- * Modal for user authentication with login and registration forms.
- */
-
 import { useState } from 'react';
 import { LoginForm } from './LoginForm';
 import { RegisterForm } from './RegisterForm';
+import { Modal } from './ui/Modal';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -21,46 +16,39 @@ export function AuthModal({
 }: AuthModalProps) {
   const [activeTab, setActiveTab] = useState<'login' | 'register'>(defaultTab);
 
-  if (!isOpen) {
-    return null;
-  }
-
   const handleSuccess = () => {
-    // Close modal on successful auth
     if (onClose) {
       onClose();
     }
   };
 
   return (
-    <div className="auth-modal-overlay" onClick={onClose || undefined}>
-      <div className="auth-modal" onClick={e => e.stopPropagation()}>
-        {onClose && (
+    <Modal isOpen={isOpen} onClose={onClose} className="max-w-md">
+      <div className="p-6">
+        <div className="mb-6 flex gap-2 border-b border-border">
           <button
-            className="auth-modal-close"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            ×
-          </button>
-        )}
-
-        <div className="auth-modal-tabs">
-          <button
-            className={`auth-tab ${activeTab === 'login' ? 'active' : ''}`}
+            className={`px-4 pb-3 text-sm font-medium transition-colors ${
+              activeTab === 'login'
+                ? 'text-primary-600 border-b-2 border-primary-600'
+                : 'text-muted-foreground hover:text-card-foreground'
+            }`}
             onClick={() => setActiveTab('login')}
           >
             Log In
           </button>
           <button
-            className={`auth-tab ${activeTab === 'register' ? 'active' : ''}`}
+            className={`px-4 pb-3 text-sm font-medium transition-colors ${
+              activeTab === 'register'
+                ? 'text-primary-600 border-b-2 border-primary-600'
+                : 'text-muted-foreground hover:text-card-foreground'
+            }`}
             onClick={() => setActiveTab('register')}
           >
             Register
           </button>
         </div>
 
-        <div className="auth-modal-content">
+        <div>
           {activeTab === 'login' ? (
             <LoginForm
               onSuccess={handleSuccess}
@@ -74,6 +62,6 @@ export function AuthModal({
           )}
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
