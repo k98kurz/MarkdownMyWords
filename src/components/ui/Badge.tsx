@@ -11,7 +11,7 @@ export function Badge({
 }: BadgeProps) {
   const variantClasses = {
     default:
-      'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200',
+      'bg-primary-10 border border-primary-25 text-primary dark:text-primary-300',
     primary:
       'bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-200',
     danger: 'bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200',

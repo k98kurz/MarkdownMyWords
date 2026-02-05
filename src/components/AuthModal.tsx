@@ -25,12 +25,12 @@ export function AuthModal({
   return (
     <Modal isOpen={isOpen} onClose={onClose} className="max-w-md">
       <div className="p-6">
-        <div className="mb-6 flex gap-2 border-b border-border">
+        <div className="mb-6 flex gap-2 border-b border-border-20">
           <button
             className={`px-4 pb-3 text-sm font-medium transition-colors ${
               activeTab === 'login'
-                ? 'text-primary-600 border-b-2 border-primary-600'
-                : 'text-muted-foreground hover:text-card-foreground'
+                ? 'text-primary border-b-2 border-primary'
+                : 'text-foreground-60 hover:text-foreground-90'
             }`}
             onClick={() => setActiveTab('login')}
           >
@@ -39,8 +39,8 @@ export function AuthModal({
           <button
             className={`px-4 pb-3 text-sm font-medium transition-colors ${
               activeTab === 'register'
-                ? 'text-primary-600 border-b-2 border-primary-600'
-                : 'text-muted-foreground hover:text-card-foreground'
+                ? 'text-primary border-b-2 border-primary'
+                : 'text-foreground-60 hover:text-foreground-90'
             }`}
             onClick={() => setActiveTab('register')}
           >

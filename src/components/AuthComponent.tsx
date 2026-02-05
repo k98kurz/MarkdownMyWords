@@ -73,7 +73,7 @@ export function AuthComponent({
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-        className="inline-flex items-center gap-2 rounded-md border border-primary-500/30 bg-primary-500/10 px-3 py-2 text-sm font-medium text-card-foreground transition-all hover:bg-primary-500/20 hover:border-primary-500/50"
+        className="inline-flex items-center gap-2 rounded-md border border-border-20 bg-primary-10 px-3 py-2 text-sm font-medium text-foreground-90 transition-all hover:bg-primary-20"
         aria-expanded={isDropdownOpen}
         aria-haspopup="true"
       >
@@ -84,16 +84,16 @@ export function AuthComponent({
       </button>
 
       {isDropdownOpen && (
-        <div className="absolute right-0 top-full z-50 mt-2 min-w-[150px] overflow-hidden rounded-md border border-border bg-card shadow-lg">
+        <div className="absolute right-0 top-full z-50 mt-2 min-w-[150px] overflow-hidden rounded-md border border-border-20 bg-card shadow-lg">
           <button
             onClick={handleThemeToggle}
-            className="w-full px-4 py-3 text-left text-sm text-card-foreground transition-colors hover:bg-accent"
+            className="w-full px-4 py-3 text-left text-sm text-card-foreground transition-colors hover:bg-primary-10"
           >
             {theme === 'light' ? '🌙 Dark Mode' : '☀️ Light Mode'}
           </button>
           <button
             onClick={handleLogout}
-            className="w-full border-t border-border px-4 py-3 text-left text-sm text-card-foreground transition-colors hover:bg-accent"
+            className="w-full border-t border-border-20 px-4 py-3 text-left text-sm text-card-foreground transition-colors hover:bg-primary-10"
           >
             Logout
           </button>

@@ -12,8 +12,11 @@
     --popover-foreground: 33 53 71;
     --primary: 100 108 255;
     --primary-foreground: 255 255 255;
+    --primary-hover: 88 93 247;
+    --primary-hover-text: 255 255 255;
     --secondary: 0 0 0;
     --secondary-foreground: 0 0 0;
+    --secondary-bg: 33 53 71;
     --muted: 0 0 0;
     --muted-foreground: 0 0 0;
     --accent: 0 0 0;
@@ -24,6 +27,13 @@
     --input: 0 0 0;
     --ring: 100 108 255;
     --radius: 0.5rem;
+    --select-bg: 0 0 0;
+    --scrollbar-thumb: 33 53 71;
+    --code-background: 244 246 248;
+    --font-size-base: 16px;
+    --font-size-code: 16px;
+    --code-text: 33 53 71;
+    --code-border: 203 213 225;
   }
 
   .dark {
@@ -35,8 +45,11 @@
     --popover-foreground: 255 255 255;
     --primary: 100 108 255;
     --primary-foreground: 255 255 255;
+    --primary-hover: 88 93 247;
+    --primary-hover-text: 255 255 255;
     --secondary: 255 255 255;
     --secondary-foreground: 255 255 255;
+    --secondary-bg: 255 255 255;
     --muted: 255 255 255;
     --muted-foreground: 255 255 255;
     --accent: 255 255 255;
@@ -46,6 +59,13 @@
     --border: 255 255 255;
     --input: 255 255 255;
     --ring: 100 108 255;
+    --select-bg: 255 255 255;
+    --scrollbar-thumb: 255 255 255;
+    --code-background: 30 41 59;
+    --font-size-base: 16px;
+    --font-size-code: 16px;
+    --code-text: 241 245 249;
+    --code-border: 71 85 105;
   }
 
   * {
@@ -54,6 +74,7 @@
 
   body {
     @apply bg-background text-foreground;
+    font-size: var(--font-size-base);
     font-family:
       system-ui,
       -apple-system,
@@ -94,11 +115,23 @@
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    @apply bg-slate-300 dark:bg-slate-700 rounded-full;
+    background-color: rgb(var(--scrollbar-thumb) / 0.3);
+    border-radius: 9999px;
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    @apply bg-slate-400 dark:bg-slate-600;
+    background-color: rgb(var(--scrollbar-thumb) / 0.5);
+  }
+
+  /* Select option styling for dropdown readability */
+  select {
+    background-color: rgb(var(--select-bg));
+    color: rgb(var(--foreground));
+  }
+
+  select option {
+    background-color: rgb(var(--background));
+    color: rgb(var(--foreground));
   }
 }
 
@@ -113,6 +146,24 @@
   font-family: 'Courier New', 'Fira Code', ui-monospace, monospace;
 }
 
+.cm-scroller::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.cm-scroller::-webkit-scrollbar-track {
+  background-color: transparent;
+}
+
+.cm-scroller::-webkit-scrollbar-thumb {
+  background-color: rgb(var(--scrollbar-thumb) / 0.3);
+  border-radius: 9999px;
+}
+
+.cm-scroller::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(var(--scrollbar-thumb) / 0.5);
+}
+
 .cm-content {
   padding: 1rem;
 }
@@ -123,4 +174,46 @@
 
 .cm-editor {
   @apply h-full text-sm leading-[1.6];
+  font-size: var(--font-size-base);
+}
+
+.cm-editor .cm-lineNumbers {
+  color: rgb(var(--foreground) / 0.6);
+}
+
+.cm-editor .cm-gutters {
+  border-right: none;
+  background-color: rgb(var(--background) / 0.3);
+}
+
+.cm-editor .cm-activeLineGutter {
+  background-color: rgb(var(--background) / 0.6);
+  color: rgb(var(--foreground) / 0.8);
+}
+
+/* Prose code block styling */
+.prose-sm {
+  font-size: var(--font-size-base);
+}
+
+.prose pre {
+  background-color: rgb(var(--code-background));
+  color: rgb(var(--code-text));
+  border: 1px solid rgb(var(--code-border));
+  border-radius: 0.25rem;
+  padding: 0.5rem;
+  overflow-x: auto;
+}
+
+.prose code {
+  color: rgb(var(--code-text));
+  font-size: var(--font-size-code);
+}
+
+/* Inline code styling */
+.prose :not(pre) > code {
+  background-color: rgb(var(--code-background) / 0.5);
+  padding: 0.2em 0.4em;
+  border-radius: 0.25rem;
+  border: 1px solid rgb(var(--code-border) / 0.5);
 }

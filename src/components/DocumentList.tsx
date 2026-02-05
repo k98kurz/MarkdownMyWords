@@ -168,8 +168,7 @@ export function DocumentList() {
         </h2>
         <Link
           to="/doc/new"
-          className="inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#535bf2]"
-          style={{ backgroundColor: '#646cff' }}
+          className="inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover hover:text-primary-hover-text bg-primary"
         >
           Create New Document
         </Link>
@@ -180,7 +179,7 @@ export function DocumentList() {
             key={doc.docId}
             data-doc-id={doc.docId}
             ref={el => setItemRef(doc.docId, el)}
-            className="flex items-center justify-between gap-4 rounded-md border border-border bg-accent/3 px-4 py-4 transition-all hover:bg-accent/6 hover:border-border/20"
+            className="flex items-center justify-between gap-4 rounded-md border border-foreground-10 bg-foreground-3 px-4 py-4 transition-all hover:bg-foreground-6 hover:border-foreground-20"
           >
             {loadingMetadata.has(doc.docId) ? (
               <div className="flex min-w-0 flex-1">
@@ -215,7 +214,7 @@ export function DocumentList() {
                     const tags = enrichedDocs.get(doc.docId)?.tags;
                     if (tags && tags.length > 0) {
                       return (
-                        <div className="flex flex-wrap gap-2">
+                        <div className="mx-2 flex flex-wrap gap-2">
                           {tags.map(tag => (
                             <Badge key={tag}>{tag}</Badge>
                           ))}
@@ -229,8 +228,7 @@ export function DocumentList() {
                 <div className="flex gap-2 ml-4">
                   <Link
                     to={`/doc/${doc.docId}`}
-                    className="inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#535bf2]"
-                    style={{ backgroundColor: '#646cff' }}
+                    className="inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover hover:text-primary-hover-text bg-primary"
                   >
                     Open
                   </Link>

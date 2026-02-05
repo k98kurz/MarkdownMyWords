@@ -32,7 +32,7 @@ export const StatusBar: React.FC = () => {
   const statusInfo = getStatusInfo();
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 border-t border-border bg-background/95 backdrop-blur px-4 py-2">
+    <div className="fixed bottom-0 left-0 right-0 border-t border-border-20 bg-background/95 backdrop-blur px-4 py-2">
       <div className="mx-auto flex max-w-7xl items-center gap-2 text-sm">
         <div
           className={`h-2.5 w-2.5 rounded-full ${statusInfo.colorClass} ${statusInfo.animate ? 'animate-blink' : ''}`}

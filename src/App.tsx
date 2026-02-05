@@ -49,8 +49,8 @@ function App() {
   }, [isAuthenticated]);
 
   return (
-    <div className="min-h-screen pb-12">
-      <header className="flex items-center justify-between border-b border-border px-6 py-3">
+    <div className="min-h-screen">
+      <header className="flex items-center justify-between border-b border-border-20 px-6 py-4">
         <h1 className="text-xl font-semibold text-card-foreground">
           MarkdownMyWords
         </h1>
@@ -63,7 +63,7 @@ function App() {
         {isLoading ? (
           <div className="px-8 py-16 text-center text-lg">Loading...</div>
         ) : isAuthenticated ? (
-          <div className="px-8 py-8">
+          <div className="px-8 py-4">
             <Routes>
               <Route path="/" element={<Navigate to="/docs" replace />} />
               <Route path="/docs" element={<DocumentList />} />

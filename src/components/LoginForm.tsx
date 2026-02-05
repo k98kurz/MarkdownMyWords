@@ -138,7 +138,7 @@ export function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormProps) {
         </Button>
 
         {onSwitchToRegister && (
-          <div className="pt-4 text-center border-t border-border">
+          <div className="pt-4 text-center border-t border-border-20">
             <p className="text-sm text-muted-foreground">
               Don't have an account?{' '}
               <button

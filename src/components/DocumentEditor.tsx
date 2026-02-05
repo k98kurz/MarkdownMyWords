@@ -136,64 +136,66 @@ export function DocumentEditor() {
           handleSave();
         }}
       >
-        <div className="mb-4 h-[500px]">
-          <EditorArea
-            title={title}
-            content={content}
-            onContentChange={setContent}
-            onTitleChange={setTitle}
-            enableViewSwitch={true}
-            defaultViewMode="edit"
-            isReadOnly={false}
-          />
-        </div>
-
-        <div className="flex flex-wrap items-end gap-4 rounded-lg border border-border bg-card p-4">
-          <div className="flex-1 min-w-[200px]">
-            <Label htmlFor="doc-tags">Tags:</Label>
-            <Input
-              id="doc-tags"
-              type="text"
-              value={tags}
-              onChange={e => setTags(e.target.value)}
-              placeholder="tag1, tag2, tag3"
+        <div className="rounded-lg border border-border-20 bg-card">
+          <div className="h-[70vh]">
+            <EditorArea
+              title={title}
+              content={content}
+              onContentChange={setContent}
+              onTitleChange={setTitle}
+              enableViewSwitch={true}
+              defaultViewMode="edit"
+              isReadOnly={false}
             />
           </div>
 
-          <div className="min-w-[180px]">
-            <Label htmlFor="doc-privacy">Privacy:</Label>
-            <select
-              id="doc-privacy"
-              value={isPublic ? 'public' : 'private'}
-              onChange={e => setIsPublic(e.target.value === 'public')}
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-card-foreground focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
-            >
-              <option value="private">Private (encrypted)</option>
-              <option value="public">Public (not encrypted)</option>
-            </select>
-          </div>
+          <div className="flex flex-wrap items-end gap-4 p-4">
+            <div className="flex-1 min-w-[200px]">
+              <Label htmlFor="doc-tags">Tags:</Label>
+              <Input
+                id="doc-tags"
+                type="text"
+                value={tags}
+                onChange={e => setTags(e.target.value)}
+                placeholder="tag1, tag2, tag3"
+              />
+            </div>
 
-          <div className="flex gap-2">
-            {docId && docId !== 'new' && (
-              <Button
-                variant="danger"
-                onClick={() => setShowDeleteConfirm(true)}
-                disabled={docStatus === 'SAVING'}
+            <div className="min-w-[180px]">
+              <Label htmlFor="doc-privacy">Privacy:</Label>
+              <select
+                id="doc-privacy"
+                value={isPublic ? 'public' : 'private'}
+                onChange={e => setIsPublic(e.target.value === 'public')}
+                className="w-full rounded-md border border-border-20 bg-select-bg-8 px-3 py-2 text-sm text-foreground-87 focus:border-primary-500 focus:outline-none focus:bg-select-bg-10 focus:ring-2 focus:ring-primary-500/20"
               >
-                Delete
+                <option value="private">Private (encrypted)</option>
+                <option value="public">Public (not encrypted)</option>
+              </select>
+            </div>
+
+            <div className="flex gap-2">
+              {docId && docId !== 'new' && (
+                <Button
+                  variant="danger"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  disabled={docStatus === 'SAVING'}
+                >
+                  Delete
+                </Button>
+              )}
+              <Button variant="secondary" type="button" onClick={handleCancel}>
+                Cancel
               </Button>
-            )}
-            <Button variant="secondary" type="button" onClick={handleCancel}>
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              type="submit"
-              disabled={docStatus === 'SAVING'}
-              isLoading={docStatus === 'SAVING'}
-            >
-              Save
-            </Button>
+              <Button
+                variant="primary"
+                type="submit"
+                disabled={docStatus === 'SAVING'}
+                isLoading={docStatus === 'SAVING'}
+              >
+                Save
+              </Button>
+            </div>
           </div>
         </div>
       </form>
