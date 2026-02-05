@@ -22,8 +22,6 @@ interface ConnectionState {
   updateConnectionStatus: () => void;
 }
 
-let relayUrl: string | null = null;
-
 /**
  * Connection Store
  *
@@ -39,27 +37,15 @@ export const useConnectionStore = create<ConnectionState>(set => ({
   // Action to update connection status
   updateConnectionStatus: () => {
     const status = gunService.getConnectionState();
+    const relayUrl = gunService.getRelayUrl();
     set({
       status,
       isConnected: status === 'connected',
       isConnecting: status === 'connecting',
-      relayUrl: relayUrl || 'Unknown',
+      relayUrl,
     });
   },
 }));
-
-// Try to get relay URL from gunService configuration
-try {
-  // Get the peers from gunService directly
-  const gunInstance = gunService.getGun();
-  if (gunInstance) {
-    // Since we don't have direct access to the peers configuration,
-    // we'll use a default value or try to extract it from the service
-    relayUrl = 'http://localhost:8765/gun';
-  }
-} catch (e) {
-  relayUrl = 'Unknown';
-}
 
 // Export types
 export type { ConnectionState };

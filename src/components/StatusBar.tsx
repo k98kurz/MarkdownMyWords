@@ -38,7 +38,9 @@ export const StatusBar: React.FC = () => {
           className={`h-2.5 w-2.5 rounded-full ${statusInfo.colorClass} ${statusInfo.animate ? 'animate-blink' : ''}`}
         />
         <span className="text-card-foreground/80">
-          {statusInfo.text} to relay: {relayUrl || 'Unknown'}
+          {!relayUrl || status === 'disconnected'
+            ? 'Not Connected to a Relay'
+            : `${statusInfo.text} to relay: ${relayUrl}`}
         </span>
       </div>
     </div>
