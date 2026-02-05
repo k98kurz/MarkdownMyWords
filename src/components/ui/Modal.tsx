@@ -14,13 +14,13 @@ export function Modal({ isOpen, onClose, children, className }: ModalProps) {
       onClick={onClose}
     >
       <div
-        className={`relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-lg bg-white shadow-lg dark:bg-slate-900 ${className || ''}`}
+        className={`relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-lg bg-card shadow-lg ${className || ''}`}
         onClick={e => e.stopPropagation()}
       >
         {onClose && (
           <button
             onClick={onClose}
-            className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition-colors hover:text-slate-600 dark:hover:text-slate-200"
+            className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-card-foreground"
             aria-label="Close modal"
           >
             ×

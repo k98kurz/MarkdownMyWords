@@ -187,7 +187,7 @@ export function RegisterForm({
         </Button>
 
         {onSwitchToLogin && (
-          <div className="pt-4 text-center border-t border-border">
+          <div className="pt-4 text-center border-t border-border-20">
             <p className="text-sm text-muted-foreground">
               Already have an account?{' '}
               <button

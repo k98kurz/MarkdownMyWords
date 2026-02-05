@@ -16,13 +16,13 @@ export function Button({
 }: ButtonProps) {
   const variantClasses = {
     primary:
-      'bg-primary-600 text-white hover:bg-primary-700 focus:ring-offset-slate-900 dark:focus:ring-offset-slate-950',
+      'bg-primary text-white hover:bg-primary-hover focus:ring-offset-background',
     secondary:
-      'bg-slate-100 text-slate-900 hover:bg-slate-200 focus:ring-offset-white dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700 dark:focus:ring-offset-slate-950',
+      'bg-secondary-bg-10 text-foreground-90 border border-secondary-bg-20 hover:bg-secondary-bg-15 focus:ring-offset-background',
     ghost:
-      'hover:bg-slate-100 text-slate-700 focus:ring-offset-white dark:hover:bg-slate-800 dark:text-slate-300 dark:focus:ring-offset-slate-950',
+      'text-card-foreground hover:bg-muted-10 focus:ring-offset-background',
     danger:
-      'bg-rose-600 text-white hover:bg-rose-700 focus:ring-offset-slate-900 dark:focus:ring-offset-slate-950',
+      'bg-destructive text-destructive-foreground hover:bg-destructive-20 focus:ring-offset-background',
   };
 
   const sizeClasses = {
