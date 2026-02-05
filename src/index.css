@@ -98,7 +98,7 @@
   }
 
   #root {
-    @apply max-w-7xl mx-auto px-4;
+    @apply mx-auto px-4;
   }
 
   a {

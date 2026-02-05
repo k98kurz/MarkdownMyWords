@@ -9,8 +9,10 @@ import { StatusBar } from './components/StatusBar';
 import { DocumentList } from './components/DocumentList';
 import { DocumentEditor } from './components/DocumentEditor';
 import { NotFound } from './components/NotFound';
+import { AppWidthProvider, useAppWidth } from './contexts/AppWidthContext';
 
-function App() {
+function AppContent() {
+  const { appWidth, setAppWidth } = useAppWidth();
   const { isAuthenticated, isLoading, checkSession, logout, user, username } =
     useAuthStore();
   const { setError } = useErrorStore();
@@ -48,8 +50,17 @@ function App() {
     }
   }, [isAuthenticated]);
 
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setAppWidth('80rem');
+    }
+  }, [isAuthenticated, setAppWidth]);
+
   return (
-    <div className="min-h-screen">
+    <div
+      className="min-h-screen mx-auto"
+      style={{ maxWidth: appWidth } as React.CSSProperties}
+    >
       <header className="flex items-center justify-between border-b border-border-20 px-6 py-4">
         <h1 className="text-xl font-semibold text-card-foreground">
           MarkdownMyWords
@@ -91,6 +102,14 @@ function App() {
 
       <StatusBar />
     </div>
+  );
+}
+
+function App() {
+  return (
+    <AppWidthProvider>
+      <AppContent />
+    </AppWidthProvider>
   );
 }
 

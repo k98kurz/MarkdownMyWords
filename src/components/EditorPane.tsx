@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { MarkdownEditor } from './MarkdownEditor';
 import { MarkdownPreview } from './MarkdownPreview';
+import { useAppWidth } from '../contexts/AppWidthContext';
 
 type ViewMode = 'edit' | 'preview' | 'split';
 
@@ -26,6 +27,15 @@ export function EditorPane({
   isReadOnly = false,
 }: EditorPaneProps) {
   const [viewMode, setViewMode] = useState<ViewMode>(defaultViewMode);
+  const { setAppWidth } = useAppWidth();
+
+  useEffect(() => {
+    setAppWidth(viewMode === 'split' ? '100rem' : '80rem');
+
+    return () => {
+      setAppWidth('80rem');
+    };
+  }, [viewMode, setAppWidth]);
 
   const handleViewChange = (mode: ViewMode) => {
     setViewMode(mode);
