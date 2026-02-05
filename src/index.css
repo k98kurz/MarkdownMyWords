@@ -32,6 +32,7 @@
     --code-background: 244 246 248;
     --font-size-base: 16px;
     --font-size-code: 16px;
+    --cursor-color: 100 108 255;
     --code-text: 33 53 71;
     --code-border: 203 213 225;
   }
@@ -64,6 +65,7 @@
     --code-background: 30 41 59;
     --font-size-base: 16px;
     --font-size-code: 16px;
+    --cursor-color: 100 108 255;
     --code-text: 241 245 249;
     --code-border: 71 85 105;
   }
@@ -175,6 +177,7 @@
 .cm-editor {
   @apply h-full text-sm leading-[1.6];
   font-size: var(--font-size-base);
+  caret-color: rgb(var(--cursor-color));
 }
 
 .cm-editor .cm-lineNumbers {
@@ -189,6 +192,40 @@
 .cm-editor .cm-activeLineGutter {
   background-color: rgb(var(--background) / 0.6);
   color: rgb(var(--foreground) / 0.8);
+}
+
+/* CodeMirror cursor styling */
+.cm-editor .cm-cursor {
+  border-left: 2px solid rgb(var(--cursor-color)) !important;
+  margin-left: -1px;
+}
+
+.cm-editor .cm-focused .cm-cursor {
+  animation: cursor-blink 1s infinite;
+}
+
+@keyframes cursor-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+.cm-editor .cm-focused .cm-cursor {
+  animation: cursor-blink 1s infinite;
+}
+
+@keyframes cursor-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
 }
 
 /* Prose code block styling */
