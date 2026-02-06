@@ -247,6 +247,16 @@ export const useAuthStore = create<AuthState>(set => ({
     // Handle final result (validation or auth errors both go here)
     handleAuthResult(result, set);
 
+    // Read username from profile after successful registration
+    if (!isFailure(result)) {
+      try {
+        const username = await gunService.readUsername();
+        set({ username });
+      } catch {
+        set({ username: null });
+      }
+    }
+
     // Throw error if any step failed
     if (isFailure(result)) {
       throw result.error;
@@ -277,6 +287,16 @@ export const useAuthStore = create<AuthState>(set => ({
 
     // Handle final result (validation or auth errors both go here)
     handleAuthResult(result, set);
+
+    // Read username from profile after successful login
+    if (!isFailure(result)) {
+      try {
+        const username = await gunService.readUsername();
+        set({ username });
+      } catch {
+        set({ username: null });
+      }
+    }
 
     // Throw error if any step failed
     if (isFailure(result)) {
