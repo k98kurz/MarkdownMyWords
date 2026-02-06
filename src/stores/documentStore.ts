@@ -268,7 +268,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       title: string,
       content: string,
       tags?: string[],
-      isPublic?: boolean
+      isPublic: boolean = false
     ): Promise<Result<Document, DocumentError>> => {
       set({ status: 'SAVING', error: null });
 
@@ -284,7 +284,6 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
         validateTagsNoCommas(tags);
 
-        const validatedIsPublic = isPublic ?? false;
         const docId = gunService.newId();
         const gun = gunService.getGun();
         const userNode = gun.user();
@@ -294,7 +293,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         let encryptedContent = content;
         let tagsCSV = arrayToCSV(tags);
 
-        if (!validatedIsPublic) {
+        if (!isPublic) {
           docKey = await encryptionService.generateKey();
           encryptedTitle =
             (await encryptionService.encrypt(title.trim(), docKey)) ??
@@ -316,7 +315,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           tags: tags,
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          isPublic: validatedIsPublic,
+          isPublic: isPublic,
         };
 
         const documentForStorage = {
