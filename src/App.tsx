@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
 import { AuthModal } from './components/AuthModal';
 import { AuthComponent } from './components/AuthComponent';
+import { SettingsModal } from './components/SettingsModal';
 import { ErrorModal } from './components/ErrorModal';
 import { useErrorStore } from './stores/errorStore';
 import { StatusBar } from './components/StatusBar';
@@ -17,6 +18,7 @@ function AppContent() {
     useAuthStore();
   const { setError } = useErrorStore();
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
 
   useEffect(() => {
     const handleError = (event: ErrorEvent) => {
@@ -96,6 +98,12 @@ function AppContent() {
         isOpen={showAuthModal}
         onClose={isAuthenticated ? () => setShowAuthModal(false) : undefined}
         defaultTab="login"
+        onOpenSettings={() => setShowSettingsModal(true)}
+      />
+
+      <SettingsModal
+        isOpen={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
       />
 
       <ErrorModal />

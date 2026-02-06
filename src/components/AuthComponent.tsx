@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import type { IGunUserInstance } from 'gun/types';
-import { useTheme } from '../providers/ThemeProvider';
+import { Button } from './ui/Button';
+import { SettingsModal } from './SettingsModal';
 
 interface AuthComponentProps {
   user: IGunUserInstance | null;
@@ -13,8 +14,8 @@ export function AuthComponent({
   username,
   onLogout,
 }: AuthComponentProps) {
-  const { theme, setTheme } = useTheme();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const displayName =
@@ -64,11 +65,6 @@ export function AuthComponent({
     onLogout();
   };
 
-  const handleThemeToggle = () => {
-    setTheme(theme === 'light' ? 'dark' : 'light');
-    setIsDropdownOpen(false);
-  };
-
   return (
     <div className="relative" ref={dropdownRef}>
       <button
@@ -85,12 +81,17 @@ export function AuthComponent({
 
       {isDropdownOpen && (
         <div className="absolute right-0 top-full z-50 mt-2 min-w-[150px] overflow-hidden rounded-md border border-border-20 bg-card shadow-lg">
-          <button
-            onClick={handleThemeToggle}
+          <Button
+            variant="ghost"
+            size="md"
+            onClick={() => {
+              setIsSettingsOpen(true);
+              setIsDropdownOpen(false);
+            }}
             className="w-full px-4 py-3 text-left text-sm text-card-foreground transition-colors hover:bg-primary-10"
           >
-            {theme === 'light' ? '🌙 Dark Mode' : '☀️ Light Mode'}
-          </button>
+            ⚙️ Settings
+          </Button>
           <button
             onClick={handleLogout}
             className="w-full border-t border-border-20 px-4 py-3 text-left text-sm text-card-foreground transition-colors hover:bg-primary-10"
@@ -99,6 +100,11 @@ export function AuthComponent({
           </button>
         </div>
       )}
+
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+      />
     </div>
   );
 }
