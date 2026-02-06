@@ -17,8 +17,8 @@
     --secondary: 0 0 0;
     --secondary-foreground: 0 0 0;
     --secondary-bg: 33 53 71;
-    --muted: 0 0 0;
-    --muted-foreground: 0 0 0;
+    --muted: 241 245 249;
+    --muted-foreground: 107 114 128;
     --accent: 0 0 0;
     --accent-foreground: 0 0 0;
     --destructive: 255 107 107;
@@ -51,8 +51,8 @@
     --secondary: 255 255 255;
     --secondary-foreground: 255 255 255;
     --secondary-bg: 255 255 255;
-    --muted: 255 255 255;
-    --muted-foreground: 255 255 255;
+    --muted: 30 41 59;
+    --muted-foreground: 148 163 184;
     --accent: 255 255 255;
     --accent-foreground: 255 255 255;
     --destructive: 255 107 107;

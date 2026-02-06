@@ -321,13 +321,13 @@ export const useAuthStore = create<AuthState>(set => ({
   checkSession: async () => {
     set({ isLoading: true });
 
-    const recallResult = await tryCatch(() => {
+    const recallResult = await tryCatch(async () => {
       const gun = gunService.getGun();
       if (!gun) {
         throw new Error('GunDB not initialized');
       }
 
-      return new Promise<void>((resolve, reject) => {
+      return await new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(() => {
           reject(new Error('Session check timeout'));
         }, 1000);
@@ -344,11 +344,18 @@ export const useAuthStore = create<AuthState>(set => ({
       });
     }, transformAuthError);
 
-    match(
-      () => {
+    await match(
+      async () => {
         handleAuthResult(getAuthenticatedUser(), set);
+
+        try {
+          const username = await gunService.readUsername();
+          set({ username });
+        } catch {
+          set({ username: null });
+        }
       },
-      () => {
+      async (_: unknown) => {
         set({
           isLoading: false,
           isAuthenticated: false,
@@ -358,14 +365,5 @@ export const useAuthStore = create<AuthState>(set => ({
         });
       }
     )(recallResult);
-
-    if (recallResult.success) {
-      try {
-        const username = await gunService.readUsername();
-        set({ username });
-      } catch {
-        set({ username: null });
-      }
-    }
   },
 }));

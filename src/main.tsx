@@ -15,6 +15,7 @@ import { printTestSummary, type TestSuiteResult } from './utils/testRunner';
 import { testNewGunSEAScheme } from './test/testNewGunSEAScheme';
 import { testDocumentStore } from './test/documentStore.test';
 import { clearGunDBLocalStorage } from './utils/clearGunDB';
+import { listUsers } from './utils/consoleTools';
 import { useConnectionStore } from './stores/connectionStore';
 
 // Initialize services
@@ -101,6 +102,7 @@ if (typeof window !== 'undefined') {
   (window as any).runAllTests = runAllTests;
   (window as any).clearGunDB = clearGunDBLocalStorage;
   (window as any).gunService = gunService;
+  (window as any).listUsers = listUsers;
   console.log('🧪 Dev console functions available:');
   console.log(
     '   - window.testDocumentSizes() - Test encryption with various document sizes'
@@ -118,6 +120,9 @@ if (typeof window !== 'undefined') {
   );
   console.log('   - window.runAllTests() - Run all test suites');
   console.log('   - window.clearGunDB(options) - Clear local GunDB storage');
+  console.log(
+    '   - window.listUsers(usernames) - List users by usernames array'
+  );
 }
 
 createRoot(document.getElementById('root')!).render(

@@ -181,6 +181,7 @@ export function DocumentEditor() {
               {docId && docId !== 'new' && (
                 <Button
                   variant="danger"
+                  type="button"
                   onClick={() => setShowDeleteConfirm(true)}
                   disabled={docStatus === 'SAVING'}
                 >

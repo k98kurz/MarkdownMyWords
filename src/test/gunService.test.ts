@@ -52,11 +52,6 @@ async function testInitialization(): Promise<TestSuiteResult> {
     }
   });
 
-  await runner.run('Check connection state', async () => {
-    const connectionState = gunService.getConnectionState();
-    console.log(`  Connection state: ${connectionState}`);
-  });
-
   await runner.run('Get GunDB instance', async () => {
     const instance = gunService.getGun();
     if (!instance) {
@@ -450,17 +445,6 @@ async function testConnectionState(): Promise<TestSuiteResult> {
   await runner.run('Get connection state', async () => {
     const state = gunService.getConnectionState();
     console.log(`  Connection state: ${state}`);
-  });
-
-  await runner.run('Check offline status', async () => {
-    const isOffline = gunService.isOffline();
-    console.log(`  Is offline: ${isOffline}`);
-  });
-
-  await runner.run('Retry connection', async () => {
-    await gunService.retryConnection();
-    const newState = gunService.getConnectionState();
-    console.log(`  Connection retry completed, new state: ${newState}`);
   });
 
   console.log('\n✅ Connection state tests complete!');

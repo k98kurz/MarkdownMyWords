@@ -42,16 +42,16 @@ export interface DiscoveredUser {
 class GunService {
   gun: GunInstance | null = null;
   isInitialized = false;
-  connectionState: 'connected' | 'disconnected' | 'connecting' = 'disconnected';
   appNamespace: string = 'markdownmywords';
-  relayUrl: string | null = null;
+  relays: Map<string, 'init' | 'connecting' | 'connected' | 'disconnected'> =
+    new Map();
+  peerConnectionTimes: Map<string, number> = new Map();
 
   /**
    * Initialize GunDB client
-   * @param relayUrl - Relay server URL (optional, defaults to local relay)
    * @param config - Additional GunDB configuration
    */
-  initialize(relayUrl?: string, config?: GunConfig): void {
+  initialize(config?: GunConfig): void {
     if (this.isInitialized) {
       console.warn('GunDB already initialized');
       return;
@@ -61,31 +61,25 @@ class GunService {
       // Set app namespace for collision avoidance
       this.appNamespace = config?.appNamespace ?? 'markdownmywords';
 
-      const peers: string[] = [];
+      // Read relay settings from localStorage
+      const relaySettings = localStorage.getItem('relaySettings');
+      const relayUrls: string[] = relaySettings
+        ? JSON.parse(relaySettings)
+        : ['http://localhost:8765/gun'];
 
-      if (relayUrl) {
-        peers.push(relayUrl);
-        this.relayUrl = relayUrl;
-      } else if (config?.relayUrl) {
-        peers.push(config.relayUrl);
-        this.relayUrl = config.relayUrl;
-      } else if (config?.peers) {
-        peers.push(...config.peers);
-        this.relayUrl = peers[0] || null;
-      }
+      // Initialize all relays as connecting
+      relayUrls.forEach(url => {
+        this.relays.set(url, 'init');
+      });
 
-      // Default to local relay if no peers specified
-      if (peers.length === 0) {
-        peers.push('http://localhost:8765/gun');
-        this.relayUrl = peers[0] || null;
-      }
+      console.log('[DEBUG] Initializing GunDB with relays:', relayUrls);
 
       const gunConfig: {
         peers: string[];
         localStorage?: boolean;
         radisk?: boolean;
       } = {
-        peers,
+        peers: relayUrls,
         localStorage: config?.localStorage ?? true,
         radisk: config?.radisk ?? true, // Enable IndexedDB storage
       };
@@ -93,11 +87,14 @@ class GunService {
       this.gun = Gun(gunConfig) as GunInstance;
 
       // Set up connection state monitoring
+      console.log(
+        '[DEBUG] Initializing GunDB - calling setupConnectionMonitoring()'
+      );
       this.setupConnectionMonitoring();
 
       this.isInitialized = true;
       console.log('GunDB initialized successfully', {
-        peers,
+        relayUrls,
         appNamespace: this.appNamespace,
       });
     } catch (error) {
@@ -124,43 +121,84 @@ class GunService {
   /**
    * Set up connection state monitoring
    */
-  setupConnectionMonitoring(): void {
-    if (!this.gun) return;
-
-    // If no relay is configured, always be in disconnected state
-    if (!this.relayUrl) {
-      this.connectionState = 'disconnected';
-      console.log('No relay configured - running in local-only mode');
-      return;
+  setupConnectionMonitoring(): boolean {
+    console.log('[DEBUG] setupConnectionMonitoring() called', this.relays);
+    if (!this.gun) {
+      console.log(
+        '[DEBUG] setupConnectionMonitoring() - no gun instance, returning'
+      );
+      return false;
     }
 
-    // Monitor peer connections using GunDB's peer events
-    this.connectionState = 'connecting';
-    console.log(`Connecting to relay: ${this.relayUrl}`);
+    // If no relay is configured, always be in disconnected state
+    if (this.relays.size === 0) {
+      console.log(
+        '[DEBUG] No relay configured - running in local-only mode, returning early'
+      );
+      return false;
+    }
 
-    let connectionTimeout: number | null = null;
+    // if all relays have been initialized, return
+    if (
+      !Object.values([...this.relays.values()]).some(value => value === 'init')
+    ) {
+      console.log('[DEBUG] No relays in init state; returning');
+      return false;
+    }
+
+    // Set all relays to connecting
+    this.relays.forEach((_, url) => {
+      this.relays.set(url, 'connecting');
+    });
+
+    console.log(`Connecting to ${this.relays.size} relay(s)`);
+    console.log('Configured relay URLs:', Array.from(this.relays.keys()));
+
+    const timeouts = new Map<string, number>();
 
     this.gun.on('hi', peer => {
-      if (connectionTimeout !== null) {
-        clearTimeout(connectionTimeout);
-        connectionTimeout = null;
+      console.log('[DEBUG] hi event fired, peer:', peer);
+      if (peer.url && this.relays.has(peer.url)) {
+        this.relays.set(peer.url, 'connected');
+        this.peerConnectionTimes.set(peer.url, Date.now());
+
+        const timeout = timeouts.get(peer.url);
+        if (timeout) {
+          clearTimeout(timeout);
+          timeouts.delete(peer.url);
+        }
+
+        console.log(`GunDB peer connected: ${peer.url}`);
       }
-      this.connectionState = 'connected';
-      console.log('GunDB peer connected:', peer);
     });
 
     this.gun.on('bye', peer => {
-      this.connectionState = 'disconnected';
-      console.log('GunDB peer disconnected:', peer);
+      console.log('[DEBUG] bye event fired, peer:', peer);
+      if (peer.url && this.relays.has(peer.url)) {
+        this.relays.set(peer.url, 'disconnected');
+        console.log(`GunDB peer disconnected: ${peer.url}`);
+      }
     });
 
-    // Set connection timeout - if no peer connects within 10 seconds, mark as disconnected
-    connectionTimeout = window.setTimeout(() => {
-      if (this.connectionState === 'connecting') {
-        this.connectionState = 'disconnected';
-        console.warn('GunDB connection timed out - no peer connected');
-      }
-    }, 10000);
+    // Set connection timeout - 10 seconds for each relay
+    this.relays.forEach((_, url) => {
+      console.log('[DEBUG] Setting 10s timeout for relay:', url);
+      const timeout = window.setTimeout(() => {
+        console.log(
+          '[DEBUG] Timeout triggered for relay:',
+          url,
+          'Current status:',
+          this.relays.get(url)
+        );
+        if (this.relays.get(url) === 'connecting') {
+          this.relays.set(url, 'disconnected');
+          console.warn(`GunDB connection timed out: ${url}`);
+        }
+      }, 10000);
+      timeouts.set(url, timeout);
+    });
+
+    return true;
   }
 
   /**
@@ -181,15 +219,125 @@ class GunService {
    * Get connection state
    */
   getConnectionState(): 'connected' | 'disconnected' | 'connecting' {
-    return this.connectionState;
+    const statuses = Array.from(this.relays.values());
+
+    // Return 'connected' if ANY peer is connected
+    if (statuses.some(s => s === 'connected')) {
+      return 'connected';
+    }
+    // Return 'connecting' if ANY peer is connecting
+    if (statuses.some(s => s === 'connecting')) {
+      return 'connecting';
+    }
+    // Otherwise disconnected
+    return 'disconnected';
   }
 
   /**
-   * Get configured relay URL
-   * @returns Relay URL or null if not configured
+   * Get configured relay URL (deprecated, kept for backward compatibility)
+   * @returns First relay URL or null if not configured
    */
   getRelayUrl(): string | null {
-    return this.relayUrl;
+    const urls = Array.from(this.relays.keys());
+    return urls.length > 0 ? urls[0] : null;
+  }
+
+  /**
+   * Update GunDB configuration with new relay list
+   * @param relayUrls - Array of relay URLs to connect to
+   */
+  updateRelays(relayUrls: string[]): void {
+    console.log('[DEBUG] updateRelays() called with:', relayUrls);
+    if (!this.gun) {
+      console.log('[DEBUG] updateRelays() - no gun instance, returning');
+      return;
+    }
+
+    // Initialize status for each new relay
+    relayUrls.forEach(url => {
+      if (!this.relays.has(url)) {
+        console.log('[DEBUG] Adding new relay to map:', url);
+        this.relays.set(url, 'init');
+      }
+    });
+
+    // Remove relays that are no longer configured
+    for (const url of this.relays.keys()) {
+      if (!relayUrls.includes(url)) {
+        this.relays.delete(url);
+        this.peerConnectionTimes.delete(url);
+      }
+    }
+
+    // Save to localStorage
+    this.saveRelaySettings(relayUrls);
+
+    // Restart connection monitoring (set up hi/bye listeners BEFORE connecting)
+    if (!this.setupConnectionMonitoring()) {
+      console.log('[DEBUG] Skipping redundant call to gun.opt()');
+      return;
+    }
+
+    // Use GunDB's opt() method to update peers dynamically
+    console.log('[DEBUG] Calling gun.opt() with peers:', relayUrls);
+    this.gun.opt({ peers: relayUrls });
+  }
+
+  /**
+   * Get relay URLs (Map keys)
+   * @returns Array of relay URLs
+   */
+  getRelayUrls(): string[] {
+    return Array.from(this.relays.keys());
+  }
+
+  /**
+   * Get relay status map
+   * @returns Map of relay URLs to connection status
+   */
+  getRelayStatuses(): Map<
+    string,
+    'init' | 'connecting' | 'connected' | 'disconnected'
+  > {
+    return this.relays;
+  }
+
+  /**
+   * Get connection time for a specific peer
+   * @param url - Relay URL
+   * @returns Connection timestamp or undefined
+   */
+  getPeerConnectionTime(url: string): number | undefined {
+    return this.peerConnectionTimes.get(url);
+  }
+
+  /**
+   * Save relay settings to localStorage
+   * @param relayUrls - Array of relay URLs to save
+   */
+  saveRelaySettings(relayUrls: string[]): void {
+    localStorage.setItem('relaySettings', JSON.stringify(relayUrls));
+    console.log('[DEBUG] Saved relay settings to localStorage:', relayUrls);
+  }
+
+  /**
+   * Get stored relay settings from localStorage
+   * @returns Array of relay URLs from localStorage or default
+   */
+  getStoredRelays(): string[] {
+    const relaySettings = localStorage.getItem('relaySettings');
+    return relaySettings
+      ? JSON.parse(relaySettings)
+      : ['http://localhost:8765/gun'];
+  }
+
+  /**
+   * Reset relay settings to defaults
+   * Removes relaySettings from localStorage, app will use default on next reload
+   */
+  resetRelays(): void {
+    localStorage.removeItem('relaySettings');
+    console.log('[DEBUG] Reset relay settings - removed from localStorage');
   }
 
   /**
@@ -230,69 +378,6 @@ class GunService {
    */
   newId(): string {
     return crypto.randomUUID();
-  }
-
-  /**
-   * Handle offline scenarios
-   * GunDB automatically handles offline with IndexedDB, but we can add custom logic
-   */
-  handleOffline(): void {
-    if (this.connectionState === 'connected') {
-      this.connectionState = 'disconnected';
-      console.warn('GunDB went offline - using local storage');
-    }
-  }
-
-  /**
-   * Check if currently offline
-   * @returns true if offline, false if online
-   */
-  isOffline(): boolean {
-    return this.connectionState === 'disconnected';
-  }
-
-  /**
-   * Retry connection
-   * Attempts to reconnect to peers
-   */
-  async retryConnection(): Promise<void> {
-    if (!this.gun) {
-      throw {
-        code: GunErrorCode.CONNECTION_FAILED,
-        message: 'GunDB not initialized',
-      } as GunError;
-    }
-
-    this.connectionState = 'connecting';
-
-    return new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        this.connectionState = 'disconnected';
-        reject({
-          code: GunErrorCode.CONNECTION_FAILED,
-          message: 'Connection retry timeout',
-        } as GunError);
-      }, 10000);
-
-      this.gun!.get(this.getNodePath('_retry_test')).put(
-        { timestamp: Date.now() },
-        (ack: GunAck) => {
-          clearTimeout(timeout);
-
-          if (ack.err) {
-            this.connectionState = 'disconnected';
-            reject({
-              code: GunErrorCode.CONNECTION_FAILED,
-              message: 'Failed to reconnect',
-              details: ack.err,
-            } as GunError);
-          } else {
-            this.connectionState = 'connected';
-            resolve();
-          }
-        }
-      );
-    });
   }
 
   /**
