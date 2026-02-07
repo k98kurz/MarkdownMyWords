@@ -1,21 +1,25 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useDocumentStore } from '../stores/documentStore';
+import { useAuthStore } from '../stores/authStore';
 import { EditorArea } from './EditorArea';
 import { ConfirmModal } from './ConfirmModal';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { Label } from './ui/Label';
+import { Badge } from './ui/Badge';
 
 export function DocumentEditor() {
-  const { docId } = useParams<{ docId?: string }>();
+  const { userPub, docId } = useParams<{ userPub?: string; docId?: string }>();
   const navigate = useNavigate();
+  const { user: currentUser } = useAuthStore();
+  const currentUserPub = currentUser?.is?.pub;
   const {
     currentDocument,
     status: docStatus,
     loadingDocId,
     error: docError,
-    getDocument,
+    getDocumentByUrl,
     createDocument,
     updateDocument,
     deleteDocument,
@@ -28,33 +32,50 @@ export function DocumentEditor() {
   const [tags, setTags] = useState('');
   const [isPublic, setIsPublic] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [notFound, setNotFound] = useState(false);
+  type ViewError = 'NOT_FOUND' | 'PERMISSION_DENIED' | undefined;
+  const [viewError, setViewError] = useState<ViewError>(undefined);
 
   useEffect(() => {
-    if (docId && docId !== 'new') {
-      getDocument(docId).then(result => {
+    if (docId && docId !== 'new' && userPub) {
+      getDocumentByUrl(docId, userPub).then(result => {
         if (result.success && result.data) {
           setTitle(result.data.title || '');
           setContent(result.data.content || '');
           setTags(result.data.tags?.join(', ') || '');
           setIsPublic(result.data.isPublic);
-          setNotFound(false);
-        } else {
+          setViewError(undefined);
+        } else if (!result.success) {
           setTitle('');
           setContent('');
           setTags('');
           setIsPublic(false);
-          setNotFound(true);
+          if (result.error.code === 'NOT_FOUND') {
+            setViewError('NOT_FOUND');
+          } else if (result.error.code === 'PERMISSION_DENIED') {
+            setViewError('PERMISSION_DENIED');
+          }
+        } else if (result.success && result.data === null) {
+          setTitle('');
+          setContent('');
+          setTags('');
+          setIsPublic(false);
+          setViewError('NOT_FOUND');
         }
       });
+    } else if (docId !== 'new') {
+      setTitle('');
+      setContent('');
+      setTags('');
+      setIsPublic(false);
+      setViewError('NOT_FOUND');
     } else {
       setTitle('');
       setContent('');
       setTags('');
       setIsPublic(false);
-      setNotFound(false);
+      setViewError(undefined);
     }
-  }, [docId, getDocument]);
+  }, [docId, userPub, getDocumentByUrl]);
 
   const handleSave = async () => {
     clearDocError();
@@ -83,7 +104,7 @@ export function DocumentEditor() {
         return;
       }
 
-      navigate('/docs');
+      navigate(`/doc/${currentUserPub}/${result.data.id}`);
     }
   };
 
@@ -102,22 +123,76 @@ export function DocumentEditor() {
     }
   };
 
-  if (docId && loadingDocId === docId && !currentDocument && !notFound) {
+  if (docId && loadingDocId === docId && !currentDocument && !viewError) {
     return (
       <div className="px-8 py-16 text-center text-lg">Loading document...</div>
     );
   }
 
-  if (notFound) {
+  if (viewError) {
+    const title =
+      viewError === 'NOT_FOUND' ? 'Document Not Found' : 'Permission Denied';
+    const description =
+      viewError === 'NOT_FOUND'
+        ? "The document you're looking for doesn't exist."
+        : 'You do not have access to this document.';
+
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center px-4">
         <h1 className="mb-4 text-2xl font-bold text-card-foreground">
-          Document Not Found
+          {title}
         </h1>
-        <p className="mb-8 text-muted-foreground">
-          The document you're looking for doesn't exist.
-        </p>
+        <p className="mb-8 text-muted-foreground">{description}</p>
         <Button onClick={() => navigate('/docs')}>Go to Documents</Button>
+      </div>
+    );
+  }
+
+  const canEdit = !userPub || userPub === currentUserPub;
+
+  if (!canEdit && !viewError && currentDocument) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="rounded-lg border border-border-20 bg-card mb-7">
+          <div className="min-h-[70vh]">
+            <EditorArea
+              title={currentDocument.title}
+              content={currentDocument.content}
+              onContentChange={() => {}}
+              onTitleChange={() => {}}
+              enableViewSwitch={true}
+              defaultViewMode="preview"
+              isReadOnly={true}
+            />
+          </div>
+
+          <div className="flex flex-wrap items-end gap-4 p-4">
+            <div className="flex-1 min-w-[200px]">
+              <Label htmlFor="doc-tags">Tags:</Label>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {currentDocument.tags && currentDocument.tags.length > 0 ? (
+                  currentDocument.tags.map(tag => (
+                    <Badge key={tag}>{tag}</Badge>
+                  ))
+                ) : (
+                  <span className="text-sm text-muted-foreground">No tags</span>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <span className="text-sm text-muted-foreground">Read Only</span>
+
+              <Button
+                variant="secondary"
+                type="button"
+                onClick={() => navigate('/docs')}
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -139,8 +214,8 @@ export function DocumentEditor() {
           handleSave();
         }}
       >
-        <div className="rounded-lg border border-border-20 bg-card">
-          <div className="h-[70vh]">
+        <div className="rounded-lg border border-border-20 bg-card mb-7">
+          <div className="min-h-[70vh]">
             <EditorArea
               title={title}
               content={content}
@@ -177,29 +252,35 @@ export function DocumentEditor() {
               </select>
             </div>
 
-            <div className="flex gap-2">
-              {docId && docId !== 'new' && (
+            {canEdit && (
+              <div className="flex gap-2">
+                {docId && docId !== 'new' && (
+                  <Button
+                    variant="danger"
+                    type="button"
+                    onClick={() => setShowDeleteConfirm(true)}
+                    disabled={docStatus === 'SAVING'}
+                  >
+                    Delete
+                  </Button>
+                )}
                 <Button
-                  variant="danger"
+                  variant="secondary"
                   type="button"
-                  onClick={() => setShowDeleteConfirm(true)}
-                  disabled={docStatus === 'SAVING'}
+                  onClick={handleCancel}
                 >
-                  Delete
+                  Close
                 </Button>
-              )}
-              <Button variant="secondary" type="button" onClick={handleCancel}>
-                Cancel
-              </Button>
-              <Button
-                variant="primary"
-                type="submit"
-                disabled={docStatus === 'SAVING'}
-                isLoading={docStatus === 'SAVING'}
-              >
-                Save
-              </Button>
-            </div>
+                <Button
+                  variant="primary"
+                  type="submit"
+                  disabled={docStatus === 'SAVING'}
+                  isLoading={docStatus === 'SAVING'}
+                >
+                  Save
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </form>

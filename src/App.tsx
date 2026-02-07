@@ -81,7 +81,7 @@ function AppContent() {
               <Route path="/" element={<Navigate to="/docs" replace />} />
               <Route path="/docs" element={<DocumentList />} />
               <Route path="/doc/new" element={<DocumentEditor />} />
-              <Route path="/doc/:docId" element={<DocumentEditor />} />
+              <Route path="/doc/:userPub/:docId" element={<DocumentEditor />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </div>

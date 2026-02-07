@@ -1,11 +1,14 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useDocumentStore } from '../stores/documentStore';
+import { useAuthStore } from '../stores/authStore';
 import { ConfirmModal } from './ConfirmModal';
 import { Button } from './ui/Button';
 import { Badge } from './ui/Badge';
 
 export function DocumentList() {
+  const { user } = useAuthStore();
+  const currentUserPub = user?.is?.pub;
   const {
     documentList,
     status,
@@ -227,7 +230,7 @@ export function DocumentList() {
 
                 <div className="flex gap-2 ml-4">
                   <Link
-                    to={`/doc/${doc.docId}`}
+                    to={`/doc/${currentUserPub}/${doc.docId}`}
                     className="inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover hover:text-primary-hover-text bg-primary"
                   >
                     Open

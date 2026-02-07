@@ -7,6 +7,8 @@ agentic code development. A human will test manually.
 2. Use `npm run build` and linting to check for syntax errors.
 3. Do not reference anything in the `.old/` directory as it contains outdated
 and deprecated information.
+4. There are currently no users or deployments of this anywhere, and thus no
+need for backwards compatibility. Just make clean changes.
 
 ## Core Principles
 
