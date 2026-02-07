@@ -154,8 +154,7 @@ export function DocumentList() {
         </p>
         <Link
           to="/doc/new"
-          className="mt-6 inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#535bf2]"
-          style={{ backgroundColor: '#646cff' }}
+          className="mt-6 inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover hover:text-primary-hover-text bg-primary"
         >
           Create New Document
         </Link>

@@ -62,7 +62,7 @@ export function DocumentEditor() {
           setViewError('NOT_FOUND');
         }
       });
-    } else if (docId !== 'new') {
+    } else if (!(userPub === undefined && docId === undefined)) {
       setTitle('');
       setContent('');
       setTags('');
