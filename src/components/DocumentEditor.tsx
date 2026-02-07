@@ -5,6 +5,7 @@ import { useAuthStore } from '../stores/authStore';
 import { EditorArea } from './EditorArea';
 import { ConfirmModal } from './ConfirmModal';
 import { SharingModal } from './SharingModal';
+import { AuthModal } from './AuthModal';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { Label } from './ui/Label';
@@ -36,6 +37,7 @@ export function DocumentEditor() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showSharingModal, setShowSharingModal] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
   const [sharingDoc, setSharingDoc] = useState<{
     docId: string;
     userPub: string;
@@ -196,13 +198,18 @@ export function DocumentEditor() {
 
       actions = (
         <div className="flex gap-2">
-          <Button onClick={() => navigate('/docs')}>Go to Documents</Button>
+          {isAuthenticated && (
+            <Button onClick={() => navigate('/docs')}>Go to Documents</Button>
+          )}
           {!isAuthenticated && (
-            <Button variant="primary" onClick={() => navigate('/')}>
+            <Button variant="primary" onClick={() => setShowAuthModal(true)}>
               Log In
             </Button>
           )}
-          <Button variant="secondary" disabled title="Coming soon">
+          <Button
+            variant="secondary"
+            onClick={() => setShowPasswordModal(true)}
+          >
             Password/key
           </Button>
         </div>
@@ -227,49 +234,57 @@ export function DocumentEditor() {
                 Enter a password or key to decrypt this document.
               </p>
 
-              <Input
-                type="password"
-                value={providedKey}
-                onChange={e => setProvidedKey(e.target.value)}
-                placeholder="Enter password or key"
-                autoFocus
-              />
-
-              {keyError && (
-                <p className="text-rose-500 mt-2 text-sm">{keyError}</p>
-              )}
-
-              <div className="flex justify-end gap-2 mt-4">
-                <Button
-                  variant="secondary"
-                  onClick={() => {
+              <form
+                onSubmit={async e => {
+                  e.preventDefault();
+                  setKeyError(undefined);
+                  const result = await getDocument(
+                    docId!,
+                    userPub!,
+                    providedKey
+                  );
+                  if (!result.success) {
+                    setKeyError('Invalid password or key');
+                  } else if (result.data) {
+                    setTitle(result.data.title || '');
+                    setContent(result.data.content || '');
+                    setTags(result.data.tags?.join(', ') || '');
+                    setIsPublic(result.data.isPublic);
+                    setViewError(undefined);
                     setShowPasswordModal(false);
                     setProvidedKey('');
-                    setKeyError(undefined);
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="primary"
-                  onClick={async () => {
-                    setKeyError(undefined);
-                    const result = await getDocument(
-                      docId!,
-                      userPub!,
-                      providedKey
-                    );
-                    if (!result.success) {
-                      setKeyError('Invalid password or key');
-                    } else {
+                  }
+                }}
+              >
+                <Input
+                  type="password"
+                  value={providedKey}
+                  onChange={e => setProvidedKey(e.target.value)}
+                  placeholder="Enter password or key"
+                  autoFocus
+                />
+
+                {keyError && (
+                  <p className="text-rose-500 mt-2 text-sm">{keyError}</p>
+                )}
+
+                <div className="flex justify-end gap-2 mt-4">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => {
                       setShowPasswordModal(false);
                       setProvidedKey('');
-                    }
-                  }}
-                >
-                  Decrypt
-                </Button>
-              </div>
+                      setKeyError(undefined);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" variant="primary">
+                    Decrypt
+                  </Button>
+                </div>
+              </form>
             </div>
           </div>
         )}
@@ -434,6 +449,11 @@ export function DocumentEditor() {
           docKey={sharingDoc.docKey}
         />
       )}
+
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+      />
 
       <ConfirmModal
         isOpen={showDeleteConfirm}

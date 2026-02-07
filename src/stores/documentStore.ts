@@ -455,19 +455,32 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
         if (docKey && !doc.isPublic) {
           try {
-            decryptedTitle =
-              (await encryptionService.decrypt(doc.title ?? '', docKey)) ??
-              doc.title ??
-              '';
-            decryptedContent =
-              (await encryptionService.decrypt(doc.content ?? '', docKey)) ??
-              doc.content ??
-              '';
+            const titleDecrypted = await encryptionService.decrypt(
+              doc.title ?? '',
+              docKey
+            );
+            if (titleDecrypted === undefined) {
+              throw new Error('could not be decrypted');
+            }
+            decryptedTitle = titleDecrypted;
+
+            const contentDecrypted = await encryptionService.decrypt(
+              doc.content ?? '',
+              docKey
+            );
+            if (contentDecrypted === undefined) {
+              throw new Error('could not be decrypted');
+            }
+            decryptedContent = contentDecrypted;
+
             if (tagsCSV && typeof tagsCSV === 'string') {
               const decryptedTags = await encryptionService.decrypt(
                 tagsCSV,
                 docKey
               );
+              if (decryptedTags === undefined) {
+                throw new Error('could not be decrypted');
+              }
               tags = csvToArray(decryptedTags) ?? [];
             }
           } catch {
