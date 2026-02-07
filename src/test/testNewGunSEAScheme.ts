@@ -784,10 +784,3 @@ export async function testNewGunSEAScheme(): Promise<TestSuiteResult> {
   runner.printResults();
   return runner.getResults();
 }
-
-// Export for browser console execution
-if (typeof window !== 'undefined') {
-  (
-    window as unknown as { testNewGunSEAScheme: () => Promise<TestSuiteResult> }
-  ).testNewGunSEAScheme = testNewGunSEAScheme;
-}

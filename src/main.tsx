@@ -91,7 +91,10 @@ async function runAllTests(): Promise<void> {
   }
 }
 
-if (typeof window !== 'undefined') {
+if (
+  typeof window !== 'undefined' &&
+  import.meta.env.VITE_APP_DEV_MODE === 'true'
+) {
   (window as any).testDocumentSizes = testVariousDocumentSizes;
   (window as any).testGunService = testGunService;
   (window as any).testAuthStore = testAuthStore;
