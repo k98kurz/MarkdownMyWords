@@ -5,13 +5,14 @@
  */
 
 import { gunService, GunService } from '../services/gunService';
-import type { GunError, GunAck } from '../types/gun';
+import type { GunAck } from '../types/gun';
 import { GunErrorCode } from '../types/gun';
 import {
   TestRunner,
   printTestSummary,
   type TestSuiteResult,
 } from '../utils/testRunner';
+import { isFailure } from '../utils/functionalResult';
 
 /**
  * Test GunDB Service initialization
@@ -22,18 +23,6 @@ import {
  */
 function hasEpub(data: unknown): data is { epub: string } {
   return typeof data === 'object' && data !== null && 'epub' in data;
-}
-
-/**
- * Type guard for GunError
- */
-function isGunError(error: unknown): error is GunError {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    'message' in error
-  );
 }
 
 /**
@@ -82,11 +71,30 @@ async function testUserOperations(): Promise<TestSuiteResult> {
   let testUserPub: string | null = null;
 
   await runner.run('Create user', async () => {
-    await gunService.createUser(testUsername, testPassword);
-    await gunService.authenticateUser(testUsername, testPassword);
-    await gunService.writeProfile();
+    const createUserResult = await gunService.createUser(
+      testUsername,
+      testPassword
+    );
+    if (!createUserResult.success) {
+      throw createUserResult.error;
+    }
+    const authResult = await gunService.authenticateUser(
+      testUsername,
+      testPassword
+    );
+    if (!authResult.success) {
+      throw authResult.error;
+    }
+    const writeProfileResult = await gunService.writeProfile();
+    if (!writeProfileResult.success) {
+      throw writeProfileResult.error;
+    }
     await new Promise(resolve => setTimeout(resolve, 500));
-    const users = await gunService.discoverUsers(testUsername);
+    const usersResult = await gunService.discoverUsers(testUsername);
+    if (!usersResult.success) {
+      throw usersResult.error;
+    }
+    const users = usersResult.data;
     if (users.length > 0 && hasEpub(users[0].data)) {
       const epub = users[0].data.epub;
       console.log(`  Ephemeral pubkey retrieved: ${epub.substring(0, 20)}...`);
@@ -110,7 +118,13 @@ async function testUserOperations(): Promise<TestSuiteResult> {
       gun.user().leave();
       await new Promise(resolve => setTimeout(resolve, 500));
     }
-    await gunService.authenticateUser(testUsername, testPassword);
+    const authResult = await gunService.authenticateUser(
+      testUsername,
+      testPassword
+    );
+    if (!authResult.success) {
+      throw authResult.error;
+    }
     console.log(`  User authenticated: ${testUsername}`);
   });
 
@@ -132,9 +146,18 @@ async function testListItems(): Promise<TestSuiteResult> {
   const testPass = 'testpass123';
 
   await runner.task('Create test user and authenticate', async () => {
-    await gunService.createUser(testUser, testPass);
-    await gunService.authenticateUser(testUser, testPass);
-    await gunService.writeProfile();
+    const createUserResult = await gunService.createUser(testUser, testPass);
+    if (!createUserResult.success) {
+      throw createUserResult.error;
+    }
+    const authResult = await gunService.authenticateUser(testUser, testPass);
+    if (!authResult.success) {
+      throw authResult.error;
+    }
+    const writeProfileResult = await gunService.writeProfile();
+    if (!writeProfileResult.success) {
+      throw writeProfileResult.error;
+    }
     await new Promise(resolve => setTimeout(resolve, 500));
   });
 
@@ -150,13 +173,17 @@ async function testListItems(): Promise<TestSuiteResult> {
     await gun.get('test').get('item3').put(item3);
 
     // Read
-    const items = await gunService.listItems(['test']);
+    const itemsResult = await gunService.listItems(['test']);
+    if (!itemsResult.success) {
+      throw itemsResult.error;
+    }
+    const items = itemsResult.data;
     if (items.length === 0) {
       throw new Error('No items found in test namespace');
     }
     console.log(
       `  Found ${items.length} items:`,
-      `${items.map(i => i.soul.substring(0, 10)).join(', ')}`
+      `${items.map((i: { soul: string }) => i.soul.substring(0, 10)).join(', ')}`
     );
     console.log(items);
 
@@ -201,12 +228,16 @@ async function testListItems(): Promise<TestSuiteResult> {
 
     // Read
     await new Promise(resolve => setTimeout(resolve, 500));
-    const items = await gunService.listUserItems(['private']);
+    const itemsResult = await gunService.listUserItems(['private']);
+    if (!itemsResult.success) {
+      throw itemsResult.error;
+    }
+    const items = itemsResult.data;
     if (items.length === 0) {
       throw new Error('No user items found in private namespace');
     }
     console.log(
-      `  Found ${items.length} user items: ${items.map(i => i.soul.substring(0, 10)).join(', ')}`
+      `  Found ${items.length} user items: ${items.map((i: { soul: string }) => i.soul.substring(0, 10)).join(', ')}`
     );
 
     // Verify structure
@@ -230,7 +261,11 @@ async function testListItems(): Promise<TestSuiteResult> {
   });
 
   await runner.run('Test listItems on non-existent path', async () => {
-    const items = await gunService.listItems(['nonexistent']);
+    const itemsResult = await gunService.listItems(['nonexistent']);
+    if (!itemsResult.success) {
+      throw itemsResult.error;
+    }
+    const items = itemsResult.data;
     if (items.length !== 0) {
       throw new Error(`Expected empty array, got ${items.length} items`);
     }
@@ -244,7 +279,11 @@ async function testListItems(): Promise<TestSuiteResult> {
     await gun.get('test').get('item2').put(null);
     await gun.get('test').get('item3').put(null);
     // Verify the data is gone
-    const items = await gunService.listItems(['test']).then();
+    const itemsResult = await gunService.listItems(['test']);
+    if (!itemsResult.success) {
+      throw itemsResult.error;
+    }
+    const items = itemsResult.data;
     if (items.length !== 0) {
       throw new Error(`items not deleted: ${items}`);
     }
@@ -264,18 +303,15 @@ async function testErrorHandling(): Promise<TestSuiteResult> {
   const runner = new TestRunner('Error Handling');
   await runner.run('Operations without initialization', async () => {
     const uninitializedService = new GunService();
-    try {
-      await uninitializedService.discoverUsers('test-id');
-      throw new Error('Operation should have failed');
-    } catch (error) {
-      if (!isGunError(error)) {
-        throw new Error('Error is not a GunError');
-      }
-      if (error.code !== GunErrorCode.CONNECTION_FAILED) {
+    const result = await uninitializedService.discoverUsers('test-id');
+    if (isFailure(result)) {
+      if (result.error.code !== GunErrorCode.INIT_FAILED) {
         throw new Error(
-          `Expected CONNECTION_FAILED error, got: ${error.message}`
+          `Expected INIT_FAILED error, got: ${result.error.message}`
         );
       }
+    } else {
+      throw new Error('Operation should have failed');
     }
   });
 
@@ -306,11 +342,27 @@ async function testPrivateDataOperations(): Promise<TestSuiteResult> {
   const testData = 'confidential_secret_data_123';
 
   await runner.task('Private data e2e', async () => {
-    await gunService.createUser(testUser, testPass);
-    await gunService.authenticateUser(testUser, testPass);
-    await gunService.writeProfile();
-    await gunService.writePrivateData(plainPath, testData);
-    const decrypted = await gunService.readPrivateData(plainPath);
+    const createUserResult = await gunService.createUser(testUser, testPass);
+    if (!createUserResult.success) {
+      throw createUserResult.error;
+    }
+    const authResult = await gunService.authenticateUser(testUser, testPass);
+    if (!authResult.success) {
+      throw authResult.error;
+    }
+    const writeProfileResult = await gunService.writeProfile();
+    if (!writeProfileResult.success) {
+      throw writeProfileResult.error;
+    }
+    const writeResult = await gunService.writePrivateData(plainPath, testData);
+    if (!writeResult.success) {
+      throw writeResult.error;
+    }
+    const decryptedResult = await gunService.readPrivateData(plainPath);
+    if (!decryptedResult.success) {
+      throw decryptedResult.error;
+    }
+    const decrypted = decryptedResult.data;
     if (decrypted !== testData) {
       throw new Error(
         `Data mismatch: expected "${testData}", got "${decrypted}"`
@@ -322,8 +374,18 @@ async function testPrivateDataOperations(): Promise<TestSuiteResult> {
   await runner.run('Write with nested paths', async () => {
     const nestedPath = ['contacts', 'alice', 'username'];
     const nestedData = 'alice_username_test';
-    await gunService.writePrivateData(nestedPath, nestedData);
-    const decrypted = await gunService.readPrivateData(nestedPath);
+    const writeResult = await gunService.writePrivateData(
+      nestedPath,
+      nestedData
+    );
+    if (!writeResult.success) {
+      throw writeResult.error;
+    }
+    const decryptedResult = await gunService.readPrivateData(nestedPath);
+    if (!decryptedResult.success) {
+      throw decryptedResult.error;
+    }
+    const decrypted = decryptedResult.data;
     if (decrypted !== nestedData) {
       throw new Error(
         `Nested data mismatch: expected "${nestedData}", got "${decrypted}"`
@@ -335,8 +397,15 @@ async function testPrivateDataOperations(): Promise<TestSuiteResult> {
   await runner.run('Write empty string', async () => {
     const emptyPath = ['empty', 'test'];
     const emptyData = '';
-    await gunService.writePrivateData(emptyPath, emptyData);
-    const decrypted = await gunService.readPrivateData(emptyPath);
+    const writeResult = await gunService.writePrivateData(emptyPath, emptyData);
+    if (!writeResult.success) {
+      throw writeResult.error;
+    }
+    const decryptedResult = await gunService.readPrivateData(emptyPath);
+    if (!decryptedResult.success) {
+      throw decryptedResult.error;
+    }
+    const decrypted = decryptedResult.data;
     if (decrypted !== emptyData) {
       throw new Error(
         `Empty string mismatch: expected "${emptyData}", got "${decrypted}"`
@@ -348,8 +417,18 @@ async function testPrivateDataOperations(): Promise<TestSuiteResult> {
   await runner.run('Write string with special characters', async () => {
     const specialPath = ['special', 'chars'];
     const specialData = 'Hello 世界! 🎉 Special: @#$%^&*()';
-    await gunService.writePrivateData(specialPath, specialData);
-    const decrypted = await gunService.readPrivateData(specialPath);
+    const writeResult = await gunService.writePrivateData(
+      specialPath,
+      specialData
+    );
+    if (!writeResult.success) {
+      throw writeResult.error;
+    }
+    const decryptedResult = await gunService.readPrivateData(specialPath);
+    if (!decryptedResult.success) {
+      throw decryptedResult.error;
+    }
+    const decrypted = decryptedResult.data;
     if (decrypted !== specialData) {
       throw new Error(
         `Special chars mismatch: expected "${specialData}", got "${decrypted}"`
@@ -363,14 +442,34 @@ async function testPrivateDataOperations(): Promise<TestSuiteResult> {
     const originalData = 'original_data';
     const newData = 'new_data';
 
-    await gunService.writePrivateData(overwritePath, originalData);
-    const firstRead = await gunService.readPrivateData(overwritePath);
+    const firstWriteResult = await gunService.writePrivateData(
+      overwritePath,
+      originalData
+    );
+    if (!firstWriteResult.success) {
+      throw firstWriteResult.error;
+    }
+    const firstReadResult = await gunService.readPrivateData(overwritePath);
+    if (!firstReadResult.success) {
+      throw firstReadResult.error;
+    }
+    const firstRead = firstReadResult.data;
     if (firstRead !== originalData) {
       throw new Error(`Initial write failed`);
     }
 
-    await gunService.writePrivateData(overwritePath, newData);
-    const secondRead = await gunService.readPrivateData(overwritePath);
+    const secondWriteResult = await gunService.writePrivateData(
+      overwritePath,
+      newData
+    );
+    if (!secondWriteResult.success) {
+      throw secondWriteResult.error;
+    }
+    const secondReadResult = await gunService.readPrivateData(overwritePath);
+    if (!secondReadResult.success) {
+      throw secondReadResult.error;
+    }
+    const secondRead = secondReadResult.data;
     if (secondRead !== newData) {
       throw new Error(
         `Overwrite failed: expected "${newData}", got "${secondRead}"`
@@ -380,8 +479,16 @@ async function testPrivateDataOperations(): Promise<TestSuiteResult> {
   });
 
   await runner.run('Path hashing consistency', async () => {
-    const pathPart1 = await gunService.getPrivatePathPart('consistent');
-    const pathPart2 = await gunService.getPrivatePathPart('consistent');
+    const pathPart1Result = await gunService.getPrivatePathPart('consistent');
+    if (!pathPart1Result.success) {
+      throw pathPart1Result.error;
+    }
+    const pathPart2Result = await gunService.getPrivatePathPart('consistent');
+    if (!pathPart2Result.success) {
+      throw pathPart2Result.error;
+    }
+    const pathPart1 = pathPart1Result.data;
+    const pathPart2 = pathPart2Result.data;
     if (pathPart1 !== pathPart2) {
       throw new Error('Path hashing is inconsistent');
     }
@@ -390,19 +497,16 @@ async function testPrivateDataOperations(): Promise<TestSuiteResult> {
 
   await runner.run('Error when reading non-existent data', async () => {
     const nonExistentPath = ['nonexistent', 'path', '12345'];
-    try {
-      await gunService.readPrivateData(nonExistentPath);
-      throw new Error('Should have thrown an error for non-existent data');
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        (error.message.includes('not found') ||
-          error.message.includes('decrypted'))
-      ) {
-        console.log(`  Correctly throws error for non-existent data`);
+    const result = await gunService.readPrivateData(nonExistentPath);
+    if (isFailure(result)) {
+      const errorMsg = result.error.message;
+      if (errorMsg.includes('not found') || errorMsg.includes('decrypted')) {
+        console.log(`  Correctly returns error for non-existent data`);
       } else {
-        throw error;
+        throw new Error(`Unexpected error: ${errorMsg}`);
       }
+    } else {
+      throw new Error('Should have returned error for non-existent data');
     }
   });
 
@@ -414,18 +518,16 @@ async function testPrivateDataOperations(): Promise<TestSuiteResult> {
   await runner.run('Error when writing without authentication', async () => {
     const testPath = ['noauth', 'test'];
     const testData = 'should_fail';
-    try {
-      await gunService.writePrivateData(testPath, testData);
-      throw new Error('Should have thrown an error without authentication');
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        error.message.includes('keypair not available')
-      ) {
-        console.log(`  Correctly throws error without authentication`);
+    const result = await gunService.writePrivateData(testPath, testData);
+    if (isFailure(result)) {
+      const errorMsg = result.error.message;
+      if (errorMsg.includes('keypair not available')) {
+        console.log(`  Correctly returns error without authentication`);
       } else {
-        throw error;
+        throw new Error(`Unexpected error: ${errorMsg}`);
       }
+    } else {
+      throw new Error('Should have returned error without authentication');
     }
   });
 

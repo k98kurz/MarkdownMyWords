@@ -172,8 +172,8 @@ export function printTestSummary(suiteResults: TestSuiteResult[]): void {
     const taskStatus = suiteTaskTotal === suiteTaskSuccesses ? '✅' : '❌';
     if (suiteTaskTotal) {
       console.log(
-        `\n${taskStatus} ${suite.suiteName}: ` +
-          `${suiteTaskSuccesses}/${suiteTaskTotal} passed`
+        `\n${taskStatus} ${suite.suiteName} tasks: ` +
+          `${suiteTaskSuccesses}/${suiteTaskTotal} succeeded`
       );
     }
 

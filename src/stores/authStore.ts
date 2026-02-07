@@ -236,6 +236,8 @@ export const useAuthStore = create<AuthState>(set => ({
       } else {
         set({ username: null });
       }
+    } else {
+      throw result.error;
     }
   },
 
@@ -275,6 +277,8 @@ export const useAuthStore = create<AuthState>(set => ({
       } else {
         set({ username: null });
       }
+    } else {
+      throw result.error;
     }
   },
 

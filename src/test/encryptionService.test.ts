@@ -170,7 +170,13 @@ async function testKeySharing(): Promise<TestSuiteResult> {
       console.log('Bob user created');
 
       // Bob gets Alice's epub from discovered users
-      const aliceUsers = await gunService.discoverUsers(aliceUsername);
+      const aliceUsersResult = await gunService.discoverUsers(aliceUsername);
+      if (!aliceUsersResult.success) {
+        throw new Error(
+          `Failed to discover Alice's profile: ${aliceUsersResult.error.message}`
+        );
+      }
+      const aliceUsers = aliceUsersResult.data;
       assert(aliceUsers.length > 0, "Failed to discover Alice's profile");
       assert(
         typeof aliceUsers[0].data === 'object' &&
@@ -207,7 +213,13 @@ async function testKeySharing(): Promise<TestSuiteResult> {
       await gunService.authenticateUser(aliceUsername, alicePass);
 
       // Alice gets Bob's epub from discovered users
-      const bobUsers = await gunService.discoverUsers(bobUsername);
+      const bobUsersResult = await gunService.discoverUsers(bobUsername);
+      if (!bobUsersResult.success) {
+        throw new Error(
+          `Failed to discover Bob's profile: ${bobUsersResult.error.message}`
+        );
+      }
+      const bobUsers = bobUsersResult.data;
       assert(bobUsers.length > 0, "Failed to discover Bob's profile");
       assert(
         typeof bobUsers[0].data === 'object' &&
@@ -366,6 +378,10 @@ export async function testEncryptionService(): Promise<TestSuiteResult[]> {
   } else {
     console.log('\n📝 Pre-test: GunDB already ready\n');
   }
+
+  // Initialize SEA for encryption tests
+  await encryptionService.initializeSEA();
+  console.log('   ✅ SEA initialized\n');
 
   const suiteResults: TestSuiteResult[] = [];
 

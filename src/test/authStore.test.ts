@@ -213,123 +213,6 @@ async function testBasicOperations(runner: TestRunner): Promise<void> {
     console.log(`  User creation correctly rejected existing user`);
   });
 
-  await runner.run('Duplicate registration should error', async () => {
-    const username = generateTestUsername('_creation_regression');
-    const password = 'testpass123';
-
-    const registerResult = await tryCatch<void, AuthError>(() =>
-      useAuthStore.getState().register(username, password)
-    );
-    assert(registerResult.success, JSON.stringify(registerResult));
-
-    const { user, isAuthenticated } = useAuthStore.getState();
-    assert(isAuthenticated, 'Should be authenticated');
-    assert(user !== null, 'Should have user object');
-
-    const result = await tryCatch<void, AuthError>(() =>
-      useAuthStore.getState().register(username, password)
-    );
-
-    assert(isFailure(result), 'Should error when creating existing user');
-    assert(isAuthError(result.error), 'Should throw AuthError object');
-    assert(
-      result.error?.type === 'USER_EXISTS',
-      'Error type should be USER_EXISTS'
-    );
-    assert(
-      result.error?.message ===
-        'Could not create account. Username may already be taken.',
-      `Should show user-friendly message; observed: ${result.error?.message || 'unknown error'}`
-    );
-
-    const state = useAuthStore.getState();
-    assert(
-      state.error ===
-        'Could not create account. Username may already be taken.',
-      `Should show user-friendly error message; observed: ${state.error}`
-    );
-
-    console.log(`  User creation correctly rejected existing user`);
-  });
-
-  await runner.run('Duplicate registration should error', async () => {
-    const username = generateTestUsername('_creation_regression');
-    const password = 'testpass123';
-
-    const registerResult = await tryCatch(() =>
-      useAuthStore.getState().register(username, password)
-    );
-    assert(registerResult.success, JSON.stringify(registerResult));
-
-    const { user, isAuthenticated } = useAuthStore.getState();
-    assert(isAuthenticated, 'Should be authenticated');
-    assert(user !== null, 'Should have user object');
-
-    const result = await tryCatch(() =>
-      useAuthStore.getState().register(username, password)
-    );
-
-    assert(isFailure(result), 'Should error when creating existing user');
-    assert(isAuthError(result.error), 'Should throw AuthError object');
-    assert(
-      result.error?.type === 'USER_EXISTS',
-      'Error type should be USER_EXISTS'
-    );
-    assert(
-      result.error?.message ===
-        'Could not create account. Username may already be taken.',
-      `Should show user-friendly message; observed: ${result.error?.message || 'unknown error'}`
-    );
-
-    const state = useAuthStore.getState();
-    assert(
-      state.error ===
-        'Could not create account. Username may already be taken.',
-      `Should show user-friendly error message; observed: ${state.error}`
-    );
-
-    console.log(`  User creation correctly rejected existing user`);
-  });
-
-  await runner.run('Duplicate registration should error', async () => {
-    const username = generateTestUsername('_creation_regression');
-    const password = 'testpass123';
-
-    const registerResult = await tryCatch(async () =>
-      useAuthStore.getState().register(username, password)
-    );
-    assert(registerResult.success, JSON.stringify(registerResult));
-
-    const { user, isAuthenticated } = useAuthStore.getState();
-    assert(isAuthenticated, 'Should be authenticated');
-    assert(user !== null, 'Should have user object');
-
-    const result = await tryCatch(async () =>
-      useAuthStore.getState().register(username, password)
-    );
-
-    assert(isFailure(result), 'Should error when creating existing user');
-    assert(isAuthError(result.error), 'Should throw AuthError object');
-    assert(
-      result.error?.type === 'USER_EXISTS',
-      'Error type should be USER_EXISTS'
-    );
-    assert(
-      result.error?.message ===
-        'Could not create account. Username may already be taken.',
-      `Should show user-friendly message; observed: ${result.error?.message || 'unknown error'}`
-    );
-
-    const state = useAuthStore.getState();
-    assert(
-      state.error ===
-        'Could not create account. Username may already be taken.',
-      `Should show user-friendly error message; observed: ${state.error}`
-    );
-
-    console.log(`  User creation correctly rejected existing user`);
-  });
-
   await runner.run('Logout clears state properly', async () => {
     const username = generateTestUsername('_logout');
     await useAuthStore.getState().register(username, 'password123');
@@ -431,16 +314,26 @@ async function testErrorHandling(runner: TestRunner): Promise<void> {
     assert(
       result.error?.message ===
         'Could not create account. Username may already be taken.',
-      'Error message should be user-friendly'
+      'Should show user-friendly message'
     );
-    assert(
-      result.error?.originalError instanceof Error,
-      'Original error should be preserved as Error instance'
-    );
-    if (result.error?.originalError instanceof Error) {
+    const hasOriginalError = result.error?.originalError !== undefined;
+    assert(hasOriginalError, 'Original error should be preserved');
+
+    const originalError = result.error?.originalError;
+    if (originalError instanceof Error) {
       assert(
-        result.error.originalError.message.includes('User creation failed'),
+        originalError.message.includes('User creation failed'),
         'Original error should contain gunService message'
+      );
+    } else if (
+      typeof originalError === 'object' &&
+      originalError !== null &&
+      'details' in originalError &&
+      originalError.details instanceof Error
+    ) {
+      assert(
+        originalError.details.message.includes('User creation failed'),
+        'Original error should contain gunService message in details'
       );
     }
 
@@ -534,7 +427,7 @@ async function testErrorTransformation(runner: TestRunner): Promise<void> {
       'Should show user-friendly message'
     );
     assert(
-      result.error?.originalError instanceof Error,
+      result.error?.originalError !== undefined,
       'Original error should be preserved'
     );
   });
