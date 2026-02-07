@@ -24,8 +24,12 @@ async function initializeServices() {
     gunService.initialize();
     console.log('✅ GunDB initialized');
 
-    await encryptionService.initializeSEA();
-    console.log('✅ SEA initialized');
+    const seaResult = await encryptionService.initializeSEA();
+    if (seaResult.success) {
+      console.log('✅ SEA initialized');
+    } else {
+      console.error('❌ Failed to initialize SEA:', seaResult.error);
+    }
 
     const updateConnectionStatus = () => {
       const connectionStore = useConnectionStore.getState();

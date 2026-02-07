@@ -321,14 +321,39 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         let tagsCSV = arrayToCSV(tags);
 
         if (!isPublic) {
-          docKey = await encryptionService.generateKey();
-          encryptedTitle =
-            (await encryptionService.encrypt(title.trim(), docKey)) ??
-            title.trim();
-          encryptedContent =
-            (await encryptionService.encrypt(content, docKey)) ?? content;
+          const keyResult = await encryptionService.generateKey();
+          if (!keyResult.success) {
+            throw keyResult.error;
+          }
+          docKey = keyResult.data;
+
+          const titleResult = await encryptionService.encrypt(
+            title.trim(),
+            docKey
+          );
+          if (!titleResult.success) {
+            throw titleResult.error;
+          }
+          encryptedTitle = titleResult.data;
+
+          const contentResult = await encryptionService.encrypt(
+            content,
+            docKey
+          );
+          if (!contentResult.success) {
+            throw contentResult.error;
+          }
+          encryptedContent = contentResult.data;
+
           if (tags && tags.length > 0 && tagsCSV) {
-            tagsCSV = (await encryptionService.encrypt(tagsCSV, docKey!)) ?? '';
+            const tagsResult = await encryptionService.encrypt(
+              tagsCSV,
+              docKey!
+            );
+            if (!tagsResult.success) {
+              throw tagsResult.error;
+            }
+            tagsCSV = tagsResult.data;
           }
 
           await gunService.writePrivateData(['docKeys', docId], docKey);
@@ -455,35 +480,43 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
         if (docKey && !doc.isPublic) {
           try {
-            const titleDecrypted = await encryptionService.decrypt(
+            const titleResult = await encryptionService.decrypt(
               doc.title ?? '',
               docKey
             );
-            if (titleDecrypted === undefined) {
-              throw new Error('could not be decrypted');
+            if (!titleResult.success) {
+              throw titleResult.error;
             }
-            decryptedTitle = titleDecrypted;
+            decryptedTitle = titleResult.data;
 
-            const contentDecrypted = await encryptionService.decrypt(
+            const contentResult = await encryptionService.decrypt(
               doc.content ?? '',
               docKey
             );
-            if (contentDecrypted === undefined) {
-              throw new Error('could not be decrypted');
+            if (!contentResult.success) {
+              throw contentResult.error;
             }
-            decryptedContent = contentDecrypted;
+            decryptedContent = contentResult.data;
 
             if (tagsCSV && typeof tagsCSV === 'string') {
-              const decryptedTags = await encryptionService.decrypt(
+              const tagsResult = await encryptionService.decrypt(
                 tagsCSV,
                 docKey
               );
-              if (decryptedTags === undefined) {
-                throw new Error('could not be decrypted');
+              if (!tagsResult.success) {
+                throw tagsResult.error;
               }
-              tags = csvToArray(decryptedTags) ?? [];
+              tags = csvToArray(tagsResult.data) ?? [];
             }
-          } catch {
+          } catch (error) {
+            if (
+              typeof error === 'object' &&
+              error !== null &&
+              'code' in error &&
+              'message' in error
+            ) {
+              throw error;
+            }
             throw new Error('could not be decrypted');
           }
         } else if (tagsCSV && typeof tagsCSV === 'string') {
@@ -603,18 +636,34 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
         if (docKey && !doc.isPublic) {
           if (finalTitle !== undefined) {
-            finalTitle =
-              (await encryptionService.encrypt(finalTitle, docKey)) ??
-              finalTitle;
+            const titleResult = await encryptionService.encrypt(
+              finalTitle,
+              docKey
+            );
+            if (!titleResult.success) {
+              throw titleResult.error;
+            }
+            finalTitle = titleResult.data;
           }
           if (finalContent !== undefined) {
-            finalContent =
-              (await encryptionService.encrypt(finalContent, docKey)) ??
-              finalContent;
+            const contentResult = await encryptionService.encrypt(
+              finalContent,
+              docKey
+            );
+            if (!contentResult.success) {
+              throw contentResult.error;
+            }
+            finalContent = contentResult.data;
           }
           if (finalTags !== undefined) {
-            finalTags =
-              (await encryptionService.encrypt(finalTags, docKey)) ?? finalTags;
+            const tagsResult = await encryptionService.encrypt(
+              finalTags,
+              docKey
+            );
+            if (!tagsResult.success) {
+              throw tagsResult.error;
+            }
+            finalTags = tagsResult.data;
           }
         }
 
@@ -669,26 +718,33 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           let decryptedTags: string[] = [];
 
           if (docKey && !doc.isPublic) {
-            decryptedTitle =
-              (await encryptionService.decrypt(
-                updatedDoc.title ?? '',
-                docKey
-              )) ??
-              updatedDoc.title ??
-              '';
-            decryptedContent =
-              (await encryptionService.decrypt(
-                updatedDoc.content ?? '',
-                docKey
-              )) ??
-              updatedDoc.content ??
-              '';
+            const titleResult = await encryptionService.decrypt(
+              updatedDoc.title ?? '',
+              docKey
+            );
+            if (!titleResult.success) {
+              throw titleResult.error;
+            }
+            decryptedTitle = titleResult.data;
+
+            const contentResult = await encryptionService.decrypt(
+              updatedDoc.content ?? '',
+              docKey
+            );
+            if (!contentResult.success) {
+              throw contentResult.error;
+            }
+            decryptedContent = contentResult.data;
+
             if (updatedDoc.tags && typeof updatedDoc.tags === 'string') {
-              const decryptedTagsCSV = await encryptionService.decrypt(
+              const tagsResult = await encryptionService.decrypt(
                 updatedDoc.tags,
                 docKey
               );
-              decryptedTags = csvToArray(decryptedTagsCSV) ?? [];
+              if (!tagsResult.success) {
+                throw tagsResult.error;
+              }
+              decryptedTags = csvToArray(tagsResult.data) ?? [];
             }
           } else if (updatedDoc.tags && typeof updatedDoc.tags === 'string') {
             decryptedTags = csvToArray(updatedDoc.tags) ?? [];
@@ -918,16 +974,21 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         let tags: string[] = [];
 
         if (docKey && !doc.isPublic) {
-          decryptedTitle =
-            (await encryptionService.decrypt(doc.title ?? '', docKey)) ??
-            doc.title ??
-            '';
+          const titleResult = await encryptionService.decrypt(
+            doc.title ?? '',
+            docKey
+          );
+          if (!titleResult.success) {
+            throw titleResult.error;
+          }
+          decryptedTitle = titleResult.data;
+
           if (tagsCSV && typeof tagsCSV === 'string') {
-            const decryptedTags = await encryptionService.decrypt(
-              tagsCSV,
-              docKey
-            );
-            tags = csvToArray(decryptedTags) ?? [];
+            const tagsResult = await encryptionService.decrypt(tagsCSV, docKey);
+            if (!tagsResult.success) {
+              throw tagsResult.error;
+            }
+            tags = csvToArray(tagsResult.data) ?? [];
           }
         } else if (tagsCSV && typeof tagsCSV === 'string') {
           tags = csvToArray(tagsCSV) ?? [];
@@ -1022,9 +1083,14 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         if (!doc.isPublic) {
           try {
             const docKey = await gunService.readPrivateData(['docKeys', docId]);
-            encryptedDocKey =
-              (await encryptionService.encryptECDH(docKey, recipientEpub)) ??
-              '';
+            const encryptResult = await encryptionService.encryptECDH(
+              docKey,
+              recipientEpub
+            );
+            if (!encryptResult.success) {
+              throw encryptResult.error;
+            }
+            encryptedDocKey = encryptResult.data;
           } catch {
             throw new Error('Document key not found');
           }

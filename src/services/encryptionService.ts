@@ -3,6 +3,14 @@ import 'gun/sea';
 import type { IGunInstance } from 'gun/types';
 import { gunService } from './gunService';
 import { getUserSEA } from '../utils/seaHelpers';
+import {
+  Result,
+  success,
+  failure,
+  tryCatch,
+  pipe,
+  chain,
+} from '../utils/functionalResult';
 
 /**
  * SEA instance type (from GunDB)
@@ -56,37 +64,42 @@ class EncryptionService {
    * Initialize SEA with GunDB instance
    * Must be called after gunService.initialize()
    */
-  async initializeSEA(): Promise<void> {
+  async initializeSEA(): Promise<Result<void, EncryptionError>> {
     if (this.isInitialized) {
       console.warn('SEA already initialized');
-      return;
+      return success(undefined);
     }
 
-    try {
-      // Get GunDB instance from gunService
-      const gunInstance = gunService.getGun();
-      if (!gunInstance) {
-        throw new Error(
-          'GunDB not initialized. Call gunService.initialize() first.'
-        );
-      }
+    const result: Result<void, EncryptionError> = await tryCatch<
+      void,
+      EncryptionError
+    >(
+      async (): Promise<void> => {
+        const gunInstance = gunService.getGun();
+        if (!gunInstance) {
+          throw new Error(
+            'GunDB not initialized. Call gunService.initialize() first.'
+          );
+        }
 
-      this.gun = gunInstance;
-      this.sea = Gun.SEA;
+        this.gun = gunInstance;
+        this.sea = Gun.SEA;
 
-      if (!this.sea) {
-        throw new Error('SEA not available. Make sure gun/sea is imported.');
-      }
+        if (!this.sea) {
+          throw new Error('SEA not available. Make sure gun/sea is imported.');
+        }
 
-      this.isInitialized = true;
-      console.log('SEA initialized successfully');
-    } catch (error) {
-      throw createEncryptionError(
-        'SEA_INIT_FAILED',
-        'Failed to initialize SEA',
-        error
-      );
-    }
+        this.isInitialized = true;
+        console.log('SEA initialized successfully');
+      },
+      (error: unknown) =>
+        createEncryptionError(
+          'SEA_INIT_FAILED',
+          'Failed to initialize SEA',
+          error
+        )
+    );
+    return result;
   }
 
   /**
@@ -105,24 +118,32 @@ class EncryptionService {
    * Generate a random symmetric encryption key (256-bit)
    * @returns Promise resolving to string
    */
-  async generateKey(): Promise<string> {
-    try {
-      const key = await crypto.subtle.generateKey(
-        {
-          name: 'AES-GCM',
-          length: 256,
-        },
-        true, // extractable
-        ['encrypt', 'decrypt']
-      );
-      return this.exportKey(key);
-    } catch (error) {
-      throw createEncryptionError(
-        'KEY_GENERATION_FAILED',
-        'Failed to generate encryption key',
-        error
-      );
-    }
+  async generateKey(): Promise<Result<string, EncryptionError>> {
+    return pipe(
+      await tryCatch<CryptoKey, EncryptionError>(
+        () =>
+          crypto.subtle.generateKey(
+            {
+              name: 'AES-GCM',
+              length: 256,
+            },
+            true,
+            ['encrypt', 'decrypt']
+          ),
+        (error: unknown) =>
+          createEncryptionError(
+            'KEY_GENERATION_FAILED',
+            'Failed to generate encryption key',
+            error
+          )
+      ),
+      result => {
+        if (!result.success) {
+          return result;
+        }
+        return this.exportKey(result.data);
+      }
+    );
   }
 
   /**
@@ -130,19 +151,21 @@ class EncryptionService {
    * @param key - CryptoKey to export
    * @returns Promise resolving to base64 string
    */
-  async exportKey(key: CryptoKey): Promise<string> {
-    try {
-      const exported = await crypto.subtle.exportKey('raw', key);
-      const keyArray = Array.from(new Uint8Array(exported));
-      const keyBase64 = btoa(String.fromCharCode(...keyArray));
-      return keyBase64;
-    } catch (error) {
-      throw createEncryptionError(
-        'KEY_EXPORT_FAILED',
-        'Failed to export key',
-        error
-      );
-    }
+  async exportKey(key: CryptoKey): Promise<Result<string, EncryptionError>> {
+    return tryCatch<string, EncryptionError>(
+      async () => {
+        const exported = await crypto.subtle.exportKey('raw', key);
+        const keyArray = Array.from(new Uint8Array(exported));
+        const keyBase64 = btoa(String.fromCharCode(...keyArray));
+        return keyBase64;
+      },
+      (error: unknown) =>
+        createEncryptionError(
+          'KEY_EXPORT_FAILED',
+          'Failed to export key',
+          error
+        )
+    );
   }
 
   /**
@@ -151,16 +174,31 @@ class EncryptionService {
    * @param key - string for encryption
    * @returns Promise resolving to string
    */
-  async encrypt(content: string, key: string): Promise<string | undefined> {
-    try {
-      return await this.sea?.encrypt(content, key);
-    } catch (error) {
-      throw createEncryptionError(
-        'ENCRYPTION_FAILED',
-        'Failed to encrypt content',
-        error
-      );
-    }
+  async encrypt(
+    content: string,
+    key: string
+  ): Promise<Result<string, EncryptionError>> {
+    return pipe(
+      tryCatch<string | undefined, EncryptionError>(
+        async () => await this.sea?.encrypt(content, key),
+        (error: unknown) =>
+          createEncryptionError(
+            'ENCRYPTION_FAILED',
+            'Failed to encrypt content',
+            error
+          )
+      ),
+      chain(encrypted =>
+        encrypted === undefined
+          ? failure(
+              createEncryptionError(
+                'ENCRYPTION_FAILED',
+                'SEA.encrypt returned undefined'
+              )
+            )
+          : success(encrypted)
+      )
+    );
   }
 
   /**
@@ -169,16 +207,31 @@ class EncryptionService {
    * @param key - string for decryption
    * @returns Promise resolving to decrypted string
    */
-  async decrypt(encrypted: string, key: string): Promise<string | undefined> {
-    try {
-      return this.sea?.decrypt(encrypted, key);
-    } catch (error) {
-      throw createEncryptionError(
-        'DECRYPTION_FAILED',
-        'Failed to decrypt document',
-        error
-      );
-    }
+  async decrypt(
+    encrypted: string,
+    key: string
+  ): Promise<Result<string, EncryptionError>> {
+    return pipe(
+      tryCatch<string | undefined, EncryptionError>(
+        async () => await this.sea?.decrypt(encrypted, key),
+        (error: unknown) =>
+          createEncryptionError(
+            'DECRYPTION_FAILED',
+            'Failed to decrypt document',
+            error
+          )
+      ),
+      chain(decrypted =>
+        decrypted === undefined
+          ? failure(
+              createEncryptionError(
+                'DECRYPTION_FAILED',
+                'SEA.decrypt returned undefined'
+              )
+            )
+          : success(decrypted)
+      )
+    );
   }
 
   /**
@@ -188,46 +241,72 @@ class EncryptionService {
    * @param senderPair - Sender's ECDH key pair
    * @returns Promise resolving to encrypted key string
    */
-  async encryptECDH(data: string, recipientEpub: string): Promise<string> {
+  async encryptECDH(
+    data: string,
+    recipientEpub: string
+  ): Promise<Result<string, EncryptionError>> {
     this.checkInitialized();
 
-    if (!this.sea) {
-      throw createEncryptionError('SEA_NOT_INITIALIZED', 'SEA not initialized');
-    }
+    return pipe(
+      tryCatch<string, EncryptionError>(
+        async () => {
+          if (!this.sea) {
+            throw createEncryptionError(
+              'SEA_NOT_INITIALIZED',
+              'SEA not initialized'
+            );
+          }
 
-    try {
-      const userNode = this.gun!.user();
-      const userPair = getUserSEA(userNode);
+          const userNode = this.gun!.user();
+          const userPair = getUserSEA(userNode);
 
-      if (!userPair || !userPair.epriv || !userPair.epub) {
-        throw createEncryptionError(
-          'NO_USER_PAIR',
-          'User must be authenticated to encrypt data'
-        );
-      }
+          if (!userPair || !userPair.epriv || !userPair.epub) {
+            throw createEncryptionError(
+              'NO_USER_PAIR',
+              'User must be authenticated to encrypt data'
+            );
+          }
 
-      // Derive shared secret using ECDH with recipient's epub
-      const sharedSecret = await this.sea.secret(
-        { epub: recipientEpub },
-        userPair
-      );
+          const sharedSecret = await this.sea.secret(
+            { epub: recipientEpub },
+            userPair
+          );
 
-      if (!sharedSecret) {
-        throw new Error('Failed to derive shared secret');
-      }
+          if (!sharedSecret) {
+            throw createEncryptionError(
+              'ECDH_ENCRYPTION_FAILED',
+              'Failed to derive shared secret'
+            );
+          }
 
-      // Encrypt data with shared secret
-      const encrypted = await this.sea.encrypt(data, sharedSecret);
+          const encrypted = await this.sea!.encrypt(data, sharedSecret);
 
-      // Return encrypted data
-      return encrypted;
-    } catch (error) {
-      throw createEncryptionError(
-        'ECDH_ENCRYPTION_FAILED',
-        'Failed to encrypt data with ECDH',
-        error
-      );
-    }
+          if (encrypted === undefined) {
+            throw createEncryptionError(
+              'ECDH_ENCRYPTION_FAILED',
+              'SEA.encrypt returned undefined'
+            );
+          }
+
+          return encrypted;
+        },
+        (error: unknown) => {
+          if (
+            typeof error === 'object' &&
+            error !== null &&
+            'code' in error &&
+            'message' in error
+          ) {
+            return error as EncryptionError;
+          }
+          return createEncryptionError(
+            'ECDH_ENCRYPTION_FAILED',
+            'Failed to encrypt data with ECDH',
+            error
+          );
+        }
+      )
+    );
   }
 
   /**
@@ -239,43 +318,72 @@ class EncryptionService {
   async decryptECDH(
     encryptedData: string,
     senderEpub: string
-  ): Promise<string | undefined> {
+  ): Promise<Result<string, EncryptionError>> {
     this.checkInitialized();
 
-    if (!this.sea || !this.gun) {
-      throw createEncryptionError('SEA_NOT_INITIALIZED', 'SEA not initialized');
-    }
+    return pipe(
+      tryCatch<string, EncryptionError>(
+        async () => {
+          if (!this.sea || !this.gun) {
+            throw createEncryptionError(
+              'SEA_NOT_INITIALIZED',
+              'SEA not initialized'
+            );
+          }
 
-    try {
-      const userNode = this.gun!.user();
-      const userPair = getUserSEA(userNode);
+          const userNode = this.gun!.user();
+          const userPair = getUserSEA(userNode);
 
-      if (!userPair || !userPair.epriv || !userPair.epub) {
-        throw createEncryptionError(
-          'NO_KEY_PAIR',
-          'User must be authenticated to decrypt data'
-        );
-      }
+          if (!userPair || !userPair.epriv || !userPair.epub) {
+            throw createEncryptionError(
+              'NO_KEY_PAIR',
+              'User must be authenticated to decrypt data'
+            );
+          }
 
-      // Derive shared secret using ECDH with sender's epub
-      const sharedSecret = await this.sea.secret(
-        { epub: senderEpub },
-        userPair
-      );
+          const sharedSecret = await this.sea.secret(
+            { epub: senderEpub },
+            userPair
+          );
 
-      if (!sharedSecret) {
-        throw new Error('Failed to derive shared secret');
-      }
+          if (!sharedSecret) {
+            throw createEncryptionError(
+              'ECDH_DECRYPTION_FAILED',
+              'Failed to derive shared secret'
+            );
+          }
 
-      // Decrypt data with shared secret
-      return await this.sea.decrypt(encryptedData, sharedSecret);
-    } catch (error) {
-      throw createEncryptionError(
-        'ECDH_DECRYPTION_FAILED',
-        'Failed to decrypt ciphertext with ECDH',
-        error
-      );
-    }
+          const decrypted = await this.sea!.decrypt(
+            encryptedData,
+            sharedSecret
+          );
+
+          if (decrypted === undefined) {
+            throw createEncryptionError(
+              'ECDH_DECRYPTION_FAILED',
+              'SEA.decrypt returned undefined'
+            );
+          }
+
+          return decrypted;
+        },
+        (error: unknown) => {
+          if (
+            typeof error === 'object' &&
+            error !== null &&
+            'code' in error &&
+            'message' in error
+          ) {
+            return error as EncryptionError;
+          }
+          return createEncryptionError(
+            'ECDH_DECRYPTION_FAILED',
+            'Failed to decrypt ciphertext with ECDH',
+            error
+          );
+        }
+      )
+    );
   }
 }
 

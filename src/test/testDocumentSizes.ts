@@ -7,6 +7,12 @@
 import { encryptionService } from '../services/encryptionService';
 import { TestRunner, type TestSuiteResult } from '../utils/testRunner';
 
+const assert = (condition: unknown, message: string) => {
+  if (!condition) {
+    throw new Error(message);
+  }
+};
+
 /**
  * Generate test content of specified size
  */
@@ -33,19 +39,32 @@ export async function testVariousDocumentSizes(): Promise<TestSuiteResult> {
   for (const testSize of testSizes) {
     await runner.run(`${testSize.name} encryption/decryption`, async () => {
       const content = generateTestContent(testSize.bytes);
-      const docKey = await encryptionService.generateKey();
+      const keyResult = await encryptionService.generateKey();
+      assert(keyResult.success && keyResult.data, 'key not generated');
+      const docKey = (keyResult as { success: true; data: string }).data;
 
       const encryptStart = performance.now();
-      const encrypted = await encryptionService.encrypt(content, docKey);
+      const encryptedResult = await encryptionService.encrypt(content, docKey);
+      assert(
+        encryptedResult.success && encryptedResult.data,
+        'encryption failed'
+      );
+      const encrypted = (encryptedResult as { success: true; data: string })
+        .data;
       const encryptTime = performance.now() - encryptStart;
 
       const decryptStart = performance.now();
-      const decrypted = await encryptionService.decrypt(encrypted!, docKey);
+      const decryptedResult = await encryptionService.decrypt(
+        encrypted,
+        docKey
+      );
+      assert(
+        decryptedResult.success && decryptedResult.data,
+        'decryption failed'
+      );
+      const decrypted = (decryptedResult as { success: true; data: string })
+        .data;
       const decryptTime = performance.now() - decryptStart;
-
-      if (!encrypted || !decrypted) {
-        throw new Error('Encryption or decryption returned undefined');
-      }
 
       if (decrypted !== content || decrypted.length !== testSize.bytes) {
         throw new Error('Content mismatch or wrong length');
