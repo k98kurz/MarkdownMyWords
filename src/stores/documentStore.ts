@@ -175,9 +175,6 @@ interface DocumentActions {
     isPublic?: boolean
   ) => Promise<Result<Document, DocumentError>>;
   getDocument: (
-    docId: string
-  ) => Promise<Result<Document | null, DocumentError>>;
-  getDocumentByUrl: (
     docId: string,
     userPub: string
   ) => Promise<Result<Document | null, DocumentError>>;
@@ -368,119 +365,6 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
     },
 
     getDocument: async (
-      docId: string
-    ): Promise<Result<Document | null, DocumentError>> => {
-      set({ status: 'LOADING', error: null, loadingDocId: docId });
-
-      const result = (await tryCatch(async () => {
-        const gun = gunService.getGun();
-        const userNode = gun.user();
-        const docNode = userNode.get('docs').get(docId);
-
-        const docData = await new Promise<unknown>((resolve, reject) => {
-          docNode.once((data: unknown) => {
-            if (data === null || data === undefined) {
-              reject(new Error('Document not found'));
-            } else {
-              resolve(data);
-            }
-          });
-        });
-
-        if (!docData || typeof docData !== 'object') {
-          throw new Error('Document not found');
-        }
-
-        const doc = docData as Partial<Document>;
-        if (!doc.id) {
-          throw new Error('Document not found');
-        }
-
-        let docKey: string | undefined;
-        if (!doc.isPublic) {
-          try {
-            docKey = await gunService.readPrivateData(['docKeys', docId]);
-          } catch {
-            throw new Error('Document key not found');
-          }
-        }
-
-        let decryptedTitle = doc.title ?? '';
-        let decryptedContent = doc.content ?? '';
-        let tagsCSV = doc.tags;
-        let tags: string[] = [];
-
-        if (docKey && !doc.isPublic) {
-          decryptedTitle =
-            (await encryptionService.decrypt(doc.title ?? '', docKey)) ??
-            doc.title ??
-            '';
-          decryptedContent =
-            (await encryptionService.decrypt(doc.content ?? '', docKey)) ??
-            doc.content ??
-            '';
-          if (tagsCSV && typeof tagsCSV === 'string') {
-            const decryptedTags = await encryptionService.decrypt(
-              tagsCSV,
-              docKey
-            );
-            tags = csvToArray(decryptedTags) ?? [];
-          }
-        } else if (tagsCSV && typeof tagsCSV === 'string') {
-          tags = csvToArray(tagsCSV) ?? [];
-        }
-
-        const document: Document = {
-          id: doc.id,
-          title: decryptedTitle,
-          content: decryptedContent,
-          tags: tags,
-          createdAt: doc.createdAt ?? Date.now(),
-          updatedAt: doc.updatedAt ?? Date.now(),
-          isPublic: doc.isPublic ?? false,
-          access: doc.access ?? [],
-          parent: doc.parent,
-          original: doc.original,
-        };
-
-        return document;
-      }, transformError)) as Result<Document | null, DocumentError>;
-
-      match(
-        (doc: Document | null) => {
-          set({
-            currentDocument: doc,
-            status: 'READY',
-            error: null,
-            loadingDocId: undefined,
-          });
-        },
-        (error: DocumentError) => {
-          if (error.code === 'NOT_FOUND') {
-            set({
-              currentDocument: null,
-              status: 'READY',
-              error: null,
-              loadingDocId: undefined,
-            });
-          } else {
-            set({
-              status: 'READY',
-              error: error.message,
-              loadingDocId: undefined,
-            });
-          }
-        }
-      )(result);
-
-      if (!result.success && result.error.code === 'NOT_FOUND') {
-        return { success: true, data: null };
-      }
-
-      return result;
-    },
-
-    getDocumentByUrl: async (
       docId: string,
       userPub: string
     ): Promise<Result<Document | null, DocumentError>> => {

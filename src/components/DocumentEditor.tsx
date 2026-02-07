@@ -19,7 +19,7 @@ export function DocumentEditor() {
     status: docStatus,
     loadingDocId,
     error: docError,
-    getDocumentByUrl,
+    getDocument,
     createDocument,
     updateDocument,
     deleteDocument,
@@ -37,7 +37,7 @@ export function DocumentEditor() {
 
   useEffect(() => {
     if (docId && docId !== 'new' && userPub) {
-      getDocumentByUrl(docId, userPub).then(result => {
+      getDocument(docId, userPub).then(result => {
         if (result.success && result.data) {
           setTitle(result.data.title || '');
           setContent(result.data.content || '');
@@ -75,7 +75,7 @@ export function DocumentEditor() {
       setIsPublic(false);
       setViewError(undefined);
     }
-  }, [docId, userPub, getDocumentByUrl]);
+  }, [docId, userPub, getDocument]);
 
   const handleSave = async () => {
     clearDocError();

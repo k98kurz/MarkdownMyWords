@@ -129,6 +129,18 @@ function compareTwoThings(
 }
 
 /**
+ * Get current user's public key
+ */
+function getCurrentUserPubKey(): string {
+  const gun = gunService.getGun();
+  const user = gun.user();
+  if (!user.is || !user.is.pub) {
+    throw new Error('User not authenticated');
+  }
+  return user.is.pub as string;
+}
+
+/**
  * Cleanup documentStore state between tests
  */
 async function cleanupDocumentStore(): Promise<void> {
@@ -306,7 +318,10 @@ async function testCRUDe2e(): Promise<TestSuiteResult> {
 
     // 3. get that document
     console.log('3. get that document');
-    const getResult1 = await useDocumentStore.getState().getDocument(docId1);
+    const userPub = getCurrentUserPubKey();
+    const getResult1 = await useDocumentStore
+      .getState()
+      .getDocument(docId1, userPub);
     assert(isSuccess(getResult1), 'getDocument should succeed');
     compareTwoThings(
       { id: docId1, title, content, isPublic: true, tags },
@@ -329,7 +344,9 @@ async function testCRUDe2e(): Promise<TestSuiteResult> {
 
     // 5. get that document again
     console.log('5. get that document again');
-    const getResult2 = await useDocumentStore.getState().getDocument(docId1);
+    const getResult2 = await useDocumentStore
+      .getState()
+      .getDocument(docId1, userPub);
     assert(isSuccess(getResult2), 'getDocument should succeed');
     compareTwoThings(
       { id: docId1, title, content: newContent, isPublic: true, tags },
