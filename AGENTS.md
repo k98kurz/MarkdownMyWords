@@ -9,6 +9,7 @@ agentic code development. A human will test manually.
 and deprecated information.
 4. There are currently no users or deployments of this anywhere, and thus no
 need for backwards compatibility. Just make clean changes.
+5. Use '@/path/to/import' alias in imports instead of relative '../path'.
 
 ## Core Principles
 
