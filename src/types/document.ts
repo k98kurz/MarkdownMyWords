@@ -86,4 +86,5 @@ export interface MinimalDocListItem {
   soul: string;
   createdAt: number;
   updatedAt: number;
+  isPublic: boolean;
 }

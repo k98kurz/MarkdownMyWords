@@ -144,7 +144,10 @@ interface DocumentState {
     tags?: string[];
   }>;
   loadedMetadata: Set<string>;
-  enrichedDocs: Map<string, { title?: string; tags?: string[] }>;
+  enrichedDocs: Map<
+    string,
+    { title?: string; tags?: string[]; isPublic?: boolean }
+  >;
   status: 'READY' | 'LOADING' | 'SAVING';
   error: string | null;
   loadingDocId?: string;
@@ -171,7 +174,10 @@ interface DocumentActions {
 
   // Metadata helpers
   setLoadedMetadata: (docId: string) => void;
-  setDocumentMetadata: (docId: string, title: string, tags?: string[]) => void;
+  setDocumentMetadata: (
+    docId: string,
+    metadata: { title?: string; tags?: string[]; isPublic?: boolean }
+  ) => void;
   clearDocumentMetadata: (docId: string) => void;
   clearMetadata: () => void;
 
@@ -195,7 +201,9 @@ interface DocumentActions {
   listDocuments: () => Promise<Result<MinimalDocListItem[], DocumentError>>;
   getDocumentMetadata: (
     docId: string
-  ) => Promise<Result<Pick<Document, 'title' | 'tags'>, DocumentError>>;
+  ) => Promise<
+    Result<Pick<Document, 'title' | 'tags' | 'isPublic'>, DocumentError>
+  >;
 
   // Sharing operations
   shareDocument: (
@@ -206,6 +214,7 @@ interface DocumentActions {
     docId: string,
     userId: string
   ) => Promise<Result<void, DocumentError>>;
+  getDocumentKey: (docId: string) => Promise<Result<string, DocumentError>>;
 }
 
 /**
@@ -253,9 +262,12 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       }));
     },
 
-    setDocumentMetadata: (docId: string, title: string, tags?: string[]) => {
+    setDocumentMetadata: (
+      docId: string,
+      metadata: { title?: string; tags?: string[]; isPublic?: boolean }
+    ) => {
       set((state: DocumentState) => ({
-        enrichedDocs: new Map(state.enrichedDocs).set(docId, { title, tags }),
+        enrichedDocs: new Map(state.enrichedDocs).set(docId, metadata),
       }));
     },
 
@@ -821,6 +833,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
               soul: item.soul,
               createdAt: data.createdAt ?? Date.now(),
               updatedAt: data.updatedAt ?? Date.now(),
+              isPublic: data.isPublic ?? false,
             };
           })
           .filter((item): item is MinimalDocListItem => item !== null);
@@ -849,7 +862,9 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
     getDocumentMetadata: async (
       docId: string
-    ): Promise<Result<Pick<Document, 'title' | 'tags'>, DocumentError>> => {
+    ): Promise<
+      Result<Pick<Document, 'title' | 'tags' | 'isPublic'>, DocumentError>
+    > => {
       set({ status: 'LOADING', error: null });
 
       const result = (await tryCatch(async () => {
@@ -905,14 +920,15 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           tags = csvToArray(tagsCSV) ?? [];
         }
 
-        const metadata: Pick<Document, 'title' | 'tags'> = {
+        const metadata: Pick<Document, 'title' | 'tags' | 'isPublic'> = {
           title: decryptedTitle,
           tags: tags,
+          isPublic: doc.isPublic ?? false,
         };
 
         return metadata;
       }, transformError)) as Result<
-        Pick<Document, 'title' | 'tags'>,
+        Pick<Document, 'title' | 'tags' | 'isPublic'>,
         DocumentError
       >;
 
@@ -1115,6 +1131,55 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           });
         }
       )(result);
+
+      return result;
+    },
+
+    getDocumentKey: async (
+      docId: string
+    ): Promise<Result<string, DocumentError>> => {
+      const result = (await tryCatch(async () => {
+        const { user: currentUser } = useAuthStore.getState();
+
+        if (!currentUser || !currentUser.is?.pub) {
+          throw new Error('must be logged in to share document');
+        }
+
+        const gun = gunService.getGun();
+        const userNode = gun.user();
+        const docNode = userNode.get('docs').get(docId);
+
+        const docData = await new Promise<unknown>((resolve, reject) => {
+          docNode.once((data: unknown) => {
+            if (data === null || data === undefined) {
+              reject(new Error('Document not found'));
+            } else {
+              resolve(data);
+            }
+          });
+        });
+
+        if (!docData || typeof docData !== 'object') {
+          throw new Error('Document not found');
+        }
+
+        const doc = docData as Partial<Document>;
+        if (!doc.id) {
+          throw new Error('Document not found');
+        }
+
+        if (doc.isPublic) {
+          throw new Error('Public documents do not have a key');
+        }
+
+        const docKey = await gunService.readPrivateData(['docKeys', docId]);
+
+        if (!docKey) {
+          throw new Error('Document key not found');
+        }
+
+        return docKey;
+      }, transformError)) as Result<string, DocumentError>;
 
       return result;
     },

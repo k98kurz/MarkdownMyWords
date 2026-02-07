@@ -4,6 +4,7 @@ import { useDocumentStore } from '../stores/documentStore';
 import { useAuthStore } from '../stores/authStore';
 import { EditorArea } from './EditorArea';
 import { ConfirmModal } from './ConfirmModal';
+import { SharingModal } from './SharingModal';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { Label } from './ui/Label';
@@ -25,6 +26,7 @@ export function DocumentEditor() {
     deleteDocument,
     clearDocumentMetadata,
     clearError: clearDocError,
+    getDocumentKey,
   } = useDocumentStore();
 
   const [title, setTitle] = useState('');
@@ -33,6 +35,13 @@ export function DocumentEditor() {
   const [isPublic, setIsPublic] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showSharingModal, setShowSharingModal] = useState(false);
+  const [sharingDoc, setSharingDoc] = useState<{
+    docId: string;
+    userPub: string;
+    isPublic: boolean;
+    docKey?: string;
+  } | null>(null);
   const [providedKey, setProvidedKey] = useState('');
   const [keyError, setKeyError] = useState<string | undefined>();
   type ViewError =
@@ -114,6 +123,30 @@ export function DocumentEditor() {
       }
 
       navigate(`/doc/${currentUserPub}/${result.data.id}`);
+    }
+  };
+
+  const handleShareClick = async () => {
+    if (!currentDocument) return;
+
+    const sharingData = {
+      docId: currentDocument.id,
+      userPub: currentUserPub!,
+      isPublic: currentDocument.isPublic,
+    };
+
+    if (!currentDocument.isPublic) {
+      const keyResult = await getDocumentKey(currentDocument.id);
+      if (keyResult.success && keyResult.data) {
+        setSharingDoc({
+          ...sharingData,
+          docKey: keyResult.data,
+        });
+        setShowSharingModal(true);
+      }
+    } else {
+      setSharingDoc(sharingData);
+      setShowSharingModal(true);
     }
   };
 
@@ -368,6 +401,13 @@ export function DocumentEditor() {
                   Close
                 </Button>
                 <Button
+                  variant="secondary"
+                  type="button"
+                  onClick={handleShareClick}
+                >
+                  Sharing
+                </Button>
+                <Button
                   variant="primary"
                   type="submit"
                   disabled={docStatus === 'SAVING'}
@@ -380,6 +420,20 @@ export function DocumentEditor() {
           </div>
         </div>
       </form>
+
+      {sharingDoc && (
+        <SharingModal
+          isOpen={showSharingModal}
+          onClose={() => {
+            setShowSharingModal(false);
+            setSharingDoc(null);
+          }}
+          docId={sharingDoc.docId}
+          userPub={sharingDoc.userPub}
+          isPublic={sharingDoc.isPublic}
+          docKey={sharingDoc.docKey}
+        />
+      )}
 
       <ConfirmModal
         isOpen={showDeleteConfirm}
