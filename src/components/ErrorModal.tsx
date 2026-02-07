@@ -60,7 +60,7 @@ export function ErrorModal() {
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={closeModal} className="max-w-2xl">
+    <Modal isOpen={isOpen} onClose={closeModal} className="max-w-4xl">
       <div className="p-6">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-xl font-semibold text-rose-500">⚠️ Error</h2>
