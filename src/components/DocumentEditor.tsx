@@ -12,7 +12,7 @@ import { Badge } from './ui/Badge';
 export function DocumentEditor() {
   const { userPub, docId } = useParams<{ userPub?: string; docId?: string }>();
   const navigate = useNavigate();
-  const { user: currentUser } = useAuthStore();
+  const { user: currentUser, isAuthenticated } = useAuthStore();
   const currentUserPub = currentUser?.is?.pub;
   const {
     currentDocument,
@@ -32,7 +32,14 @@ export function DocumentEditor() {
   const [tags, setTags] = useState('');
   const [isPublic, setIsPublic] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  type ViewError = 'NOT_FOUND' | 'PERMISSION_DENIED' | undefined;
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [providedKey, setProvidedKey] = useState('');
+  const [keyError, setKeyError] = useState<string | undefined>();
+  type ViewError =
+    | 'NOT_FOUND'
+    | 'PERMISSION_DENIED'
+    | 'AUTH_REQUIRED'
+    | undefined;
   const [viewError, setViewError] = useState<ViewError>(undefined);
 
   useEffect(() => {
@@ -53,6 +60,8 @@ export function DocumentEditor() {
             setViewError('NOT_FOUND');
           } else if (result.error.code === 'PERMISSION_DENIED') {
             setViewError('PERMISSION_DENIED');
+          } else if (result.error.code === 'AUTH_REQUIRED') {
+            setViewError('AUTH_REQUIRED');
           }
         } else if (result.success && result.data === null) {
           setTitle('');
@@ -130,12 +139,42 @@ export function DocumentEditor() {
   }
 
   if (viewError) {
-    const title =
-      viewError === 'NOT_FOUND' ? 'Document Not Found' : 'Permission Denied';
-    const description =
-      viewError === 'NOT_FOUND'
-        ? "The document you're looking for doesn't exist."
-        : 'You do not have access to this document.';
+    let title = 'Access Denied';
+    let description = 'An error occurred.';
+    let actions = (
+      <Button onClick={() => navigate('/docs')}>Go to Documents</Button>
+    );
+
+    if (viewError === 'NOT_FOUND') {
+      title = 'Document Not Found';
+      description = "The document you're looking for doesn't exist.";
+    } else if (
+      viewError === 'PERMISSION_DENIED' ||
+      viewError === 'AUTH_REQUIRED'
+    ) {
+      title =
+        viewError === 'AUTH_REQUIRED'
+          ? 'Authentication Required'
+          : 'Permission Denied';
+      description =
+        viewError === 'AUTH_REQUIRED'
+          ? 'Please log in to access this document.'
+          : 'You do not have access to this document.';
+
+      actions = (
+        <div className="flex gap-2">
+          <Button onClick={() => navigate('/docs')}>Go to Documents</Button>
+          {!isAuthenticated && (
+            <Button variant="primary" onClick={() => navigate('/')}>
+              Log In
+            </Button>
+          )}
+          <Button variant="secondary" disabled title="Coming soon">
+            Password/key
+          </Button>
+        </div>
+      );
+    }
 
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center px-4">
@@ -143,7 +182,64 @@ export function DocumentEditor() {
           {title}
         </h1>
         <p className="mb-8 text-muted-foreground">{description}</p>
-        <Button onClick={() => navigate('/docs')}>Go to Documents</Button>
+        <div className="flex gap-4">{actions}</div>
+
+        {showPasswordModal && (
+          <div className="fixed inset-0 flex items-center justify-center bg-black/50">
+            <div className="bg-card rounded-lg p-6 max-w-md w-full mx-4">
+              <h2 className="text-xl font-semibold mb-4">
+                Password/key Required
+              </h2>
+              <p className="text-muted-foreground mb-4">
+                Enter a password or key to decrypt this document.
+              </p>
+
+              <Input
+                type="password"
+                value={providedKey}
+                onChange={e => setProvidedKey(e.target.value)}
+                placeholder="Enter password or key"
+                autoFocus
+              />
+
+              {keyError && (
+                <p className="text-rose-500 mt-2 text-sm">{keyError}</p>
+              )}
+
+              <div className="flex justify-end gap-2 mt-4">
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setShowPasswordModal(false);
+                    setProvidedKey('');
+                    setKeyError(undefined);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={async () => {
+                    setKeyError(undefined);
+                    const result = await getDocument(
+                      docId!,
+                      userPub!,
+                      providedKey
+                    );
+                    if (!result.success) {
+                      setKeyError('Invalid password or key');
+                    } else {
+                      setShowPasswordModal(false);
+                      setProvidedKey('');
+                    }
+                  }}
+                >
+                  Decrypt
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }

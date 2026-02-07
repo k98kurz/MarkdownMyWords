@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
 import { AuthModal } from './components/AuthModal';
 import { AuthComponent } from './components/AuthComponent';
@@ -17,6 +17,7 @@ function AppContent() {
   const { isAuthenticated, isLoading, checkSession, logout, user, username } =
     useAuthStore();
   const { setError } = useErrorStore();
+  const location = useLocation();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
 
@@ -48,9 +49,10 @@ function AppContent() {
     if (isAuthenticated) {
       setShowAuthModal(false);
     } else {
-      setShowAuthModal(true);
+      const isDocumentRoute = location.pathname.match(/^\/doc\/[^/]+\/[^/]+$/);
+      setShowAuthModal(!isDocumentRoute);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, location.pathname]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -75,21 +77,25 @@ function AppContent() {
       <main>
         {isLoading ? (
           <div className="px-8 py-16 text-center text-lg">Loading...</div>
-        ) : isAuthenticated ? (
+        ) : (
           <div className="px-8 py-4">
             <Routes>
-              <Route path="/" element={<Navigate to="/docs" replace />} />
-              <Route path="/docs" element={<DocumentList />} />
-              <Route path="/doc/new" element={<DocumentEditor />} />
+              {/* Public document route - accessible to guests */}
               <Route path="/doc/:userPub/:docId" element={<DocumentEditor />} />
+
+              {/* Authenticated-only routes */}
+              {isAuthenticated ? (
+                <>
+                  <Route path="/" element={<Navigate to="/docs" replace />} />
+                  <Route path="/docs" element={<DocumentList />} />
+                  <Route path="/doc/new" element={<DocumentEditor />} />
+                </>
+              ) : (
+                <Route path="/" element={<Navigate to="/" replace />} />
+              )}
+
               <Route path="*" element={<NotFound />} />
             </Routes>
-          </div>
-        ) : (
-          <div className="px-8 py-16 text-center">
-            <p className="text-lg text-muted-foreground">
-              Please log in to continue.
-            </p>
           </div>
         )}
       </main>

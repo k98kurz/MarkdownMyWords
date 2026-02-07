@@ -14,7 +14,8 @@ export interface DocumentError {
     | 'ENCRYPTION_ERROR'
     | 'PERMISSION_DENIED'
     | 'NOT_FOUND'
-    | 'VALIDATION_ERROR';
+    | 'VALIDATION_ERROR'
+    | 'AUTH_REQUIRED';
   message: string;
   details?: unknown;
 }

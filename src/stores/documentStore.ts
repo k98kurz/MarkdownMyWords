@@ -17,6 +17,7 @@ import type {
 import { gunService } from '../services/gunService';
 import { GunNodeRef, GunAck } from '../types/gun';
 import { encryptionService } from '../services/encryptionService';
+import { useAuthStore } from './authStore';
 
 const transformError = (error: unknown): DocumentError => {
   if (error instanceof Error) {
@@ -46,6 +47,13 @@ const transformError = (error: unknown): DocumentError => {
       return {
         code: 'ENCRYPTION_ERROR',
         message: 'Failed to process document',
+        details: error,
+      };
+    }
+    if (msg.includes('must be logged in')) {
+      return {
+        code: 'AUTH_REQUIRED',
+        message: 'Please log in to view this document',
         details: error,
       };
     }
@@ -176,7 +184,8 @@ interface DocumentActions {
   ) => Promise<Result<Document, DocumentError>>;
   getDocument: (
     docId: string,
-    userPub: string
+    userPub: string,
+    providedKey?: string
   ) => Promise<Result<Document | null, DocumentError>>;
   updateDocument: (
     docId: string,
@@ -366,7 +375,8 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
     getDocument: async (
       docId: string,
-      userPub: string
+      userPub: string,
+      providedKey?: string
     ): Promise<Result<Document | null, DocumentError>> => {
       set({ status: 'LOADING', error: null, loadingDocId: docId });
 
@@ -396,18 +406,33 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
         let docKey: string | undefined;
 
-        if (!doc.isPublic) {
-          // Private document - need docKey from current user's private storage
-          // All docKeys (own or shared) stored at same path: ['docKeys', docId]
-          try {
-            docKey = await gunService.readPrivateData(['docKeys', docId]);
-          } catch {
-            // docKey not found - user doesn't have access
-            throw new Error('You do not have access to this document');
+        // PUBLIC DOCUMENT: No encryption
+        if (doc.isPublic) {
+          // No key needed - content is unencrypted
+        }
+        // PRIVATE DOCUMENT
+        else {
+          // Try provided key first (Phase 2: password/key access)
+          if (providedKey) {
+            docKey = providedKey;
           }
+          // Otherwise, require authentication and read from private storage
+          else {
+            const { user: currentUser } = useAuthStore.getState();
 
-          if (!docKey) {
-            throw new Error('You do not have access to this document');
+            if (!currentUser || !currentUser.is?.pub) {
+              throw new Error('must be logged in to view this document');
+            }
+
+            try {
+              docKey = await gunService.readPrivateData(['docKeys', docId]);
+            } catch {
+              throw new Error('You do not have access to this document');
+            }
+
+            if (!docKey) {
+              throw new Error('You do not have access to this document');
+            }
           }
         }
 
@@ -417,20 +442,24 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         let tags: string[] = [];
 
         if (docKey && !doc.isPublic) {
-          decryptedTitle =
-            (await encryptionService.decrypt(doc.title ?? '', docKey)) ??
-            doc.title ??
-            '';
-          decryptedContent =
-            (await encryptionService.decrypt(doc.content ?? '', docKey)) ??
-            doc.content ??
-            '';
-          if (tagsCSV && typeof tagsCSV === 'string') {
-            const decryptedTags = await encryptionService.decrypt(
-              tagsCSV,
-              docKey
-            );
-            tags = csvToArray(decryptedTags) ?? [];
+          try {
+            decryptedTitle =
+              (await encryptionService.decrypt(doc.title ?? '', docKey)) ??
+              doc.title ??
+              '';
+            decryptedContent =
+              (await encryptionService.decrypt(doc.content ?? '', docKey)) ??
+              doc.content ??
+              '';
+            if (tagsCSV && typeof tagsCSV === 'string') {
+              const decryptedTags = await encryptionService.decrypt(
+                tagsCSV,
+                docKey
+              );
+              tags = csvToArray(decryptedTags) ?? [];
+            }
+          } catch {
+            throw new Error('could not be decrypted');
           }
         } else if (tagsCSV && typeof tagsCSV === 'string') {
           tags = csvToArray(tagsCSV) ?? [];
