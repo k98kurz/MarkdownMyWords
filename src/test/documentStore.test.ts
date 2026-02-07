@@ -11,9 +11,9 @@ import {
   printTestSummary,
   type TestSuiteResult,
   sleep,
-} from '@/utils/testRunner';
-import { isFailure, isSuccess } from '@/utils/functionalResult';
-import { clearGunDBLocalStorage } from '@/utils/clearGunDB';
+} from '@/dev/testRunner';
+import { isFailure, isSuccess } from '@/lib/functionalResult';
+import { clearGunDBLocalStorage } from '@/dev/clearGunDB';
 import type { DocumentError, MinimalDocListItem } from '@/types/document';
 
 const TEST_USERNAME = 'testuser_doc_tests';

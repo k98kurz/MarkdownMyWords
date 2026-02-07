@@ -6,7 +6,7 @@
  */
 
 import { create } from 'zustand';
-import { gunService } from '../services/gunService';
+import { gunService } from '@/services/gunService';
 
 /**
  * Connection State Interface

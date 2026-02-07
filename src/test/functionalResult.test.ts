@@ -6,7 +6,7 @@ import {
   TestRunner,
   printTestSummary,
   type TestSuiteResult,
-} from '../utils/testRunner';
+} from '@/dev/testRunner';
 import {
   success,
   failure,
@@ -24,7 +24,7 @@ import {
   getOrThrow,
   pipe,
   type Result,
-} from '../utils/functionalResult';
+} from '@/lib/functionalResult';
 
 const assert = (condition: boolean, message: string) => {
   if (!condition) {

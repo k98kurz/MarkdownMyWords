@@ -4,8 +4,8 @@
  * Tests that AES-256-GCM encryption/decryption works correctly with documents of various sizes.
  */
 
-import { encryptionService } from '../services/encryptionService';
-import { TestRunner, type TestSuiteResult } from '../utils/testRunner';
+import { encryptionService } from '@/services/encryptionService';
+import { TestRunner, type TestSuiteResult } from '@/dev/testRunner';
 
 const assert = (condition: unknown, message: string) => {
   if (!condition) {

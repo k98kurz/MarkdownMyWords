@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useConnectionStore } from '../stores/connectionStore';
+import { useConnectionStore } from '@/stores/connectionStore';
 import { Modal } from './ui/Modal';
 
 export const StatusBar: React.FC = () => {

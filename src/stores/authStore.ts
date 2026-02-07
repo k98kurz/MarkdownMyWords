@@ -16,7 +16,7 @@ import {
   tryCatch,
   isFailure,
   type Result,
-} from '@/utils/functionalResult';
+} from '@/lib/functionalResult';
 import type { IGunUserInstance } from 'gun/types';
 
 // Replace all 'any' types with discriminated union
@@ -79,7 +79,12 @@ const validateAuthInput = (
 // CRITICAL: Preserve existing error detection logic from current implementation
 const transformAuthError = (error: unknown): AuthError => {
   // Preserve the exact error message detection logic from current authStore.ts:80-86
-  if (typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string') {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'message' in error &&
+    typeof error.message === 'string'
+  ) {
     if (error.message.includes('User creation failed')) {
       // Match the user-friendly message that tests expect in store state
       return {
@@ -217,9 +222,11 @@ export const useAuthStore = create<AuthState>(set => ({
         let res = await sequence([
           await gunService.createUser(username.trim(), password),
           await gunService.authenticateUser(username.trim(), password),
-          await gunService.writeProfile()
+          await gunService.writeProfile(),
         ]);
-        return res.success ? success(undefined) : failure(transformAuthError(res.error));
+        return res.success
+          ? success(undefined)
+          : failure(transformAuthError(res.error));
       },
       // Step 3: Get authenticated user
       chain(() => getAuthenticatedUser())

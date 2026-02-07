@@ -17,11 +17,11 @@
  * - Store state contains user-friendly messages for UI display
  */
 
-import { useAuthStore } from '../stores/authStore';
-import { gunService } from '../services/gunService';
-import { TestRunner, type TestSuiteResult, sleep } from '../utils/testRunner';
-import { tryCatch, isFailure } from '../utils/functionalResult';
-import type { AuthError } from '../stores/authStore';
+import { useAuthStore } from '@/stores/authStore';
+import { gunService } from '@/services/gunService';
+import { TestRunner, type TestSuiteResult, sleep } from '@/dev/testRunner';
+import { tryCatch, isFailure } from '@/lib/functionalResult';
+import type { AuthError } from '@/stores/authStore';
 
 /**
  * Cleanup authStore state between tests

@@ -1,9 +1,9 @@
 import { useState, FormEvent } from 'react';
-import { useAuthStore } from '../stores/authStore';
-import { Input } from './ui/Input';
-import { Label } from './ui/Label';
-import { Button } from './ui/Button';
-import { Spinner } from './ui/Spinner';
+import { useAuthStore } from '@/stores/authStore';
+import { Input } from '@/components/ui/Input';
+import { Label } from '@/components/ui/Label';
+import { Button } from '@/components/ui/Button';
+import { Spinner } from '@/components/ui/Spinner';
 
 interface LoginFormProps {
   onSuccess?: () => void;

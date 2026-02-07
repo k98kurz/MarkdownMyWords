@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { useErrorStore } from '../stores/errorStore';
-import { Modal } from './ui/Modal';
-import { Button } from './ui/Button';
+import { useErrorStore } from '@/stores/errorStore';
+import { Modal } from '@/components/ui/Modal';
+import { Button } from '@/components/ui/Button';
 
 function safeStringify(error: unknown, space: number = 2): string {
   const seen = new WeakSet();

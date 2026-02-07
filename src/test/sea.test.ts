@@ -1,6 +1,6 @@
 import Gun, { ISEAPair } from 'gun';
 import 'gun/sea';
-import { gunService } from '../services';
+import { gunService } from '@/services';
 
 /**
  * Assert helper for tests

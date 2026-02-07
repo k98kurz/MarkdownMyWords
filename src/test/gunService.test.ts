@@ -4,15 +4,15 @@
  * Tests for GunDB service operations that can be run from the browser console.
  */
 
-import { gunService, GunService } from '../services/gunService';
-import type { GunAck } from '../types/gun';
-import { GunErrorCode } from '../types/gun';
+import { gunService, GunService } from '@/services/gunService';
+import type { GunAck } from '@/types/gun';
+import { GunErrorCode } from '@/types/gun';
 import {
   TestRunner,
   printTestSummary,
   type TestSuiteResult,
-} from '../utils/testRunner';
-import { isFailure } from '../utils/functionalResult';
+} from '@/dev/testRunner';
+import { isFailure } from '@/lib/functionalResult';
 
 /**
  * Test GunDB Service initialization

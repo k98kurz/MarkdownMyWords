@@ -16,9 +16,9 @@
 import Gun from 'gun';
 import 'gun/sea';
 import type { ISEAPair } from 'gun/types';
-import { gunService } from '../services/gunService';
-import type { GunAck, GunInstance, GunNodeRef } from '../types/gun';
-import { TestRunner, type TestSuiteResult } from '../utils/testRunner';
+import { gunService } from '@/services/gunService';
+import type { GunAck, GunInstance, GunNodeRef } from '@/types/gun';
+import { TestRunner, type TestSuiteResult } from '@/dev/testRunner';
 
 /**
  * Assert helper for tests

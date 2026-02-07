@@ -7,7 +7,7 @@
  * - sessionStorage (for session/auth data)
  */
 
-import { useAuthStore } from '../stores/authStore';
+import { useAuthStore } from '@/stores/authStore';
 
 /**
  * Clear all GunDB data from local storage

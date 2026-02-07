@@ -1,4 +1,4 @@
-import { gunService, type DiscoveredUser } from '../services/gunService';
+import { gunService, type DiscoveredUser } from '@/services/gunService';
 
 export interface GroupedUserResults {
   [username: string]: DiscoveredUser[];

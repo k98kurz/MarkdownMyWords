@@ -1,8 +1,8 @@
 import { useState, FormEvent } from 'react';
-import { useAuthStore } from '../stores/authStore';
-import { Input } from './ui/Input';
-import { Label } from './ui/Label';
-import { Button } from './ui/Button';
+import { useAuthStore } from '@/stores/authStore';
+import { Input } from '@/components/ui/Input';
+import { Label } from '@/components/ui/Label';
+import { Button } from '@/components/ui/Button';
 
 interface RegisterFormProps {
   onSuccess?: () => void;

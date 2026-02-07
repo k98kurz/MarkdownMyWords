@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useDocumentStore } from '../stores/documentStore';
-import { useAuthStore } from '../stores/authStore';
-import { EditorArea } from './EditorArea';
-import { ConfirmModal } from './ConfirmModal';
-import { SharingModal } from './SharingModal';
-import { AuthModal } from './AuthModal';
-import { Button } from './ui/Button';
-import { Input } from './ui/Input';
-import { Label } from './ui/Label';
-import { Badge } from './ui/Badge';
+import { useDocumentStore } from '@/stores/documentStore';
+import { useAuthStore } from '@/stores/authStore';
+import { EditorArea } from '@/components/EditorArea';
+import { ConfirmModal } from '@/components/ConfirmModal';
+import { SharingModal } from '@/components/SharingModal';
+import { AuthModal } from '@/components/AuthModal';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { Label } from '@/components/ui/Label';
+import { Badge } from '@/components/ui/Badge';
 
 export function DocumentEditor() {
   const { userPub, docId } = useParams<{ userPub?: string; docId?: string }>();

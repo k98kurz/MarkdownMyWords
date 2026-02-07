@@ -2,15 +2,14 @@
  * Encryption Service Tests
  */
 
-import { encryptionService } from '../services/encryptionService';
-import { gunService } from '../services/gunService';
+import { encryptionService } from '@/services/encryptionService';
+import { gunService } from '@/services/gunService';
 import {
   TestRunner,
   printTestSummary,
   type TestSuiteResult,
   sleep,
-} from '../utils/testRunner';
-// import { retryWithBackoff } from '../../utils/retryHelper'
+} from '@/dev/testRunner';
 
 const assert = (condition: unknown, message: string) => {
   if (!condition) {
@@ -323,7 +322,7 @@ async function testKeySharing(): Promise<TestSuiteResult> {
 //   })
 
 //   await runner.run('should throw error when operations called before initialization', async () => {
-//     const { EncryptionService } = await import('../encryptionService')
+//     const { EncryptionService } = await import('@/services/encryptionService')
 //     const uninitializedService = new EncryptionService()
 //     const key = await encryptionService.generateKey()
 

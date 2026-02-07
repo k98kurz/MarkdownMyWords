@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { MarkdownEditor } from './MarkdownEditor';
-import { MarkdownPreview } from './MarkdownPreview';
-import { useAppWidth } from '../contexts/AppWidthContext';
+import { MarkdownEditor } from '@/components/MarkdownEditor';
+import { MarkdownPreview } from '@/components/MarkdownPreview';
+import { useAppWidth } from '@/contexts/AppWidthContext';
 
 type ViewMode = 'edit' | 'preview' | 'split';
 

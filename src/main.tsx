@@ -11,11 +11,11 @@ import { testGunService } from './test/gunService.test';
 import { testAuthStore } from './test/authStore.test';
 import { testEncryptionService } from './test/encryptionService.test';
 import { testFunctionalResult } from './test/functionalResult.test';
-import { printTestSummary, type TestSuiteResult } from './utils/testRunner';
+import { printTestSummary, type TestSuiteResult } from './dev/testRunner';
 import { testNewGunSEAScheme } from './test/testNewGunSEAScheme';
 import { testDocumentStore } from './test/documentStore.test';
-import { clearGunDBLocalStorage } from './utils/clearGunDB';
-import { listUsers } from './utils/consoleTools';
+import { clearGunDBLocalStorage } from './dev/clearGunDB';
+import { listUsers } from './dev/consoleTools';
 import { useConnectionStore } from './stores/connectionStore';
 
 // Initialize services

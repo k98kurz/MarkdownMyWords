@@ -9,8 +9,8 @@ import Gun from 'gun';
 import 'gun/sea'; // GunDB SEA for encryption
 import 'gun/lib/radix'; // Radix for storage
 import 'gun/lib/radisk'; // Radisk for IndexedDB
-import { retryWithBackoff } from '../utils/retryHelper';
-import { getUserSEA } from '../utils/seaHelpers';
+import { retryWithBackoff } from '@/lib/retry';
+import { getUserSEA } from '@/misc/seaHelpers';
 import {
   Result,
   tryCatch,
@@ -18,9 +18,9 @@ import {
   partitionResults,
   failure,
   success,
-} from '../utils/functionalResult';
-import type { GunInstance, GunConfig, GunError } from '../types/gun';
-import { GunErrorCode, GunNodeRef, GunAck } from '../types/gun';
+} from '@/lib/functionalResult';
+import type { GunInstance, GunConfig, GunError } from '@/types/gun';
+import { GunErrorCode, GunNodeRef, GunAck } from '@/types/gun';
 import type { IGunUserInstance, ISEAPair } from 'gun/types';
 
 export interface SEAUser {
@@ -496,10 +496,7 @@ class GunService {
   ): Promise<Result<void, GunError>> {
     return tryCatch<void, GunError>(async () => {
       if (!this.gun) {
-        throw createGunError(
-          GunErrorCode.INIT_FAILED,
-          'GunDB not initialized'
-        );
+        throw createGunError(GunErrorCode.INIT_FAILED, 'GunDB not initialized');
       }
 
       await new Promise<void>((resolve, reject) => {
@@ -528,10 +525,7 @@ class GunService {
   ): Promise<Result<void, GunError>> {
     return tryCatch<void, GunError>(async () => {
       if (!this.gun) {
-        throw createGunError(
-          GunErrorCode.INIT_FAILED,
-          'GunDB not initialized'
-        );
+        throw createGunError(GunErrorCode.INIT_FAILED, 'GunDB not initialized');
       }
 
       await new Promise<void>((resolve, reject) => {

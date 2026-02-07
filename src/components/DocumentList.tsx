@@ -1,12 +1,12 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { useDocumentStore } from '../stores/documentStore';
-import { useAuthStore } from '../stores/authStore';
-import { ConfirmModal } from './ConfirmModal';
-import { SharingModal } from './SharingModal';
-import { Button } from './ui/Button';
-import { Badge } from './ui/Badge';
-import { MinimalDocListItem } from '../types/document';
+import { useDocumentStore } from '@/stores/documentStore';
+import { useAuthStore } from '@/stores/authStore';
+import { ConfirmModal } from '@/components/ConfirmModal';
+import { SharingModal } from '@/components/SharingModal';
+import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
+import { MinimalDocListItem } from '@/types/document';
 
 export function DocumentList() {
   const { user } = useAuthStore();

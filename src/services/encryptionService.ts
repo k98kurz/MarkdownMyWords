@@ -1,8 +1,8 @@
 import Gun from 'gun';
 import 'gun/sea';
 import type { IGunInstance } from 'gun/types';
-import { gunService } from './gunService';
-import { getUserSEA } from '../utils/seaHelpers';
+import { gunService } from '@/services/gunService';
+import { getUserSEA } from '@/misc/seaHelpers';
 import {
   Result,
   success,
@@ -10,7 +10,7 @@ import {
   tryCatch,
   pipe,
   chain,
-} from '../utils/functionalResult';
+} from '@/lib/functionalResult';
 
 /**
  * SEA instance type (from GunDB)

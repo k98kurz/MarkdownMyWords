@@ -6,18 +6,18 @@
  */
 
 import { create } from 'zustand';
-import { type Result, tryCatch, match } from '../utils/functionalResult';
+import { type Result, tryCatch, match } from '@/lib/functionalResult';
 import type {
   Document,
   DocumentAccessEntry,
   DocumentError,
   MinimalDocListItem,
   SharedDocNotification,
-} from '../types/document';
-import { gunService } from '../services/gunService';
-import { GunNodeRef, GunAck } from '../types/gun';
-import { encryptionService } from '../services/encryptionService';
-import { useAuthStore } from './authStore';
+} from '@/types/document';
+import { gunService } from '@/services/gunService';
+import { GunNodeRef, GunAck } from '@/types/gun';
+import { encryptionService } from '@/services/encryptionService';
+import { useAuthStore } from '@/stores/authStore';
 
 const transformError = (error: unknown): DocumentError => {
   if (error instanceof Error) {
