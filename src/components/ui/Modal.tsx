@@ -16,7 +16,7 @@ export function Modal({ isOpen, onClose, children, className }: ModalProps) {
       onClick={onClose}
     >
       <div
-        className={`relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-lg bg-card shadow-lg ${className || ''}`}
+        className={`relative max-h-[90vh] w-full overflow-y-auto rounded-lg bg-card shadow-lg ${className || ''}`}
         onClick={e => e.stopPropagation()}
       >
         {onClose && (
