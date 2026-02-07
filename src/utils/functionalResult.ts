@@ -1,7 +1,7 @@
 /**
- * Functional Result Utility
+ * Functional Result Library
  *
- * A type-safe functional programming utility for error handling and composition.
+ * A type-safe functional programming library for error handling and composition.
  * Provides Result type with discriminated unions for handling success/failure cases
  * without throwing exceptions.
  *
@@ -61,6 +61,21 @@ const map =
   <T, U, E>(fn: (data: T) => U) =>
   (result: Result<T, E>): Result<U, E> =>
     result.success ? success(fn(result.data)) : result;
+
+/**
+ * Transforms the failure value of a Result using the provided function
+ * Curried function: first takes the transformation function, then the Result
+ * @template T - Input success type (preserved)
+ * @template E - Input error type
+ * @template U - Output error type
+ * @param fn - Function to transform the error value or create side effects
+ * @returns Function that takes a Result and returns the transformed Result
+ *  or runs side effects
+ */
+const mapError =
+  <T, U, E>(fn: (error: E) => U) =>
+  (result: Result<T, E>): Result<T, U> =>
+    result.success ? result : failure(fn(result.error));
 
 /**
  * Chains operations that may fail, flattening nested Results
@@ -136,6 +151,32 @@ const traverse =
   <T, U, E>(fn: (item: T) => Result<U, E>) =>
   (items: T[]): Result<U[], E> =>
     sequence(items.map(fn));
+
+/**
+ * Partitions an array of Results into successes and failures
+ * Useful when you want to collect all successful results while still handling failures separately
+ * @template T - Success type of individual Results
+ * @template E - Error type
+ * @param results - Array of Results to partition
+ * @returns Object containing arrays of successful values and error objects
+ */
+const partitionResults = <T, E>(
+  results: Result<T, E>[]
+): {
+  successes: T[];
+  failures: Array<{ error: E }>;
+} => {
+  const successes: T[] = [];
+  const failures: Array<{ error: E }> = [];
+  for (const result of results) {
+    if (result.success) {
+      successes.push(result.data);
+    } else {
+      failures.push({ error: result.error });
+    }
+  }
+  return { successes, failures };
+};
 
 /**
  * Validates a value against an array of validator functions
@@ -278,6 +319,8 @@ export {
   fold,
   sequence,
   traverse,
+  partitionResults,
+  mapError,
   validate,
   isSuccess,
   isFailure,

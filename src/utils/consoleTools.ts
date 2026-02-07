@@ -10,13 +10,13 @@ export async function listUsers(
   const results: GroupedUserResults = {};
 
   for (const username of usernames) {
-    try {
-      const discoveredUsers = await gunService.discoverUsers(username);
-      results[username] = discoveredUsers;
-    } catch (error) {
+    const result = await gunService.discoverUsers(username);
+    if (result.success) {
+      results[username] = result.data;
+    } else {
       console.error(
         `Failed to discover users for username "${username}":`,
-        error
+        result.error
       );
       results[username] = [];
     }

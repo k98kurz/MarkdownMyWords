@@ -356,7 +356,13 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
             tagsCSV = tagsResult.data;
           }
 
-          await gunService.writePrivateData(['docKeys', docId], docKey);
+          const writeResult = await gunService.writePrivateData(
+            ['docKeys', docId],
+            docKey
+          );
+          if (!writeResult.success) {
+            throw writeResult.error;
+          }
         }
 
         const docNode = userNode.get('docs').get(docId);
@@ -461,11 +467,14 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
               throw new Error('must be logged in to view this document');
             }
 
-            try {
-              docKey = await gunService.readPrivateData(['docKeys', docId]);
-            } catch {
+            const readKeyResult = await gunService.readPrivateData([
+              'docKeys',
+              docId,
+            ]);
+            if (!readKeyResult.success) {
               throw new Error('You do not have access to this document');
             }
+            docKey = readKeyResult.data;
 
             if (!docKey) {
               throw new Error('You do not have access to this document');
@@ -610,11 +619,14 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
         let docKey: string | undefined;
         if (!doc.isPublic) {
-          try {
-            docKey = await gunService.readPrivateData(['docKeys', docId]);
-          } catch {
+          const readKeyResult = await gunService.readPrivateData([
+            'docKeys',
+            docId,
+          ]);
+          if (!readKeyResult.success) {
             throw new Error('Document key not found');
           }
+          docKey = readKeyResult.data;
         }
 
         const currentDoc = get();
@@ -828,12 +840,15 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         });
 
         if (!doc.isPublic) {
-          const privatePath = await gunService.getPrivatePath([
+          const privatePathResult = await gunService.getPrivatePath([
             'docKeys',
             docId,
           ]);
-          const node = privatePath.reduce(
-            (n: unknown, part) => (n as GunNodeRef).get(part),
+          if (!privatePathResult.success) {
+            throw privatePathResult.error;
+          }
+          const node = privatePathResult.data.reduce(
+            (n: unknown, part: string) => (n as GunNodeRef).get(part),
             userNode
           ) as GunNodeRef;
 
@@ -888,7 +903,11 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       set({ status: 'LOADING', error: null });
 
       const result = (await tryCatch(async () => {
-        const items = await gunService.listUserItems(['docs']);
+        const itemsResult = await gunService.listUserItems(['docs']);
+        if (!itemsResult.success) {
+          throw itemsResult.error;
+        }
+        const items = itemsResult.data;
 
         const minimalDocs: MinimalDocListItem[] = items
           .map(item => {
@@ -962,11 +981,14 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
         let docKey: string | undefined;
         if (!doc.isPublic) {
-          try {
-            docKey = await gunService.readPrivateData(['docKeys', docId]);
-          } catch {
+          const readKeyResult = await gunService.readPrivateData([
+            'docKeys',
+            docId,
+          ]);
+          if (!readKeyResult.success) {
             throw new Error('Document key not found');
           }
+          docKey = readKeyResult.data;
         }
 
         let decryptedTitle = doc.title ?? '';
@@ -1065,7 +1087,12 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           throw new Error('User not authenticated');
         }
 
-        const discoveredUsers = await gunService.discoverUsers(userId);
+        const discoveredUsersResult = await gunService.discoverUsers(userId);
+        if (!discoveredUsersResult.success) {
+          throw new Error('User not found');
+        }
+
+        const discoveredUsers = discoveredUsersResult.data;
         if (!discoveredUsers || discoveredUsers.length === 0) {
           throw new Error('User not found');
         }
@@ -1081,19 +1108,22 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         let encryptedDocKey = '';
 
         if (!doc.isPublic) {
-          try {
-            const docKey = await gunService.readPrivateData(['docKeys', docId]);
-            const encryptResult = await encryptionService.encryptECDH(
-              docKey,
-              recipientEpub
-            );
-            if (!encryptResult.success) {
-              throw encryptResult.error;
-            }
-            encryptedDocKey = encryptResult.data;
-          } catch {
+          const docKeyResult = await gunService.readPrivateData([
+            'docKeys',
+            docId,
+          ]);
+          if (!docKeyResult.success) {
             throw new Error('Document key not found');
           }
+          const docKey = docKeyResult.data;
+          const encryptResult = await encryptionService.encryptECDH(
+            docKey,
+            recipientEpub
+          );
+          if (!encryptResult.success) {
+            throw encryptResult.error;
+          }
+          encryptedDocKey = encryptResult.data;
         }
 
         const newAccessEntry = {
@@ -1251,13 +1281,16 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           throw new Error('Public documents do not have a key');
         }
 
-        const docKey = await gunService.readPrivateData(['docKeys', docId]);
+        const docKeyResult = await gunService.readPrivateData([
+          'docKeys',
+          docId,
+        ]);
 
-        if (!docKey) {
-          throw new Error('Document key not found');
+        if (!docKeyResult.success) {
+          throw docKeyResult.error;
         }
 
-        return docKey;
+        return docKeyResult.data;
       }, transformError)) as Result<string, DocumentError>;
 
       return result;

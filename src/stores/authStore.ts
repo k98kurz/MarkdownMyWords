@@ -5,17 +5,18 @@
  */
 
 import { create } from 'zustand';
-import { gunService } from '../services/gunService';
+import { gunService } from '@/services/gunService';
 import {
   success,
   failure,
   match,
   chain,
   pipe,
+  sequence,
   tryCatch,
   isFailure,
   type Result,
-} from '../utils/functionalResult';
+} from '@/utils/functionalResult';
 import type { IGunUserInstance } from 'gun/types';
 
 // Replace all 'any' types with discriminated union
@@ -23,8 +24,8 @@ type AuthError =
   | { type: 'VALIDATION_ERROR'; message: string; originalError?: unknown }
   | { type: 'USER_EXISTS'; message: string; originalError?: unknown }
   | { type: 'AUTH_FAILED'; message: string; originalError?: unknown }
-  | { type: 'CONNECTION_FAILED'; message: string; originalError?: unknown }
-  | { type: 'SYNC_ERROR'; message: string; originalError?: unknown }
+  | { type: 'INIT_FAILED'; message: string; originalError?: unknown }
+  | { type: 'MISC_ERROR'; message: string; originalError?: unknown }
   | { type: 'UNKNOWN_ERROR'; message: string; originalError?: unknown };
 
 // Type-safe user object (replace 'any')
@@ -78,7 +79,7 @@ const validateAuthInput = (
 // CRITICAL: Preserve existing error detection logic from current implementation
 const transformAuthError = (error: unknown): AuthError => {
   // Preserve the exact error message detection logic from current authStore.ts:80-86
-  if (error instanceof Error) {
+  if (typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string') {
     if (error.message.includes('User creation failed')) {
       // Match the user-friendly message that tests expect in store state
       return {
@@ -96,7 +97,7 @@ const transformAuthError = (error: unknown): AuthError => {
     }
     if (error.message.includes('GunDB not initialized')) {
       return {
-        type: 'CONNECTION_FAILED',
+        type: 'INIT_FAILED',
         message: 'GunDB not initialized',
         originalError: error,
       };
@@ -108,25 +109,6 @@ const transformAuthError = (error: unknown): AuthError => {
       message: error.message,
       originalError: error,
     };
-  }
-
-  // GunError objects from gunService with proper type guard
-  if (typeof error === 'object' && error !== null && 'code' in error) {
-    const gunError = error as { code: string; message: string };
-    switch (gunError.code) {
-      case 'CONNECTION_FAILED':
-        return {
-          type: 'CONNECTION_FAILED',
-          message: gunError.message,
-          originalError: error,
-        };
-      case 'SYNC_ERROR':
-        return {
-          type: 'AUTH_FAILED',
-          message: gunError.message,
-          originalError: error,
-        };
-    }
   }
 
   return {
@@ -142,7 +124,7 @@ const getAuthenticatedUser = (): Result<AuthenticatedUser, AuthError> => {
     const gun = gunService.getGun();
     if (!gun) {
       return failure({
-        type: 'CONNECTION_FAILED',
+        type: 'INIT_FAILED',
         message: 'GunDB not initialized',
       });
     }
@@ -178,7 +160,7 @@ const handleAuthResult = <T>(
   result: Result<T, AuthError>,
   set: (state: Partial<AuthState>) => void
 ): void => {
-  const handleResult = match(
+  match(
     (data: T) => {
       // Only set user if we have AuthenticatedUser data
       // If T is void (validation success), state will be set by subsequent operations
@@ -202,9 +184,7 @@ const handleAuthResult = <T>(
       // IMPORTANT: No global error handling - all auth errors handled locally
       // This prevents unwanted error modals during authentication
     }
-  );
-
-  handleResult(result);
+  )(result);
 };
 
 /**
@@ -234,11 +214,12 @@ export const useAuthStore = create<AuthState>(set => ({
       // Step 2: Create user, authenticate, and write profile (async operation)
       async validationResult => {
         if (isFailure(validationResult)) return validationResult;
-        return await tryCatch(async () => {
-          await gunService.createUser(username.trim(), password);
-          await gunService.authenticateUser(username.trim(), password);
-          await gunService.writeProfile();
-        }, transformAuthError);
+        let res = await sequence([
+          await gunService.createUser(username.trim(), password),
+          await gunService.authenticateUser(username.trim(), password),
+          await gunService.writeProfile()
+        ]);
+        return res.success ? success(undefined) : failure(transformAuthError(res.error));
       },
       // Step 3: Get authenticated user
       chain(() => getAuthenticatedUser())
@@ -249,17 +230,12 @@ export const useAuthStore = create<AuthState>(set => ({
 
     // Read username from profile after successful registration
     if (!isFailure(result)) {
-      try {
-        const username = await gunService.readUsername();
-        set({ username });
-      } catch {
+      const usernameResult = await gunService.readUsername();
+      if (usernameResult.success) {
+        set({ username: usernameResult.data });
+      } else {
         set({ username: null });
       }
-    }
-
-    // Throw error if any step failed
-    if (isFailure(result)) {
-      throw result.error;
     }
   },
 
@@ -276,10 +252,13 @@ export const useAuthStore = create<AuthState>(set => ({
       // Step 2: Authenticate user (async operation)
       async validationResult => {
         if (isFailure(validationResult)) return validationResult;
-        return await tryCatch(
-          () => gunService.authenticateUser(username.trim(), password),
-          transformAuthError
+        const authResult = await gunService.authenticateUser(
+          username.trim(),
+          password
         );
+        if (!authResult.success)
+          return failure(transformAuthError(authResult.error));
+        return success(undefined);
       },
       // Step 3: Get authenticated user
       chain(() => getAuthenticatedUser())
@@ -290,17 +269,12 @@ export const useAuthStore = create<AuthState>(set => ({
 
     // Read username from profile after successful login
     if (!isFailure(result)) {
-      try {
-        const username = await gunService.readUsername();
-        set({ username });
-      } catch {
+      const usernameResult = await gunService.readUsername();
+      if (usernameResult.success) {
+        set({ username: usernameResult.data });
+      } else {
         set({ username: null });
       }
-    }
-
-    // Throw error if any step failed
-    if (isFailure(result)) {
-      throw result.error;
     }
   },
 
@@ -368,10 +342,10 @@ export const useAuthStore = create<AuthState>(set => ({
       async () => {
         handleAuthResult(getAuthenticatedUser(), set);
 
-        try {
-          const username = await gunService.readUsername();
-          set({ username });
-        } catch {
+        const usernameResult = await gunService.readUsername();
+        if (usernameResult.success) {
+          set({ username: usernameResult.data });
+        } else {
           set({ username: null });
         }
       },

@@ -11,6 +11,14 @@ import 'gun/lib/radix'; // Radix for storage
 import 'gun/lib/radisk'; // Radisk for IndexedDB
 import { retryWithBackoff } from '../utils/retryHelper';
 import { getUserSEA } from '../utils/seaHelpers';
+import {
+  Result,
+  tryCatch,
+  sequence,
+  partitionResults,
+  failure,
+  success,
+} from '../utils/functionalResult';
 import type { GunInstance, GunConfig, GunError } from '../types/gun';
 import { GunErrorCode, GunNodeRef, GunAck } from '../types/gun';
 import type { IGunUserInstance, ISEAPair } from 'gun/types';
@@ -30,6 +38,33 @@ export interface DiscoveredUser {
   pub: string;
   data: unknown;
   userNode: unknown;
+}
+
+function createGunError(
+  code: GunErrorCode,
+  message: string,
+  details?: unknown
+): GunError {
+  return {
+    code,
+    message,
+    details,
+  };
+}
+
+function transformGunError(error: unknown): GunError {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    'message' in error
+  ) {
+    return error as GunError;
+  }
+  if (error instanceof Error) {
+    return createGunError(GunErrorCode.MISC_ERROR, error.message, error);
+  }
+  return createGunError(GunErrorCode.MISC_ERROR, 'An error occurred', error);
 }
 
 /**
@@ -99,7 +134,7 @@ class GunService {
       });
     } catch (error) {
       const gunError: GunError = {
-        code: GunErrorCode.CONNECTION_FAILED,
+        code: GunErrorCode.INIT_FAILED,
         message: 'Failed to initialize GunDB',
         details: error,
       };
@@ -208,7 +243,7 @@ class GunService {
   getGun(): GunInstance {
     if (!this.gun || !this.isInitialized) {
       throw {
-        code: GunErrorCode.CONNECTION_FAILED,
+        code: GunErrorCode.INIT_FAILED,
         message: 'GunDB not initialized. Call initialize() first.',
       } as GunError;
     }
@@ -385,56 +420,67 @@ class GunService {
    * Stores the user's epub and username at their user node
    * Reference: code_references/gundb.md:49-58
    */
-  async writeProfile(): Promise<void> {
-    const gun = this.getGun();
-    const userNode = gun.user();
-    const userState = userNode.is;
+  async writeProfile(): Promise<Result<void, GunError>> {
+    return tryCatch<void, GunError>(async () => {
+      const gun = this.getGun();
+      const userNode = gun.user();
+      const userState = userNode.is;
 
-    if (!userState || !('epub' in userState) || !userState.epub) {
-      throw new Error('User session not available or ECDH key missing');
-    }
+      if (!userState || !('epub' in userState) || !userState.epub) {
+        throw createGunError(
+          GunErrorCode.MISC_ERROR,
+          'User session not available or ECDH key missing'
+        );
+      }
 
-    const profileData: { epub: string; username?: string } = {
-      epub: userState.epub,
-    };
+      const profileData: { epub: string; username?: string } = {
+        epub: userState.epub,
+      };
 
-    if (userState.alias && typeof userState.alias === 'string') {
-      profileData.username = userState.alias;
-    }
+      if (userState.alias && typeof userState.alias === 'string') {
+        profileData.username = userState.alias;
+      }
 
-    return new Promise<void>((resolve, reject) => {
-      userNode.put(profileData, (ack: GunAck) => {
-        if (ack.err) {
-          reject(new Error(`Profile storage failed: ${ack.err}`));
-        } else {
-          resolve();
-        }
+      await new Promise<void>((resolve, reject) => {
+        userNode.put(profileData, (ack: GunAck) => {
+          if (ack.err) {
+            reject(new Error(`Profile storage failed: ${ack.err}`));
+          } else {
+            resolve();
+          }
+        });
       });
-    });
+    }, transformGunError);
   }
 
   /**
    * Read username from user profile for session restoration
    * @returns Promise resolving to username string
    */
-  async readUsername(): Promise<string> {
-    const gun = this.getGun();
-    const userNode = gun.user();
-    const userState = userNode.is;
+  async readUsername(): Promise<Result<string, GunError>> {
+    return tryCatch<string, GunError>(async () => {
+      const gun = this.getGun();
+      const userNode = gun.user();
+      const userState = userNode.is;
 
-    if (!userState || !userState.pub) {
-      throw new Error('User session not available');
-    }
+      if (!userState || !userState.pub) {
+        throw createGunError(
+          GunErrorCode.MISC_ERROR,
+          'User session not available'
+        );
+      }
 
-    return new Promise<string>((resolve, reject) => {
-      gun.get(`~${userState.pub}`).once((data: unknown) => {
-        if (data && typeof data === 'object' && 'username' in data) {
-          resolve((data as { username: string }).username);
-        } else {
-          reject(new Error('Username not found in user profile'));
-        }
+      const username = await new Promise<string>((resolve, reject) => {
+        gun.get(`~${userState.pub}`).once((data: unknown) => {
+          if (data && typeof data === 'object' && 'username' in data) {
+            resolve((data as { username: string }).username);
+          } else {
+            reject(new Error('Username not found in user profile'));
+          }
+        });
       });
-    });
+      return username;
+    }, transformGunError);
   }
 
   /**
@@ -444,24 +490,29 @@ class GunService {
    * @param password - User password
    * @returns Promise resolving to void
    */
-  async createUser(username: string, password: string): Promise<void> {
-    if (!this.gun) {
-      throw {
-        code: GunErrorCode.CONNECTION_FAILED,
-        message: 'GunDB not initialized',
-      } as GunError;
-    }
+  async createUser(
+    username: string,
+    password: string
+  ): Promise<Result<void, GunError>> {
+    return tryCatch<void, GunError>(async () => {
+      if (!this.gun) {
+        throw createGunError(
+          GunErrorCode.INIT_FAILED,
+          'GunDB not initialized'
+        );
+      }
 
-    return new Promise<void>((resolve, reject) => {
-      const gun = this.gun!;
-      gun.user().create(username, password, (ack: unknown) => {
-        if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
-          reject(new Error(`User creation failed: ${String(ack.err)}`));
-        } else {
-          resolve();
-        }
+      await new Promise<void>((resolve, reject) => {
+        const gun = this.gun!;
+        gun.user().create(username, password, ack => {
+          if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
+            reject(new Error(`User creation failed: ${String(ack.err)}`));
+          } else {
+            resolve();
+          }
+        });
       });
-    });
+    }, transformGunError);
   }
 
   /**
@@ -471,24 +522,29 @@ class GunService {
    * @param password - User password
    * @returns Promise resolving to void
    */
-  async authenticateUser(username: string, password: string): Promise<void> {
-    if (!this.gun) {
-      throw {
-        code: GunErrorCode.CONNECTION_FAILED,
-        message: 'GunDB not initialized',
-      } as GunError;
-    }
+  async authenticateUser(
+    username: string,
+    password: string
+  ): Promise<Result<void, GunError>> {
+    return tryCatch<void, GunError>(async () => {
+      if (!this.gun) {
+        throw createGunError(
+          GunErrorCode.INIT_FAILED,
+          'GunDB not initialized'
+        );
+      }
 
-    return new Promise<void>((resolve, reject) => {
-      const gun = this.gun!;
-      gun.user().auth(username, password, (ack: unknown) => {
-        if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
-          reject(new Error(`Authentication failed: ${String(ack.err)}`));
-        } else {
-          resolve();
-        }
+      await new Promise<void>((resolve, reject) => {
+        const gun = this.gun!;
+        gun.user().auth(username, password, ack => {
+          if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
+            reject(new Error(`Authentication failed: ${String(ack.err)}`));
+          } else {
+            resolve();
+          }
+        });
       });
-    });
+    }, transformGunError);
   }
 
   /**
@@ -497,23 +553,28 @@ class GunService {
    * @param username - Username to search for
    * @returns Promise resolving to array of discovered user profiles
    */
-  async discoverUsers(username: string): Promise<DiscoveredUser[]> {
-    const gun = this.getGun();
-    return new Promise<DiscoveredUser[]>(resolve => {
-      const collectedProfiles: DiscoveredUser[] = [];
-      setTimeout(() => resolve(collectedProfiles), 500);
+  async discoverUsers(
+    username: string
+  ): Promise<Result<DiscoveredUser[], GunError>> {
+    return tryCatch<DiscoveredUser[], GunError>(async () => {
+      const gun = this.getGun();
+      const profiles = await new Promise<DiscoveredUser[]>(resolve => {
+        const collectedProfiles: DiscoveredUser[] = [];
+        setTimeout(() => resolve(collectedProfiles), 500);
 
-      gun
-        .get(`~@${username}`)
-        .map()
-        .once((data: unknown, pub: string) => {
-          if (!data) return;
-          const cleanPub = pub.startsWith('~') ? pub.slice(1) : pub;
-          gun.get(`~${cleanPub}`).once((userNode: unknown) => {
-            collectedProfiles.push({ pub: cleanPub, data, userNode });
+        gun
+          .get(`~@${username}`)
+          .map()
+          .once((data: unknown, pub: string) => {
+            if (!data) return;
+            const cleanPub = pub.startsWith('~') ? pub.slice(1) : pub;
+            gun.get(`~${cleanPub}`).once((userNode: unknown) => {
+              collectedProfiles.push({ pub: cleanPub, data, userNode });
+            });
           });
-        });
-    });
+      });
+      return profiles;
+    }, transformGunError);
   }
 
   /**
@@ -524,27 +585,32 @@ class GunService {
   async listItems(
     nodePath: string[],
     startNode?: GunNodeRef | IGunUserInstance
-  ): Promise<ListItemResult[]> {
-    const gun = this.getGun();
-    return new Promise<ListItemResult[]>(resolve => {
-      const collectedItems: ListItemResult[] = [];
-      setTimeout(() => resolve(collectedItems), 500);
+  ): Promise<Result<ListItemResult[], GunError>> {
+    return tryCatch<ListItemResult[], GunError>(async () => {
+      const gun = this.getGun();
+      const items = await new Promise<ListItemResult[]>(resolve => {
+        const collectedItems: ListItemResult[] = [];
+        setTimeout(() => resolve(collectedItems), 500);
 
-      const node = nodePath.reduce(
-        (n, part) => (n as GunNodeRef).get(part),
-        startNode ?? gun
-      ) as GunNodeRef;
+        const node = nodePath.reduce(
+          (n, part) => (n as GunNodeRef).get(part),
+          startNode ?? gun
+        ) as GunNodeRef;
 
-      node.map().once((data: unknown, soul: string) => {
-        if (!data) return;
-        const cleanSoul = soul.startsWith('~') ? soul.slice(1) : soul;
-        gun.get(`~${cleanSoul}`).once((node: unknown) => {
-          const typedData: string | Record<string, unknown> =
-            typeof data === 'string' ? data : (data as Record<string, unknown>);
-          collectedItems.push({ soul: cleanSoul, data: typedData, node });
+        node.map().once((data: unknown, soul: string) => {
+          if (!data) return;
+          const cleanSoul = soul.startsWith('~') ? soul.slice(1) : soul;
+          gun.get(`~${cleanSoul}`).once((node: unknown) => {
+            const typedData: string | Record<string, unknown> =
+              typeof data === 'string'
+                ? data
+                : (data as Record<string, unknown>);
+            collectedItems.push({ soul: cleanSoul, data: typedData, node });
+          });
         });
       });
-    });
+      return items;
+    }, transformGunError);
   }
 
   /**
@@ -552,7 +618,9 @@ class GunService {
    * @param nodePath - the path to the node
    * @returns Promise resolving to array of nodes
    */
-  async listUserItems(nodePath: string[]): Promise<ListItemResult[]> {
+  async listUserItems(
+    nodePath: string[]
+  ): Promise<Result<ListItemResult[], GunError>> {
     return await this.listItems(nodePath, this.getGun().user());
   }
 
@@ -562,29 +630,39 @@ class GunService {
    * @param plainPath - Plain text path part to hash
    * @returns Promise resolving to hashed path string
    */
-  async getPrivatePathPart(plainPath: string): Promise<string> {
-    const SEA = Gun.SEA;
-    if (!SEA) {
-      throw new Error('SEA not available');
-    }
-    const gun = this.getGun();
-    const user = gun.user();
+  async getPrivatePathPart(
+    plainPath: string
+  ): Promise<Result<string, GunError>> {
+    return tryCatch<string, GunError>(async () => {
+      const SEA = Gun.SEA;
+      if (!SEA) {
+        throw createGunError(GunErrorCode.MISC_ERROR, 'SEA not available');
+      }
+      const gun = this.getGun();
+      const user = gun.user();
 
-    if (
-      !user._ ||
-      typeof user._ !== 'object' ||
-      !('sea' in user._) ||
-      !user._.sea
-    ) {
-      throw new Error('User cryptographic keypair not available');
-    }
+      if (
+        !user._ ||
+        typeof user._ !== 'object' ||
+        !('sea' in user._) ||
+        !user._.sea
+      ) {
+        throw createGunError(
+          GunErrorCode.MISC_ERROR,
+          'User cryptographic keypair not available'
+        );
+      }
 
-    const sea = user._.sea as ISEAPair;
-    const result = await SEA.work(plainPath, sea);
-    if (!result) {
-      throw new Error('Failed to hash path part');
-    }
-    return result;
+      const sea = user._.sea as ISEAPair;
+      const result = await SEA.work(plainPath, sea);
+      if (!result) {
+        throw createGunError(
+          GunErrorCode.MISC_ERROR,
+          'Failed to hash path part'
+        );
+      }
+      return result;
+    }, transformGunError);
   }
 
   /**
@@ -593,10 +671,13 @@ class GunService {
    * @param plainPath - Array of plain text path parts
    * @returns Promise resolving to array of hashed path strings
    */
-  async getPrivatePath(plainPath: string[]): Promise<string[]> {
-    return await Promise.all(
-      plainPath.map(async (p: string) => await this.getPrivatePathPart(p))
+  async getPrivatePath(
+    plainPath: string[]
+  ): Promise<Result<string[], GunError>> {
+    const pathResults: Result<string, GunError>[] = await Promise.all(
+      plainPath.map(p => this.getPrivatePathPart(p))
     );
+    return sequence(pathResults);
   }
 
   /**
@@ -609,40 +690,50 @@ class GunService {
   async writePrivateData(
     plainPath: string[],
     plaintext: string
-  ): Promise<void> {
-    const gun = this.getGun();
-    const privatePath = await this.getPrivatePath(plainPath);
-
-    const node = privatePath.reduce(
-      (path: unknown, part) => (path as GunNodeRef).get(part),
-      gun.user()
-    ) as GunNodeRef;
-
-    await new Promise<void>(async (resolve, reject) => {
-      const SEA = Gun.SEA;
-      const sea = getUserSEA(gun.user());
-      if (!sea) {
-        reject(new Error('User cryptographic keypair not available'));
-        return;
+  ): Promise<Result<void, GunError>> {
+    return tryCatch<void, GunError>(async () => {
+      const gun = this.getGun();
+      const privatePathResult = await this.getPrivatePath(plainPath);
+      if (!privatePathResult.success) {
+        throw privatePathResult.error;
       }
+      const privatePath = privatePathResult.data;
 
-      const ciphertext = await SEA?.encrypt(plaintext, sea);
-      if (!ciphertext) {
-        reject(new Error('SEA.encrypt failed: returned undefined'));
-        return;
-      }
+      const node = privatePath.reduce(
+        (path: unknown, part) => (path as GunNodeRef).get(part),
+        gun.user()
+      ) as GunNodeRef;
 
-      const putNode = node as {
-        put: (data: unknown, cb?: (ack: unknown) => void) => void;
-      };
-      putNode.put(ciphertext, (ack: unknown) => {
-        if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
-          reject(new Error(`Failed to write private data: ${String(ack.err)}`));
-        } else {
-          resolve();
+      await new Promise<void>(async (resolve, reject) => {
+        const SEA = Gun.SEA;
+        const sea = getUserSEA(gun.user());
+        if (!sea) {
+          reject(new Error('User cryptographic keypair not available'));
+          return;
         }
+
+        const ciphertext = await SEA?.encrypt(plaintext, sea);
+        if (!ciphertext) {
+          reject(new Error('SEA.encrypt failed: returned undefined'));
+          return;
+        }
+
+        const putNode = node as {
+          put: (data: unknown, cb?: (ack: GunAck) => void) => void;
+        };
+        putNode.put(ciphertext, (ack: GunAck) => {
+          if (ack.err) {
+            throw createGunError(
+              GunErrorCode.MISC_ERROR,
+              'Failed to write private data',
+              ack.err
+            );
+          } else {
+            resolve();
+          }
+        });
       });
-    });
+    }, transformGunError);
   }
 
   /**
@@ -655,33 +746,44 @@ class GunService {
   async readPrivateData(
     plainPath: string[],
     hashedPath?: string[]
-  ): Promise<string> {
-    const gun = this.getGun();
-    const path = hashedPath || (await this.getPrivatePath(plainPath));
-
-    const node = path.reduce(
-      (p: unknown, part) => (p as GunNodeRef).get(part),
-      gun.user()
-    ) as GunNodeRef;
-
-    return await new Promise<string>((resolve, reject) => {
-      const sea = getUserSEA(gun.user());
-      if (!sea) {
-        reject(new Error('User cryptographic keypair not available'));
-        return;
+  ): Promise<Result<string, GunError>> {
+    return tryCatch<string, GunError>(async () => {
+      const gun = this.getGun();
+      const pathResult = await this.getPrivatePath(plainPath);
+      if (!pathResult.success) {
+        throw pathResult.error;
       }
+      const path = hashedPath || pathResult.data;
 
-      const onceNode = node as { once: (cb: (data: unknown) => void) => void };
-      onceNode.once(async (ciphertext: unknown) => {
-        if (ciphertext === undefined) {
-          reject(new Error('Private data not found or could not be decrypted'));
-        } else {
-          const SEA = Gun.SEA;
-          const plaintext = await SEA?.decrypt(ciphertext as string, sea);
-          resolve(plaintext);
+      const node = path.reduce(
+        (p: unknown, part) => (p as GunNodeRef).get(part),
+        gun.user()
+      ) as GunNodeRef;
+
+      const plaintext = await new Promise<string>((resolve, reject) => {
+        const sea = getUserSEA(gun.user());
+        if (!sea) {
+          reject(new Error('User cryptographic keypair not available'));
+          return;
         }
+
+        const onceNode = node as {
+          once: (cb: (data: unknown) => void) => void;
+        };
+        onceNode.once(async (ciphertext: unknown) => {
+          if (ciphertext === undefined) {
+            reject(
+              new Error('Private data not found or could not be decrypted')
+            );
+          } else {
+            const SEA = Gun.SEA;
+            const plaintext = await SEA?.decrypt(ciphertext as string, sea);
+            resolve(plaintext);
+          }
+        });
       });
-    });
+      return plaintext;
+    }, transformGunError);
   }
 
   /**
@@ -694,176 +796,117 @@ class GunService {
   async readPrivateMap(
     plainPath: string[],
     fields: string[]
-  ): Promise<Record<string, string>[]> {
-    const gun = this.getGun();
-    const privatePath = await this.getPrivatePath(plainPath);
-    const user = gun.user();
-    let privateNode: unknown = user;
-    for (const part of privatePath) {
-      const getNode = (privateNode as Record<string, unknown>).get as (
-        key: string
-      ) => unknown;
-      privateNode = getNode(part);
-    }
-
-    const keys: string[] = await new Promise<string[]>(resolve => {
-      const collectedKeys: string[] = [];
-      setTimeout(() => resolve(collectedKeys), 500);
-
-      const mapNode = privateNode as {
-        map: () => { once: (cb: (data: unknown, key: string) => void) => void };
-      };
-      mapNode.map().once((_data: unknown, key: string) => {
-        if (key) {
-          collectedKeys.push(key);
-        }
-      });
-    });
-
-    const results: Record<string, string>[] = [];
-    for (const key of keys) {
-      try {
-        const record: Record<string, string> = {};
-        for (const fieldName of fields) {
-          const fieldNameHash = await this.getPrivatePathPart(fieldName);
-          const fullHashedPath = [...privatePath, key, fieldNameHash];
-          const fieldValue = await this.readPrivateData([], fullHashedPath);
-          record[fieldName] = fieldValue;
-        }
-        if (Object.keys(record).length > 0) {
-          results.push(record);
-        }
-      } catch (error: unknown) {
-        console.error(
-          `Failed to read contact for key ${key}:`,
-          error instanceof Error ? error.message : String(error)
-        );
+  ): Promise<Result<Record<string, string>[], GunError>> {
+    return tryCatch<Record<string, string>[], GunError>(async () => {
+      const gun = this.getGun();
+      const privatePathResult = await this.getPrivatePath(plainPath);
+      if (!privatePathResult.success) {
+        throw privatePathResult.error;
       }
-    }
+      const privatePath = privatePathResult.data;
+      const user = gun.user();
+      let privateNode: unknown = user;
+      for (const part of privatePath) {
+        const getNode = (privateNode as Record<string, unknown>).get as (
+          key: string
+        ) => unknown;
+        privateNode = getNode(part);
+      }
 
-    return results;
-  }
+      const keys: string[] = await new Promise<string[]>(resolve => {
+        const collectedKeys: string[] = [];
+        setTimeout(() => resolve(collectedKeys), 500);
 
-  /**
-   * Authenticate user with SEA
-   * @param username - Username/alias
-   * @param password - User password
-   * @returns Promise resolving to SEAUser
-   */
-  async authenticateSEAUser(
-    username: string,
-    password: string
-  ): Promise<SEAUser> {
-    if (!this.gun) {
-      throw {
-        code: GunErrorCode.CONNECTION_FAILED,
-        message: 'GunDB not initialized',
-      } as GunError;
-    }
-
-    return new Promise<SEAUser>((resolve, reject) => {
-      // Authenticate user with SEA
-      this.gun!.user().auth(username, password, async (ack: unknown) => {
-        // Check for explicit error from GunDB
-        if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
-          reject({
-            code: GunErrorCode.SYNC_ERROR,
-            message: 'Invalid username or password',
-            details: ack.err,
-          } as GunError);
-          return;
-        }
-
-        // Check if user is already authenticated
-        const user = this.gun!.user();
-        const userState = user.is;
-
-        // If user.is is set with a pub key, authentication succeeded
-        // no idea why it needs two different success cases, but it breaks without them both
-        if (userState && 'pub' in userState && userState.pub) {
-          const userData: SEAUser = {
-            alias: username,
-            pub: userState.pub as string,
+        const mapNode = privateNode as {
+          map: () => {
+            once: (cb: (data: unknown, key: string) => void) => void;
           };
-          resolve(userData);
-        }
-
-        // If ack.ok !== undefined, login succeeded
-        if (
-          ack &&
-          typeof ack === 'object' &&
-          'ok' in ack &&
-          ack.ok !== undefined
-        ) {
-          this.waitForUserState()
-            .then(pub => {
-              // Authentication actually succeeded despite ok: 0
-              const userData: SEAUser = {
-                alias: username,
-                pub: pub,
-              };
-              resolve(userData);
-            })
-            .catch(data => {
-              // Authentication really failed - wrong password
-              reject({
-                code: GunErrorCode.SYNC_ERROR,
-                message: 'Invalid username or password',
-                details: 'Authentication failed',
-                data: data,
-              } as GunError);
-            });
-          return;
-        }
-
-        // Unexpected response - fail with user-friendly message
-        reject({
-          code: GunErrorCode.SYNC_ERROR,
-          message: 'Invalid username or password',
-          details: ack,
-        } as GunError);
+        };
+        mapNode.map().once((_data: unknown, key: string) => {
+          if (key) {
+            collectedKeys.push(key);
+          }
+        });
       });
-    });
+
+      const fieldHashResults = await sequence(
+        await Promise.all(
+          fields.map(fieldName => this.getPrivatePathPart(fieldName))
+        )
+      );
+      if (!fieldHashResults.success) throw fieldHashResults.error;
+
+      const recordResults = await Promise.all(
+        keys.map(async key => {
+          const valueResults = await sequence(
+            await Promise.all(
+              fieldHashResults.data.map(hash =>
+                this.readPrivateData([], [...privatePath, key, hash])
+              )
+            )
+          );
+          if (!valueResults.success) return failure(valueResults.error);
+
+          const record: Record<string, string> = {};
+          fields.forEach((field, i) => {
+            record[field] = valueResults.data[i];
+          });
+
+          return success(record);
+        })
+      );
+
+      const { successes, failures } = partitionResults(recordResults);
+      failures.forEach(({ error }) =>
+        console.error('Failed to read contact:', error)
+      );
+
+      return successes.filter(record => Object.keys(record).length > 0);
+    }, transformGunError);
   }
 
-  async logoutAndWait() {
-    const gun = this.getGun();
-    gun.user().leave();
-    await retryWithBackoff(
-      async _ => {
-        if (gun.user().is) {
-          throw new Error('user is not logging out');
+  async logoutAndWait(): Promise<Result<void, GunError>> {
+    return tryCatch<void, GunError>(async () => {
+      const gun = this.getGun();
+      gun.user().leave();
+      await retryWithBackoff(
+        async _ => {
+          if (gun.user().is) {
+            throw new Error('user is not logging out');
+          }
+        },
+        {
+          maxAttempts: 6,
+          baseDelay: 100,
+          backoffMultiplier: 1.5,
         }
-      },
-      {
-        maxAttempts: 6,
-        baseDelay: 100,
-        backoffMultiplier: 1.5,
-      }
-    );
+      );
+    }, transformGunError);
   }
 
   /**
    * Wait for user state to be set (for authentication)
    * @returns Promise resolving to user pub key
    */
-  public async waitForUserState(): Promise<string> {
-    const gun = this.getGun();
-    await retryWithBackoff(
-      async _ => {
-        const user = gun.user();
-        if (!user.is || !user.is.pub) {
-          throw new Error('user is not authenticated');
+  public async waitForUserState(): Promise<Result<string, GunError>> {
+    return tryCatch<string, GunError>(async () => {
+      const gun = this.getGun();
+      await retryWithBackoff(
+        async _ => {
+          const user = gun.user();
+          if (!user.is || !user.is.pub) {
+            throw new Error('user is not authenticated');
+          }
+        },
+        {
+          maxAttempts: 6,
+          baseDelay: 100,
+          backoffMultiplier: 1.5,
         }
-      },
-      {
-        maxAttempts: 6,
-        baseDelay: 100,
-        backoffMultiplier: 1.5,
-      }
-    );
-    const user = gun.user();
-    return user.is!.pub as string;
+      );
+      const user = gun.user();
+      return user.is!.pub as string;
+    }, transformGunError);
   }
 }
 

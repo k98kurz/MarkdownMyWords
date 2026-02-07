@@ -59,8 +59,8 @@ export type GunNodeRef = ReturnType<GunInstance['get']>;
  * GunDB Error Types
  */
 export enum GunErrorCode {
-  CONNECTION_FAILED = 'CONNECTION_FAILED',
-  SYNC_ERROR = 'SYNC_ERROR',
+  INIT_FAILED = 'INIT_FAILED',
+  MISC_ERROR = 'MISC_ERROR',
   OFFLINE = 'OFFLINE',
   STORAGE_ERROR = 'STORAGE_ERROR',
   PERMISSION_DENIED = 'PERMISSION_DENIED',
