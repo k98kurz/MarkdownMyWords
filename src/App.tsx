@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
 import { AuthModal } from './components/AuthModal';
 import { AuthComponent } from './components/AuthComponent';
@@ -66,9 +66,11 @@ function AppContent() {
       style={{ maxWidth: appWidth } as React.CSSProperties}
     >
       <header className="flex items-center justify-between border-b border-border-20 px-6 py-4">
-        <h1 className="text-xl font-semibold text-card-foreground">
-          MarkdownMyWords
-        </h1>
+        <Link to="/">
+          <h1 className="text-xl font-semibold text-card-foreground">
+            MarkdownMyWords
+          </h1>
+        </Link>
         {isAuthenticated && (
           <AuthComponent user={user} username={username} onLogout={logout} />
         )}
