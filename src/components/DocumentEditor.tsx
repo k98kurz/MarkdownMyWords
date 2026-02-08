@@ -8,9 +8,9 @@ import { SharingModal } from '@/components/SharingModal';
 import { AuthModal } from '@/components/AuthModal';
 import { PasswordModal } from '@/components/PasswordModal';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Label } from '@/components/ui/Label';
 import { Badge } from '@/components/ui/Badge';
+import { Label } from '@/components/ui/Label';
+import { TagInput } from '@/components/TagInput';
 import { mermaidCache } from '@/lib/cache';
 
 export function DocumentEditor() {
@@ -34,7 +34,7 @@ export function DocumentEditor() {
 
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [tags, setTags] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
   const [isPublic, setIsPublic] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -62,13 +62,13 @@ export function DocumentEditor() {
         if (result.success && result.data) {
           setTitle(result.data.title || '');
           setContent(result.data.content || '');
-          setTags(result.data.tags?.join(', ') || '');
+          setTags(result.data.tags ? [...result.data.tags].sort() : []);
           setIsPublic(result.data.isPublic);
           setViewError(undefined);
         } else if (!result.success) {
           setTitle('');
           setContent('');
-          setTags('');
+          setTags([]);
           setIsPublic(false);
           if (result.error.code === 'NOT_FOUND') {
             setViewError('NOT_FOUND');
@@ -80,7 +80,7 @@ export function DocumentEditor() {
         } else if (result.success && result.data === null) {
           setTitle('');
           setContent('');
-          setTags('');
+          setTags([]);
           setIsPublic(false);
           setViewError('NOT_FOUND');
         }
@@ -88,13 +88,13 @@ export function DocumentEditor() {
     } else if (!(userPub === undefined && docId === undefined)) {
       setTitle('');
       setContent('');
-      setTags('');
+      setTags([]);
       setIsPublic(false);
       setViewError('NOT_FOUND');
     } else {
       setTitle('');
       setContent('');
-      setTags('');
+      setTags([]);
       setIsPublic(false);
       setViewError(undefined);
     }
@@ -107,7 +107,7 @@ export function DocumentEditor() {
       const result = await updateDocument(docId, {
         title: title || 'Untitled',
         content: content || '',
-        tags: tags ? tags.split(',').map(t => t.trim()) : undefined,
+        tags: tags.length > 0 ? tags : undefined,
       });
 
       if (!result.success) {
@@ -119,7 +119,7 @@ export function DocumentEditor() {
       const result = await createDocument(
         title || 'Untitled',
         content || '',
-        tags ? tags.split(',').map(t => t.trim()) : undefined,
+        tags.length > 0 ? tags : undefined,
         isPublic
       );
 
@@ -241,7 +241,7 @@ export function DocumentEditor() {
             } else if (result.data) {
               setTitle(result.data.title || '');
               setContent(result.data.content || '');
-              setTags(result.data.tags?.join(', ') || '');
+              setTags(result.data.tags ? [...result.data.tags].sort() : []);
               setIsPublic(result.data.isPublic);
               setViewError(undefined);
               setShowPasswordModal(false);
@@ -336,14 +336,7 @@ export function DocumentEditor() {
           <div className="flex flex-col gap-4 p-4 lg:flex-row lg:items-end">
             <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:gap-4 lg:flex-1">
               <div className="w-full lg:flex-1 lg:min-w-[400px]">
-                <Label htmlFor="doc-tags">Tags:</Label>
-                <Input
-                  id="doc-tags"
-                  type="text"
-                  value={tags}
-                  onChange={e => setTags(e.target.value)}
-                  placeholder="tag1, tag2, tag3"
-                />
+                <TagInput tags={tags} onChange={setTags} />
               </div>
             </div>
 
