@@ -7,6 +7,7 @@ import { ConfirmModal } from '@/components/ConfirmModal';
 import { SharingModal } from '@/components/SharingModal';
 import { AuthModal } from '@/components/AuthModal';
 import { PrivacySettingsModal } from '@/components/PrivacySettingsModal';
+import { PasswordModal } from '@/components/PasswordModal';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/Label';
@@ -46,7 +47,6 @@ export function DocumentEditor() {
     isPublic: boolean;
     docKey?: string;
   } | null>(null);
-  const [providedKey, setProvidedKey] = useState('');
   const [keyError, setKeyError] = useState<string | undefined>();
   type ViewError =
     | 'NOT_FOUND'
@@ -230,70 +230,28 @@ export function DocumentEditor() {
         <p className="mb-8 text-muted-foreground">{description}</p>
         <div className="flex gap-4">{actions}</div>
 
-        {showPasswordModal && (
-          <div className="fixed inset-0 flex items-center justify-center bg-black/50">
-            <div className="bg-card rounded-lg p-6 max-w-md w-full mx-4">
-              <h2 className="text-xl font-semibold mb-4">
-                Password/key Required
-              </h2>
-              <p className="text-muted-foreground mb-4">
-                Enter a password or key to decrypt this document.
-              </p>
-
-              <form
-                onSubmit={async e => {
-                  e.preventDefault();
-                  setKeyError(undefined);
-                  const result = await getDocument(
-                    docId!,
-                    userPub!,
-                    providedKey
-                  );
-                  if (!result.success) {
-                    setKeyError('Invalid password or key');
-                  } else if (result.data) {
-                    setTitle(result.data.title || '');
-                    setContent(result.data.content || '');
-                    setTags(result.data.tags?.join(', ') || '');
-                    setIsPublic(result.data.isPublic);
-                    setViewError(undefined);
-                    setShowPasswordModal(false);
-                    setProvidedKey('');
-                  }
-                }}
-              >
-                <Input
-                  type="password"
-                  value={providedKey}
-                  onChange={e => setProvidedKey(e.target.value)}
-                  placeholder="Enter password or key"
-                  autoFocus
-                />
-
-                {keyError && (
-                  <p className="text-rose-500 mt-2 text-sm">{keyError}</p>
-                )}
-
-                <div className="flex justify-end gap-2 mt-4">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={() => {
-                      setShowPasswordModal(false);
-                      setProvidedKey('');
-                      setKeyError(undefined);
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button type="submit" variant="primary">
-                    Decrypt
-                  </Button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+        <PasswordModal
+          isOpen={showPasswordModal}
+          onClose={() => {
+            setShowPasswordModal(false);
+            setKeyError(undefined);
+          }}
+          onSubmit={async password => {
+            setKeyError(undefined);
+            const result = await getDocument(docId!, userPub!, password);
+            if (!result.success) {
+              setKeyError('Invalid password or key');
+            } else if (result.data) {
+              setTitle(result.data.title || '');
+              setContent(result.data.content || '');
+              setTags(result.data.tags?.join(', ') || '');
+              setIsPublic(result.data.isPublic);
+              setViewError(undefined);
+              setShowPasswordModal(false);
+            }
+          }}
+          error={keyError}
+        />
       </div>
     );
   }
