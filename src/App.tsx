@@ -71,9 +71,14 @@ function AppContent() {
             MarkdownMyWords
           </h1>
         </Link>
-        {isAuthenticated && (
-          <AuthComponent user={user} username={username} onLogout={logout} />
-        )}
+        <AuthComponent
+          user={user}
+          username={username}
+          onLogout={logout}
+          isAuthenticated={isAuthenticated}
+          onLogin={!isAuthenticated ? () => setShowAuthModal(true) : undefined}
+          onOpenSettings={() => setShowSettingsModal(true)}
+        />
       </header>
 
       <main>

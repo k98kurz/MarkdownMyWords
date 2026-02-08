@@ -1,25 +1,30 @@
 import { useState, useEffect, useRef } from 'react';
 import type { IGunUserInstance } from 'gun/types';
 import { Button } from './ui/Button';
-import { SettingsModal } from './SettingsModal';
 
 interface AuthComponentProps {
   user: IGunUserInstance | null;
   username: string | null;
   onLogout: () => void;
+  onLogin?: () => void;
+  isAuthenticated?: boolean;
+  onOpenSettings?: () => void;
 }
 
 export function AuthComponent({
   user,
   username,
   onLogout,
+  onLogin,
+  isAuthenticated = true,
+  onOpenSettings,
 }: AuthComponentProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const displayName =
-    username && !username.includes('.')
+  const displayName = !isAuthenticated
+    ? 'Guest'
+    : username && !username.includes('.')
       ? username
       : user?.is?.pub
         ? user.is.pub.substring(0, 20) + '...'
@@ -85,26 +90,33 @@ export function AuthComponent({
             variant="ghost"
             size="md"
             onClick={() => {
-              setIsSettingsOpen(true);
+              onOpenSettings?.();
               setIsDropdownOpen(false);
             }}
             className="w-full px-4 py-3 text-left text-sm text-card-foreground transition-colors hover:bg-primary-10"
           >
             ⚙️ Settings
           </Button>
-          <button
-            onClick={handleLogout}
-            className="w-full border-t border-border-20 px-4 py-3 text-left text-sm text-card-foreground transition-colors hover:bg-primary-10"
-          >
-            Logout
-          </button>
+          {isAuthenticated ? (
+            <button
+              onClick={handleLogout}
+              className="w-full border-t border-border-20 px-4 py-3 text-left text-sm text-card-foreground transition-colors hover:bg-primary-10"
+            >
+              Logout
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                onLogin?.();
+                setIsDropdownOpen(false);
+              }}
+              className="w-full border-t border-border-20 px-4 py-3 text-left text-sm text-card-foreground transition-colors hover:bg-primary-10"
+            >
+              Login
+            </button>
+          )}
         </div>
       )}
-
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-      />
     </div>
   );
 }

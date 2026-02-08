@@ -2,6 +2,7 @@ import { useEffect, useState, memo } from 'react';
 import mermaid from 'mermaid';
 import { useDebounce } from '@/hooks/useDebounce';
 import { mermaidCache } from '@/lib/cache';
+import { useTheme } from '@/providers/ThemeProvider';
 
 interface MermaidDiagramProps {
   code: string;
@@ -11,8 +12,10 @@ export const MermaidDiagram = memo(function MermaidDiagram({
   code,
 }: MermaidDiagramProps) {
   const trimmedCode = code.trim();
+  const { resolvedTheme } = useTheme();
+  const mermaidTheme = resolvedTheme === 'dark' ? 'dark' : 'default';
   const [displaySvg, setDisplaySvg] = useState(() => {
-    const cached = mermaidCache.get(trimmedCode);
+    const cached = mermaidCache.get(`${trimmedCode}-${resolvedTheme}`);
     return cached ?? null;
   });
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +33,7 @@ export const MermaidDiagram = memo(function MermaidDiagram({
         return;
       }
 
-      const cachedSvg = mermaidCache.get(debouncedCode);
+      const cachedSvg = mermaidCache.get(`${debouncedCode}-${resolvedTheme}`);
       if (cachedSvg && isMounted) {
         setDisplaySvg(cachedSvg);
         setError(null);
@@ -40,7 +43,7 @@ export const MermaidDiagram = memo(function MermaidDiagram({
       try {
         await mermaid.initialize({
           startOnLoad: false,
-          theme: 'default',
+          theme: mermaidTheme,
           securityLevel: 'strict',
         });
 
@@ -49,7 +52,7 @@ export const MermaidDiagram = memo(function MermaidDiagram({
         if (isMounted) {
           setDisplaySvg(renderedSvg);
           setError(null);
-          mermaidCache.set(debouncedCode, renderedSvg);
+          mermaidCache.set(`${debouncedCode}-${resolvedTheme}`, renderedSvg);
         }
       } catch (err) {
         if (isMounted) {
@@ -65,7 +68,7 @@ export const MermaidDiagram = memo(function MermaidDiagram({
     return () => {
       isMounted = false;
     };
-  }, [debouncedCode, id]);
+  }, [debouncedCode, id, resolvedTheme]);
 
   if (error) {
     return (
