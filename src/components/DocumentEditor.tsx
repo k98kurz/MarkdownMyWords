@@ -1,5 +1,10 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import {
+  useParams,
+  useNavigate,
+  NavigationType,
+  useNavigationType,
+} from 'react-router-dom';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useAuthStore } from '@/stores/authStore';
 import { EditorArea } from '@/components/EditorArea';
@@ -16,6 +21,8 @@ import { mermaidCache } from '@/lib/cache';
 export function DocumentEditor() {
   const { userPub, docId } = useParams<{ userPub?: string; docId?: string }>();
   const navigate = useNavigate();
+  const navigationType = useNavigationType();
+  const arrivedViaBackOrDirect = navigationType === NavigationType.Pop;
   const { user: currentUser, isAuthenticated } = useAuthStore();
   const currentUserPub = currentUser?.is?.pub;
   const {
@@ -160,7 +167,9 @@ export function DocumentEditor() {
   };
 
   const handleBackwardNavigation = () => {
-    if (window.history.length > 1) {
+    if (arrivedViaBackOrDirect) {
+      navigate('/');
+    } else if (window.history.length > 1) {
       navigate(-1);
     } else {
       navigate('/');
