@@ -26,7 +26,7 @@ features.
 - Markdown Rendering: React Markdown + Remark GFM (GitHub Flavored Markdown)
 - Build Tool: Vite
 - Language: TypeScript
-- Styling: Tailwind CSS (@tailwindcss/forms, @tailwindcss/typography)
+- Styling: Tailwind CSS v3 (@tailwindcss/forms, @tailwindcss/typography)
 
 ## Development / Testing
 

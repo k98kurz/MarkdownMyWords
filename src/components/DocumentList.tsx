@@ -7,7 +7,18 @@ import { SharingModal } from '@/components/SharingModal';
 import { PrivacySettingsModal } from '@/components/PrivacySettingsModal';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
+import { Input } from '@/components/ui/Input';
+import { Select } from '@/components/ui/Select';
 import { MinimalDocListItem } from '@/types/document';
+
+type SortOption =
+  | 'most-recent'
+  | 'least-recent'
+  | 'newest-first'
+  | 'oldest-first'
+  | 'title-asc'
+  | 'title-desc'
+  | 'id-asc';
 
 export function DocumentList() {
   const { user } = useAuthStore();
@@ -47,6 +58,8 @@ export function DocumentList() {
     docId: string;
     currentIsPublic: boolean;
   } | null>(null);
+  const [sortOption, setSortOption] = useState<SortOption>('most-recent');
+  const [filterText, setFilterText] = useState<string>('');
   const hasLoadedList = useRef(false);
 
   const loadDocumentMetadata = useCallback(
@@ -72,6 +85,64 @@ export function DocumentList() {
     },
     [getDocumentMetadata, setLoadedMetadata, setDocumentMetadata]
   );
+
+  const getFilteredAndSortedDocuments = (): Array<{
+    docId: string;
+    soul: string;
+    createdAt: number;
+    updatedAt: number;
+    title?: string;
+    tags?: string[];
+  }> => {
+    const sorted = [...documentList];
+
+    const filtered = filterText.trim()
+      ? sorted.filter(doc => {
+          const terms = filterText.trim().split(/\s+/);
+          const metadata = enrichedDocs.get(doc.docId);
+          const title = metadata?.title?.toLowerCase() || '';
+          const tags = metadata?.tags || [];
+
+          const matchesTitle = terms.some(term =>
+            title.includes(term.toLowerCase())
+          );
+          const matchesTags = terms.some(term =>
+            tags.some(tag => tag.toLowerCase().includes(term.toLowerCase()))
+          );
+
+          return matchesTitle || matchesTags;
+        })
+      : sorted;
+
+    const sortedFiltered = [...filtered];
+
+    switch (sortOption) {
+      case 'most-recent':
+        return sortedFiltered.sort((a, b) => b.updatedAt - a.updatedAt);
+      case 'least-recent':
+        return sortedFiltered.sort((a, b) => a.updatedAt - b.updatedAt);
+      case 'newest-first':
+        return sortedFiltered.sort((a, b) => b.createdAt - a.createdAt);
+      case 'oldest-first':
+        return sortedFiltered.sort((a, b) => a.createdAt - b.createdAt);
+      case 'title-asc':
+        return sortedFiltered.sort((a, b) => {
+          const titleA = enrichedDocs.get(a.docId)?.title || a.docId;
+          const titleB = enrichedDocs.get(b.docId)?.title || b.docId;
+          return titleA.localeCompare(titleB);
+        });
+      case 'title-desc':
+        return sortedFiltered.sort((a, b) => {
+          const titleA = enrichedDocs.get(a.docId)?.title || a.docId;
+          const titleB = enrichedDocs.get(b.docId)?.title || b.docId;
+          return titleB.localeCompare(titleA);
+        });
+      case 'id-asc':
+        return sortedFiltered.sort((a, b) => a.docId.localeCompare(b.docId));
+      default:
+        return sortedFiltered;
+    }
+  };
 
   const loadedMetadataRef = useRef(loadedMetadata);
   const loadingMetadataRef = useRef(loadingMetadata);
@@ -232,24 +303,46 @@ export function DocumentList() {
   return (
     <>
       <div>
-        <div className="mb-6 flex items-center justify-between">
+        <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <h2 className="text-lg font-semibold text-card-foreground">
             Your Documents
           </h2>
-          <Link
-            to="/doc/new"
-            className="inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover hover:text-primary-hover-text bg-primary"
-          >
-            Create New Document
-          </Link>
+          <div className="flex flex-col gap-3 md:flex-row md:items-center">
+            <Input
+              type="text"
+              placeholder="filter docs..."
+              value={filterText}
+              onChange={e => setFilterText(e.target.value)}
+              className="md:w-64"
+            />
+            <Select
+              value={sortOption}
+              onChange={e => setSortOption(e.target.value as SortOption)}
+              className="md:w-48"
+            >
+              <option value="most-recent">Most Recent</option>
+              <option value="least-recent">Least Recent</option>
+              <option value="newest-first">Newest First</option>
+              <option value="oldest-first">Oldest First</option>
+              <option value="title-asc">Title A-Z</option>
+              <option value="title-desc">Title Z-A</option>
+              <option value="id-asc">ID asc</option>
+            </Select>
+            <Link
+              to="/doc/new"
+              className="inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover hover:text-primary-hover-text bg-primary"
+            >
+              Create New Document
+            </Link>
+          </div>
         </div>
         <ul className="flex flex-col gap-3">
-          {documentList.map(doc => (
+          {getFilteredAndSortedDocuments().map(doc => (
             <li
               key={doc.docId}
               data-doc-id={doc.docId}
               ref={el => setItemRef(doc.docId, el)}
-              className="flex items-center justify-between gap-4 rounded-md border border-foreground-10 bg-foreground-3 px-4 py-4 transition-all hover:bg-foreground-6 hover:border-foreground-20"
+              className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4 rounded-md border border-foreground-10 bg-foreground-3 px-4 py-4 transition-all hover:bg-foreground-6 hover:border-foreground-20"
             >
               {loadingMetadata.has(doc.docId) ? (
                 <div className="flex min-w-0 flex-1">
@@ -270,8 +363,8 @@ export function DocumentList() {
                 </div>
               ) : (
                 <>
-                  <div className="flex min-w-0 flex-1">
-                    <div className="mb-2 flex items-center gap-3">
+                  <div className="flex min-w-0 flex-1 flex-col sm:flex-1">
+                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3 md:mb-2">
                       <strong className="text-base font-semibold text-card-foreground">
                         {enrichedDocs.get(doc.docId)?.title || 'Untitled'}
                       </strong>
@@ -295,10 +388,11 @@ export function DocumentList() {
                     })()}
                   </div>
 
-                  <div className="flex gap-2 ml-4">
+                  <div className="flex gap-2 ml-0 flex-col w-full sm:flex-row sm:ml-4 sm:w-auto">
                     <Button
                       size="sm"
                       variant="danger"
+                      className="w-full sm:w-auto"
                       onClick={() => handleDelete(doc.docId)}
                     >
                       Delete
@@ -306,6 +400,7 @@ export function DocumentList() {
                     <Button
                       size="sm"
                       variant="secondary"
+                      className="w-full sm:w-auto"
                       onClick={() => handleShareClick(doc.docId)}
                     >
                       Sharing
