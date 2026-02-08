@@ -277,8 +277,8 @@ export function DocumentEditor() {
             />
           </div>
 
-          <div className="flex flex-wrap items-end gap-4 p-4">
-            <div className="flex-1 min-w-[200px]">
+          <div className="flex flex-col gap-4 p-4 lg:flex-row lg:items-end">
+            <div className="w-full lg:flex-1">
               <Label htmlFor="doc-tags">Tags:</Label>
               <div className="flex flex-wrap gap-2 mt-2">
                 {currentDocument.tags && currentDocument.tags.length > 0 ? (
@@ -291,13 +291,14 @@ export function DocumentEditor() {
               </div>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col w-full gap-2 sm:flex-row sm:items-center sm:gap-4 sm:w-auto lg:ml-4">
               <span className="text-sm text-muted-foreground">Read Only</span>
 
               <Button
                 variant="secondary"
                 type="button"
                 onClick={() => navigate('/docs')}
+                className="w-full sm:w-auto"
               >
                 Close
               </Button>
@@ -338,43 +339,29 @@ export function DocumentEditor() {
             />
           </div>
 
-          <div className="flex flex-wrap items-end gap-4 p-4">
-            <div className="flex-1 min-w-[200px]">
-              <Label htmlFor="doc-tags">Tags:</Label>
-              <Input
-                id="doc-tags"
-                type="text"
-                value={tags}
-                onChange={e => setTags(e.target.value)}
-                placeholder="tag1, tag2, tag3"
-              />
+          <div className="flex flex-col gap-4 p-4 lg:flex-row lg:items-end">
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:gap-4 lg:flex-1">
+              <div className="w-full lg:flex-1 lg:min-w-[400px]">
+                <Label htmlFor="doc-tags">Tags:</Label>
+                <Input
+                  id="doc-tags"
+                  type="text"
+                  value={tags}
+                  onChange={e => setTags(e.target.value)}
+                  placeholder="tag1, tag2, tag3"
+                />
+              </div>
             </div>
 
-            {docId && docId !== 'new' && (
-              <div className="min-w-[180px]">
-                <Label htmlFor="doc-privacy">
-                  {isPublic ? 'Public:' : 'Private:'}
-                </Label>
-                <Button
-                  id="doc-privacy"
-                  variant="secondary"
-                  type="button"
-                  onClick={handleOpenPrivacySettings}
-                  className="w-full"
-                >
-                  Privacy Settings
-                </Button>
-              </div>
-            )}
-
             {canEdit && (
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:gap-2">
                 {docId && docId !== 'new' && (
                   <Button
                     variant="danger"
                     type="button"
                     onClick={() => setShowDeleteConfirm(true)}
                     disabled={docStatus === 'SAVING'}
+                    className="w-full sm:w-auto"
                   >
                     Delete
                   </Button>
@@ -383,6 +370,7 @@ export function DocumentEditor() {
                   variant="secondary"
                   type="button"
                   onClick={handleCancel}
+                  className="w-full sm:w-auto"
                 >
                   {!docId || docId === 'new' ? 'Cancel' : 'Close'}
                 </Button>
@@ -391,6 +379,7 @@ export function DocumentEditor() {
                     variant="secondary"
                     type="button"
                     onClick={handleShareClick}
+                    className="w-full sm:w-auto"
                   >
                     Sharing
                   </Button>
@@ -400,6 +389,7 @@ export function DocumentEditor() {
                   type="submit"
                   disabled={docStatus === 'SAVING'}
                   isLoading={docStatus === 'SAVING'}
+                  className="w-full sm:w-auto"
                 >
                   Save
                 </Button>

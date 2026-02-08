@@ -44,11 +44,11 @@ export function EditorPane({
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {showHeader && (
-        <div className="flex items-center justify-between p-4">
+        <div className="flex flex-col gap-2 p-4 md:flex-row md:items-center md:justify-between">
           {onTitleChange ? (
             <input
               type="text"
-              className="flex-1 rounded-md border border-border-20 bg-background px-3 py-2 text-lg font-medium text-card-foreground focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+              className="w-full rounded-md border border-border-20 bg-background px-3 py-2 text-lg font-medium text-card-foreground focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 md:flex-1"
               value={title}
               onChange={e => onTitleChange(e.target.value)}
               placeholder="Document title"
@@ -60,10 +60,10 @@ export function EditorPane({
           )}
 
           {enableViewSwitch && (
-            <div className="ml-4 flex gap-1 rounded-md bg-background-5 p-1">
+            <div className="ml-4 flex gap-1 rounded-md bg-background-5 p-1 w-full md:w-auto md:ml-4">
               <button
                 type="button"
-                className={`rounded px-3 py-1.5 text-sm font-medium transition-colors ${
+                className={`flex-1 rounded px-3 py-1.5 text-sm font-medium transition-colors md:flex-none ${
                   viewMode === 'edit'
                     ? 'bg-primary text-primary-foreground shadow-sm'
                     : 'text-foreground-70 hover:text-foreground-90 hover:bg-foreground-10'
@@ -74,7 +74,7 @@ export function EditorPane({
               </button>
               <button
                 type="button"
-                className={`rounded px-3 py-1.5 text-sm font-medium transition-colors ${
+                className={`flex-1 rounded px-3 py-1.5 text-sm font-medium transition-colors md:flex-none ${
                   viewMode === 'preview'
                     ? 'bg-primary text-primary-foreground shadow-sm'
                     : 'text-foreground-70 hover:text-foreground-90 hover:bg-foreground-10'
@@ -85,7 +85,7 @@ export function EditorPane({
               </button>
               <button
                 type="button"
-                className={`rounded px-3 py-1.5 text-sm font-medium transition-colors ${
+                className={`flex-1 rounded px-3 py-1.5 text-sm font-medium transition-colors md:flex-none ${
                   viewMode === 'split'
                     ? 'bg-primary text-primary-foreground shadow-sm'
                     : 'text-foreground-70 hover:text-foreground-90 hover:bg-foreground-10'

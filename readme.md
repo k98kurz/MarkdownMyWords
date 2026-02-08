@@ -24,6 +24,7 @@ features.
 - Routing: React Router DOM
 - Editor: CodeMirror (@codemirror/state, @codemirror/view, @codemirror/lang-markdown)
 - Markdown Rendering: React Markdown + Remark GFM (GitHub Flavored Markdown)
+- Diagram Rendering: Mermaid
 - Build Tool: Vite
 - Language: TypeScript
 - Styling: Tailwind CSS v3 (@tailwindcss/forms, @tailwindcss/typography)

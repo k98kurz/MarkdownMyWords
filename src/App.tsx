@@ -80,7 +80,7 @@ function AppContent() {
         {isLoading ? (
           <div className="px-8 py-16 text-center text-lg">Loading...</div>
         ) : (
-          <div className="px-8 py-4">
+          <div className="px-4 py-4 md:px-8">
             <Routes>
               {/* Public document route - accessible to guests */}
               <Route path="/doc/:userPub/:docId" element={<DocumentEditor />} />
