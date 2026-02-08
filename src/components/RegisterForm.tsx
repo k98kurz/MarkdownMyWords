@@ -3,6 +3,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/Label';
 import { Button } from '@/components/ui/Button';
+import { InfoModal } from '@/components/InfoModal';
 
 interface RegisterFormProps {
   onSuccess?: () => void;
@@ -16,6 +17,7 @@ export function RegisterForm({
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showInfoModal, setShowInfoModal] = useState(false);
   const [validationErrors, setValidationErrors] = useState<
     Record<string, string>
   >({});
@@ -73,6 +75,16 @@ export function RegisterForm({
       <h2 className="text-center text-xl font-semibold text-card-foreground">
         Create Account
       </h2>
+
+      <div className="text-center">
+        <button
+          type="button"
+          onClick={() => setShowInfoModal(true)}
+          className="text-sm text-primary-600 hover:text-primary-700 font-medium transition-colors"
+        >
+          ⚠️ Important Info
+        </button>
+      </div>
 
       {isLoading && (
         <div className="flex items-center justify-center gap-2 py-4">
@@ -202,6 +214,11 @@ export function RegisterForm({
           </div>
         )}
       </div>
+
+      <InfoModal
+        isOpen={showInfoModal}
+        onClose={() => setShowInfoModal(false)}
+      />
     </form>
   );
 }
