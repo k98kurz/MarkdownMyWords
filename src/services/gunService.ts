@@ -83,6 +83,14 @@ class GunService {
   peerConnectionTimes: Map<string, number> = new Map();
 
   /**
+   * Get default relay URL based on environment
+   * @returns Production relay URL from env var, or localhost for dev
+   */
+  private getDefaultRelay(): string {
+    return import.meta.env.VITE_GUN_RELAY_URL || 'http://localhost:8765/gun';
+  }
+
+  /**
    * Initialize GunDB client
    * @param config - Additional GunDB configuration
    */
@@ -100,7 +108,7 @@ class GunService {
       const relaySettings = localStorage.getItem('relaySettings');
       const relayUrls: string[] = relaySettings
         ? JSON.parse(relaySettings)
-        : ['http://localhost:8765/gun'];
+        : [this.getDefaultRelay()];
 
       // Initialize all relays as connecting
       relayUrls.forEach(url => {
@@ -351,8 +359,10 @@ class GunService {
    * @param relayUrls - Array of relay URLs to save
    */
   saveRelaySettings(relayUrls: string[]): void {
-    localStorage.setItem('relaySettings', JSON.stringify(relayUrls));
-    console.log('[DEBUG] Saved relay settings to localStorage:', relayUrls);
+    const urlsToSave =
+      relayUrls.length === 0 ? [this.getDefaultRelay()] : relayUrls;
+    localStorage.setItem('relaySettings', JSON.stringify(urlsToSave));
+    console.log('[DEBUG] Saved relay settings to localStorage:', urlsToSave);
   }
 
   /**
@@ -361,9 +371,7 @@ class GunService {
    */
   getStoredRelays(): string[] {
     const relaySettings = localStorage.getItem('relaySettings');
-    return relaySettings
-      ? JSON.parse(relaySettings)
-      : ['http://localhost:8765/gun'];
+    return relaySettings ? JSON.parse(relaySettings) : [this.getDefaultRelay()];
   }
 
   /**
