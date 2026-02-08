@@ -89,7 +89,7 @@ class GunService {
   private getDefaultRelay(): string {
     return (
       import.meta.env.VITE_GUN_RELAY_URL ||
-      'http://relay.markdownmywords.com/gun'
+      'https://relay.markdownmywords.com/gun'
     );
   }
 
