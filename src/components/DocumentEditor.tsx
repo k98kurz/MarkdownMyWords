@@ -347,20 +347,22 @@ export function DocumentEditor() {
               />
             </div>
 
-            <div className="min-w-[180px]">
-              <Label htmlFor="doc-privacy">
-                {isPublic ? 'Public:' : 'Private:'}
-              </Label>
-              <Button
-                id="doc-privacy"
-                variant="secondary"
-                type="button"
-                onClick={handleOpenPrivacySettings}
-                className="w-full"
-              >
-                Privacy Settings
-              </Button>
-            </div>
+            {docId && docId !== 'new' && (
+              <div className="min-w-[180px]">
+                <Label htmlFor="doc-privacy">
+                  {isPublic ? 'Public:' : 'Private:'}
+                </Label>
+                <Button
+                  id="doc-privacy"
+                  variant="secondary"
+                  type="button"
+                  onClick={handleOpenPrivacySettings}
+                  className="w-full"
+                >
+                  Privacy Settings
+                </Button>
+              </div>
+            )}
 
             {canEdit && (
               <div className="flex gap-2">
@@ -379,15 +381,17 @@ export function DocumentEditor() {
                   type="button"
                   onClick={handleCancel}
                 >
-                  Close
+                  {!docId || docId === 'new' ? 'Cancel' : 'Close'}
                 </Button>
-                <Button
-                  variant="secondary"
-                  type="button"
-                  onClick={handleShareClick}
-                >
-                  Sharing
-                </Button>
+                {docId && docId !== 'new' && (
+                  <Button
+                    variant="secondary"
+                    type="button"
+                    onClick={handleShareClick}
+                  >
+                    Sharing
+                  </Button>
+                )}
                 <Button
                   variant="primary"
                   type="submit"
