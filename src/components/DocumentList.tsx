@@ -4,7 +4,6 @@ import { useDocumentStore } from '@/stores/documentStore';
 import { useAuthStore } from '@/stores/authStore';
 import { ConfirmModal } from '@/components/ConfirmModal';
 import { SharingModal } from '@/components/SharingModal';
-import { PrivacySettingsModal } from '@/components/PrivacySettingsModal';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
@@ -53,11 +52,6 @@ export function DocumentList() {
     userPub: string;
     isPublic: boolean;
     docKey?: string;
-  } | null>(null);
-  const [showPrivacySettings, setShowPrivacySettings] = useState(false);
-  const [privacySettingsDoc, setPrivacySettingsDoc] = useState<{
-    docId: string;
-    currentIsPublic: boolean;
   } | null>(null);
   const [sortOption, setSortOption] = useState<SortOption>('most-recent');
   const [filterText, setFilterText] = useState<string>('');
@@ -251,14 +245,6 @@ export function DocumentList() {
     }
   };
 
-  const handleOpenPrivacySettings = (
-    docId: string,
-    currentIsPublic: boolean
-  ) => {
-    setPrivacySettingsDoc({ docId, currentIsPublic });
-    setShowPrivacySettings(true);
-  };
-
   const setItemRef = (docId: string, element: HTMLLIElement | null) => {
     if (element) {
       itemRefs.current.set(docId, element);
@@ -408,7 +394,7 @@ export function DocumentList() {
                       className="w-full sm:w-auto"
                       onClick={() => handleShareClick(doc.docId)}
                     >
-                      Sharing
+                      Sharing/Privacy
                     </Button>
                     <Link
                       to={`/doc/${currentUserPub}/${doc.docId}`}
@@ -448,18 +434,7 @@ export function DocumentList() {
         userPub={sharingDoc?.userPub || ''}
         isPublic={sharingDoc?.isPublic || false}
         docKey={sharingDoc?.docKey}
-        onOpenPrivacySettings={() => {
-          if (sharingDoc) {
-            handleOpenPrivacySettings(sharingDoc.docId, sharingDoc.isPublic);
-          }
-        }}
-      />
-
-      <PrivacySettingsModal
-        isOpen={showPrivacySettings}
-        onClose={() => setShowPrivacySettings(false)}
-        docId={privacySettingsDoc?.docId || ''}
-        currentIsPublic={privacySettingsDoc?.currentIsPublic || false}
+        currentIsPublic={sharingDoc?.isPublic || false}
       />
     </>
   );

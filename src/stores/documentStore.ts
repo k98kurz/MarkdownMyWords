@@ -1262,7 +1262,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         const { user: currentUser } = useAuthStore.getState();
 
         if (!currentUser || !currentUser.is?.pub) {
-          throw new Error('must be logged in to share document');
+          throw new Error('must be logged in to change document privacy');
         }
 
         const gun = gunService.getGun();
@@ -1316,6 +1316,10 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
         if (!currentUser || !currentUser.is?.pub) {
           throw new Error('must be logged in to change document privacy');
+        }
+
+        if (key !== undefined && key.length < 8) {
+          throw new Error('Encryption key must be at least 8 characters');
         }
 
         const gun = gunService.getGun();

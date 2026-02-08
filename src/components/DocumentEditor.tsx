@@ -6,7 +6,6 @@ import { EditorArea } from '@/components/EditorArea';
 import { ConfirmModal } from '@/components/ConfirmModal';
 import { SharingModal } from '@/components/SharingModal';
 import { AuthModal } from '@/components/AuthModal';
-import { PrivacySettingsModal } from '@/components/PrivacySettingsModal';
 import { PasswordModal } from '@/components/PasswordModal';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -41,7 +40,6 @@ export function DocumentEditor() {
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showSharingModal, setShowSharingModal] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [showPrivacySettings, setShowPrivacySettings] = useState(false);
   const [sharingDoc, setSharingDoc] = useState<{
     docId: string;
     userPub: string;
@@ -155,10 +153,6 @@ export function DocumentEditor() {
       setSharingDoc(sharingData);
       setShowSharingModal(true);
     }
-  };
-
-  const handleOpenPrivacySettings = () => {
-    setShowPrivacySettings(true);
   };
 
   const handleCancel = () => {
@@ -381,7 +375,7 @@ export function DocumentEditor() {
                     onClick={handleShareClick}
                     className="w-full sm:w-auto"
                   >
-                    Sharing
+                    Sharing/Privacy
                   </Button>
                 )}
                 <Button
@@ -410,16 +404,9 @@ export function DocumentEditor() {
           userPub={sharingDoc.userPub}
           isPublic={sharingDoc.isPublic}
           docKey={sharingDoc.docKey}
-          onOpenPrivacySettings={handleOpenPrivacySettings}
+          currentIsPublic={isPublic}
         />
       )}
-
-      <PrivacySettingsModal
-        isOpen={showPrivacySettings}
-        onClose={() => setShowPrivacySettings(false)}
-        docId={docId!}
-        currentIsPublic={isPublic}
-      />
 
       <AuthModal
         isOpen={showAuthModal}
