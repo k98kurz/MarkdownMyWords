@@ -87,7 +87,10 @@ class GunService {
    * @returns Production relay URL from env var, or localhost for dev
    */
   private getDefaultRelay(): string {
-    return import.meta.env.VITE_GUN_RELAY_URL || 'http://localhost:8765/gun';
+    return (
+      import.meta.env.VITE_GUN_RELAY_URL ||
+      'http://relay.markdownmywords.com/gun'
+    );
   }
 
   /**
