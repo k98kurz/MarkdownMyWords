@@ -49,6 +49,13 @@ export function HomePage() {
           <Link to="/doc/CRvT_srNCT84hcK_lqfWxrHQwBf4YWm49z-Hzisu4D4.Z9UEC9spJp3vp4q61fCohO9dFVkp6k97KFkObkYPf4s/913ac870-af4f-44e2-ad76-cb1bb6a41405">
             Readme
           </Link>
+          <a
+            href="https://pycelium.com"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Pycelium Project Homepage
+          </a>
         </div>
 
         <div className="flex gap-4">

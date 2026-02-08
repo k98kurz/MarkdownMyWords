@@ -69,6 +69,14 @@ Big thanks to Bram Moolenaar for creating vim, which is one of the most useful
 development tools I use. I could not have unfucked this code or even used OpenCode
 comfortably without vim.
 
+## Contributing / Complaining
+
+Check out the [Pycelium discord server](https://discord.gg/b2QFEJDX69). If you
+experience a problem, please discuss it on the Discord server. All suggestions
+for improvement are also welcome, and the best place for that is also Discord.
+If you experience a bug and do not use Discord, open an issue or discussion on
+Github.
+
 ## ISC License
 
 Copyleft (c) 2026 Jonathan Voss (k98kurz) / The Pycelium Company
