@@ -7,8 +7,8 @@
  * Railway-compatible with health check endpoint to prevent SIGTERM.
  */
 
-const Gun = require('gun');
-const http = require('http');
+import Gun from 'gun';
+import http from 'http';
 
 const SHUTDOWN_TIMEOUT = 2000;
 

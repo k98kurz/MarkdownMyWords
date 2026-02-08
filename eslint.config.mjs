@@ -1,21 +1,41 @@
-import js from '@eslint/js'
-import typescriptEslint from '@typescript-eslint/eslint-plugin'
-import typescriptParser from '@typescript-eslint/parser'
-import reactHooks from 'eslint-plugin-react-hooks'
-import reactRefresh from 'eslint-plugin-react-refresh'
-import globals from 'globals'
+import js from '@eslint/js';
+import typescriptEslint from '@typescript-eslint/eslint-plugin';
+import typescriptParser from '@typescript-eslint/parser';
+import reactHooks from 'eslint-plugin-react-hooks';
+import reactRefresh from 'eslint-plugin-react-refresh';
+import globals from 'globals';
 
 // @ts-check
 
 export default [
   // Global ignores
   {
-    ignores: ['dist/**', '.eslintrc.cjs', 'node_modules/**', 'eslint.config.mjs'],
+    ignores: [
+      'dist/**',
+      '.eslintrc.cjs',
+      'node_modules/**',
+      'eslint.config.mjs',
+    ],
   },
 
-  // JavaScript files (Node.js environment)
+  // Railway relay (ES module)
+  {
+    files: ['railway-relay.js'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: globals.node,
+    },
+    rules: {
+      ...js.configs.recommended.rules,
+      'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+    },
+  },
+
+  // JavaScript files (Node.js environment, CommonJS)
   {
     files: ['**/*.{js,cjs}'],
+    excludedFiles: ['railway-relay.js'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'commonjs',
@@ -52,9 +72,15 @@ export default [
     rules: {
       ...typescriptEslint.configs.recommended.rules,
       ...reactHooks.configs.recommended.rules,
-      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
-      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      'react-refresh/only-export-components': [
+        'warn',
+        { allowConstantExport: true },
+      ],
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        { argsIgnorePattern: '^_' },
+      ],
       '@typescript-eslint/no-explicit-any': 'warn', // Changed from error to warn
     },
   },
-]
+];
