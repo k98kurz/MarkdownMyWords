@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { MinimalDocListItem } from '@/types/document';
+import { mermaidCache } from '@/lib/cache';
 
 type SortOption =
   | 'most-recent'
@@ -61,6 +62,10 @@ export function DocumentList() {
   const [sortOption, setSortOption] = useState<SortOption>('most-recent');
   const [filterText, setFilterText] = useState<string>('');
   const hasLoadedList = useRef(false);
+
+  useEffect(() => {
+    mermaidCache.clear();
+  }, []);
 
   const loadDocumentMetadata = useCallback(
     async (docId: string) => {

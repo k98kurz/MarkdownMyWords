@@ -18,6 +18,7 @@ import {
   type Result,
 } from '@/lib/functionalResult';
 import type { IGunUserInstance } from 'gun/types';
+import { mermaidCache } from '@/lib/cache';
 
 // Replace all 'any' types with discriminated union
 type AuthError =
@@ -303,6 +304,9 @@ export const useAuthStore = create<AuthState>(set => ({
     } catch (error) {
       console.error('Error during logout:', error);
     }
+
+    // Clear mermaid cache
+    mermaidCache.clear();
 
     // Clear state
     set({

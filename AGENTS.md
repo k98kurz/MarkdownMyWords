@@ -11,6 +11,8 @@ and deprecated information.
 need for backwards compatibility. Just make clean changes.
 5. Use '@/path/to/import' alias in imports instead of relative '../path'.
 6. Do not use 'text-sm' className as it is hard to read.
+7. Do not propose to create a 'utils/' directory. 'utils/' is banned because
+it has no coherent meaning. Use 'misc/' or 'lib/' instead.
 
 ## Core Principles
 

@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/Label';
 import { Badge } from '@/components/ui/Badge';
+import { mermaidCache } from '@/lib/cache';
 
 export function DocumentEditor() {
   const { userPub, docId } = useParams<{ userPub?: string; docId?: string }>();
@@ -56,6 +57,8 @@ export function DocumentEditor() {
   const [viewError, setViewError] = useState<ViewError>(undefined);
 
   useEffect(() => {
+    mermaidCache.clear();
+
     if (docId && docId !== 'new' && userPub) {
       getDocument(docId, userPub).then(result => {
         if (result.success && result.data) {
