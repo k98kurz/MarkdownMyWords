@@ -215,6 +215,17 @@ interface DocumentActions {
     userId: string
   ) => Promise<Result<void, DocumentError>>;
   getDocumentKey: (docId: string) => Promise<Result<string, DocumentError>>;
+
+  // Privacy operations
+  setDocumentPrivate: (
+    docId: string,
+    key?: string
+  ) => Promise<Result<void, DocumentError>>;
+  setDocumentPublic: (docId: string) => Promise<Result<void, DocumentError>>;
+  changeDocumentKey: (
+    docId: string,
+    password?: string
+  ) => Promise<Result<void, DocumentError>>;
 }
 
 /**
@@ -1292,6 +1303,499 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
         return docKeyResult.data;
       }, transformError)) as Result<string, DocumentError>;
+
+      return result;
+    },
+
+    setDocumentPrivate: async (
+      docId: string,
+      key?: string
+    ): Promise<Result<void, DocumentError>> => {
+      const result = (await tryCatch(async () => {
+        const { user: currentUser } = useAuthStore.getState();
+
+        if (!currentUser || !currentUser.is?.pub) {
+          throw new Error('must be logged in to change document privacy');
+        }
+
+        const gun = gunService.getGun();
+        const userNode = gun.user();
+        const docNode = userNode.get('docs').get(docId);
+
+        const docData = await new Promise<unknown>((resolve, reject) => {
+          docNode.once((data: unknown) => {
+            if (data === null || data === undefined) {
+              reject(new Error('Document not found'));
+            } else {
+              resolve(data);
+            }
+          });
+        });
+
+        if (!docData || typeof docData !== 'object') {
+          throw new Error('Document not found');
+        }
+
+        const doc = docData as Partial<Document>;
+        if (!doc.id) {
+          throw new Error('Document not found');
+        }
+
+        if (doc.isPublic) {
+          const title = doc.title ?? '';
+          const content = doc.content ?? '';
+          const tagsCSV = arrayToCSV(doc.tags);
+
+          let docKey: string;
+          if (key !== undefined) {
+            docKey = key;
+          } else {
+            const keyResult = await encryptionService.generateKey();
+            if (!keyResult.success) {
+              throw keyResult.error;
+            }
+            docKey = keyResult.data;
+          }
+
+          const titleResult = await encryptionService.encrypt(title, docKey);
+          if (!titleResult.success) {
+            throw titleResult.error;
+          }
+          const encryptedTitle = titleResult.data;
+
+          const contentResult = await encryptionService.encrypt(
+            content,
+            docKey
+          );
+          if (!contentResult.success) {
+            throw contentResult.error;
+          }
+          const encryptedContent = contentResult.data;
+
+          let encryptedTags = tagsCSV;
+          if (tagsCSV) {
+            const tagsResult = await encryptionService.encrypt(tagsCSV, docKey);
+            if (!tagsResult.success) {
+              throw tagsResult.error;
+            }
+            encryptedTags = tagsResult.data;
+          }
+
+          const writeKeyResult = await gunService.writePrivateData(
+            ['docKeys', docId],
+            docKey
+          );
+          if (!writeKeyResult.success) {
+            throw writeKeyResult.error;
+          }
+
+          type UpdatedDoc = {
+            id: string;
+            title: string;
+            content: string;
+            tags: string;
+            createdAt: number;
+            updatedAt: number;
+            isPublic: boolean;
+            access?: DocumentAccessEntry[];
+            parent?: string;
+            original?: string;
+          };
+
+          const updatedDoc: UpdatedDoc = {
+            id: doc.id,
+            title: encryptedTitle,
+            content: encryptedContent,
+            tags: encryptedTags,
+            createdAt: doc.createdAt ?? Date.now(),
+            updatedAt: Date.now(),
+            isPublic: false,
+          };
+
+          if (doc.access !== undefined) {
+            Object.assign(updatedDoc, { access: doc.access });
+          }
+          if (doc.parent !== undefined) {
+            Object.assign(updatedDoc, { parent: doc.parent });
+          }
+          if (doc.original !== undefined) {
+            Object.assign(updatedDoc, { original: doc.original });
+          }
+
+          await new Promise<void>((resolve, reject) => {
+            docNode.put(updatedDoc, (ack: GunAck) => {
+              if (ack.err) {
+                reject(
+                  new Error(`Failed to update document: ${String(ack.err)}`)
+                );
+              } else {
+                resolve();
+              }
+            });
+          });
+        } else {
+          throw new Error('Document is already private');
+        }
+
+        return undefined;
+      }, transformError)) as Result<void, DocumentError>;
+
+      match(
+        () => {
+          set({
+            status: 'READY',
+            error: null,
+          });
+        },
+        (error: DocumentError) => {
+          set({
+            status: 'READY',
+            error: error.message,
+          });
+        }
+      )(result);
+
+      return result;
+    },
+
+    setDocumentPublic: async (
+      docId: string
+    ): Promise<Result<void, DocumentError>> => {
+      const result = (await tryCatch(async () => {
+        const { user: currentUser } = useAuthStore.getState();
+
+        if (!currentUser || !currentUser.is?.pub) {
+          throw new Error('must be logged in to change document privacy');
+        }
+
+        const gun = gunService.getGun();
+        const userNode = gun.user();
+        const docNode = userNode.get('docs').get(docId);
+
+        const docData = await new Promise<unknown>((resolve, reject) => {
+          docNode.once((data: unknown) => {
+            if (data === null || data === undefined) {
+              reject(new Error('Document not found'));
+            } else {
+              resolve(data);
+            }
+          });
+        });
+
+        if (!docData || typeof docData !== 'object') {
+          throw new Error('Document not found');
+        }
+
+        const doc = docData as Partial<Document>;
+        if (!doc.id) {
+          throw new Error('Document not found');
+        }
+
+        if (!doc.isPublic) {
+          const keyResult = await gunService.readPrivateData([
+            'docKeys',
+            docId,
+          ]);
+          if (!keyResult.success) {
+            throw keyResult.error;
+          }
+          const docKey = keyResult.data;
+
+          const titleResult = await encryptionService.decrypt(
+            doc.title ?? '',
+            docKey
+          );
+          if (!titleResult.success) {
+            throw titleResult.error;
+          }
+          const decryptedTitle = titleResult.data;
+
+          const contentResult = await encryptionService.decrypt(
+            doc.content ?? '',
+            docKey
+          );
+          if (!contentResult.success) {
+            throw contentResult.error;
+          }
+          const decryptedContent = contentResult.data;
+
+          let decryptedTags: string = '';
+          if (doc.tags && typeof doc.tags === 'string') {
+            const tagsResult = await encryptionService.decrypt(
+              doc.tags,
+              docKey
+            );
+            if (!tagsResult.success) {
+              throw tagsResult.error;
+            }
+            decryptedTags = tagsResult.data;
+          }
+
+          const deleteKeyResult = await gunService.deletePrivateData([
+            'docKeys',
+            docId,
+          ]);
+          if (!deleteKeyResult.success) {
+            throw deleteKeyResult.error;
+          }
+
+          type UpdatedDoc = {
+            id: string;
+            title: string;
+            content: string;
+            tags: string;
+            createdAt: number;
+            updatedAt: number;
+            isPublic: boolean;
+            access?: DocumentAccessEntry[];
+            parent?: string;
+            original?: string;
+          };
+
+          const updatedDoc: UpdatedDoc = {
+            id: doc.id,
+            title: decryptedTitle,
+            content: decryptedContent,
+            tags: decryptedTags,
+            createdAt: doc.createdAt ?? Date.now(),
+            updatedAt: Date.now(),
+            isPublic: true,
+          };
+
+          if (doc.access !== undefined) {
+            Object.assign(updatedDoc, { access: doc.access });
+          }
+          if (doc.parent !== undefined) {
+            Object.assign(updatedDoc, { parent: doc.parent });
+          }
+          if (doc.original !== undefined) {
+            Object.assign(updatedDoc, { original: doc.original });
+          }
+
+          await new Promise<void>((resolve, reject) => {
+            docNode.put(updatedDoc, (ack: GunAck) => {
+              if (ack.err) {
+                reject(
+                  new Error(`Failed to update document: ${String(ack.err)}`)
+                );
+              } else {
+                resolve();
+              }
+            });
+          });
+        } else {
+          throw new Error('Document is already public');
+        }
+
+        return undefined;
+      }, transformError)) as Result<void, DocumentError>;
+
+      match(
+        () => {
+          set({
+            status: 'READY',
+            error: null,
+          });
+        },
+        (error: DocumentError) => {
+          set({
+            status: 'READY',
+            error: error.message,
+          });
+        }
+      )(result);
+
+      return result;
+    },
+
+    changeDocumentKey: async (
+      docId: string,
+      password?: string
+    ): Promise<Result<void, DocumentError>> => {
+      const result = (await tryCatch(async () => {
+        if (password !== undefined && password.length < 8) {
+          throw new Error('Password must be at least 8 characters');
+        }
+
+        const { user: currentUser } = useAuthStore.getState();
+
+        if (!currentUser || !currentUser.is?.pub) {
+          throw new Error('must be logged in to change document key');
+        }
+
+        const gun = gunService.getGun();
+        const userNode = gun.user();
+        const docNode = userNode.get('docs').get(docId);
+
+        const docData = await new Promise<unknown>((resolve, reject) => {
+          docNode.once((data: unknown) => {
+            if (data === null || data === undefined) {
+              reject(new Error('Document not found'));
+            } else {
+              resolve(data);
+            }
+          });
+        });
+
+        if (!docData || typeof docData !== 'object') {
+          throw new Error('Document not found');
+        }
+
+        const doc = docData as Partial<Document>;
+        if (!doc.id) {
+          throw new Error('Document not found');
+        }
+
+        if (doc.isPublic) {
+          throw new Error('Cannot change key for public documents');
+        }
+
+        const oldKeyResult = await gunService.readPrivateData([
+          'docKeys',
+          docId,
+        ]);
+        if (!oldKeyResult.success) {
+          throw oldKeyResult.error;
+        }
+        const oldKey = oldKeyResult.data;
+
+        const titleResult = await encryptionService.decrypt(
+          doc.title ?? '',
+          oldKey
+        );
+        if (!titleResult.success) {
+          throw titleResult.error;
+        }
+        const decryptedTitle = titleResult.data;
+
+        const contentResult = await encryptionService.decrypt(
+          doc.content ?? '',
+          oldKey
+        );
+        if (!contentResult.success) {
+          throw contentResult.error;
+        }
+        const decryptedContent = contentResult.data;
+
+        let decryptedTags: string = '';
+        if (doc.tags && typeof doc.tags === 'string') {
+          const tagsResult = await encryptionService.decrypt(doc.tags, oldKey);
+          if (!tagsResult.success) {
+            throw tagsResult.error;
+          }
+          decryptedTags = tagsResult.data;
+        }
+
+        const newKey = password
+          ? password
+          : await (async () => {
+              const keyResult = await encryptionService.generateKey();
+              if (!keyResult.success) {
+                throw keyResult.error;
+              }
+              return keyResult.data;
+            })();
+
+        const encryptTitleResult = await encryptionService.encrypt(
+          decryptedTitle,
+          newKey
+        );
+        if (!encryptTitleResult.success) {
+          throw encryptTitleResult.error;
+        }
+        const encryptedTitle = encryptTitleResult.data;
+
+        const encryptContentResult = await encryptionService.encrypt(
+          decryptedContent,
+          newKey
+        );
+        if (!encryptContentResult.success) {
+          throw encryptContentResult.error;
+        }
+        const encryptedContent = encryptContentResult.data;
+
+        let encryptedTags = decryptedTags;
+        if (decryptedTags) {
+          const encryptTagsResult = await encryptionService.encrypt(
+            decryptedTags,
+            newKey
+          );
+          if (!encryptTagsResult.success) {
+            throw encryptTagsResult.error;
+          }
+          encryptedTags = encryptTagsResult.data;
+        }
+
+        const writeKeyResult = await gunService.writePrivateData(
+          ['docKeys', docId],
+          newKey
+        );
+        if (!writeKeyResult.success) {
+          throw writeKeyResult.error;
+        }
+
+        type UpdatedDoc = {
+          id: string;
+          title: string;
+          content: string;
+          tags: string;
+          createdAt: number;
+          updatedAt: number;
+          isPublic: boolean;
+          access?: DocumentAccessEntry[];
+          parent?: string;
+          original?: string;
+        };
+
+        const updatedDoc: UpdatedDoc = {
+          id: doc.id,
+          title: encryptedTitle,
+          content: encryptedContent,
+          tags: encryptedTags,
+          createdAt: doc.createdAt ?? Date.now(),
+          updatedAt: Date.now(),
+          isPublic: false,
+        };
+
+        if (doc.access !== undefined) {
+          Object.assign(updatedDoc, { access: doc.access });
+        }
+        if (doc.parent !== undefined) {
+          Object.assign(updatedDoc, { parent: doc.parent });
+        }
+        if (doc.original !== undefined) {
+          Object.assign(updatedDoc, { original: doc.original });
+        }
+
+        await new Promise<void>((resolve, reject) => {
+          docNode.put(updatedDoc, (ack: GunAck) => {
+            if (ack.err) {
+              reject(
+                new Error(`Failed to update document: ${String(ack.err)}`)
+              );
+            } else {
+              resolve();
+            }
+          });
+        });
+
+        return undefined;
+      }, transformError)) as Result<void, DocumentError>;
+
+      match(
+        () => {
+          set({
+            status: 'READY',
+            error: null,
+          });
+        },
+        (error: DocumentError) => {
+          set({
+            status: 'READY',
+            error: error.message,
+          });
+        }
+      )(result);
 
       return result;
     },

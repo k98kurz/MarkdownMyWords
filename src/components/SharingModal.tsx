@@ -10,6 +10,7 @@ interface SharingModalProps {
   userPub: string;
   isPublic: boolean;
   docKey?: string;
+  onOpenPrivacySettings?: () => void;
 }
 
 export function SharingModal({
@@ -19,6 +20,7 @@ export function SharingModal({
   userPub,
   isPublic,
   docKey,
+  onOpenPrivacySettings,
 }: SharingModalProps) {
   const [pathCopyStatus, setPathCopyStatus] = useState<
     'idle' | 'success' | 'error'
@@ -112,6 +114,15 @@ export function SharingModal({
         )}
 
         <div className="flex justify-end mt-6">
+          {onOpenPrivacySettings && (
+            <Button
+              variant="ghost"
+              onClick={onOpenPrivacySettings}
+              className="mr-auto text-sm text-muted-foreground hover:text-foreground"
+            >
+              ⚙️ Change Privacy Settings
+            </Button>
+          )}
           <Button onClick={onClose}>Close</Button>
         </div>
       </div>

@@ -6,6 +6,7 @@ import { EditorArea } from '@/components/EditorArea';
 import { ConfirmModal } from '@/components/ConfirmModal';
 import { SharingModal } from '@/components/SharingModal';
 import { AuthModal } from '@/components/AuthModal';
+import { PrivacySettingsModal } from '@/components/PrivacySettingsModal';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/Label';
@@ -38,6 +39,7 @@ export function DocumentEditor() {
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showSharingModal, setShowSharingModal] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showPrivacySettings, setShowPrivacySettings] = useState(false);
   const [sharingDoc, setSharingDoc] = useState<{
     docId: string;
     userPub: string;
@@ -150,6 +152,10 @@ export function DocumentEditor() {
       setSharingDoc(sharingData);
       setShowSharingModal(true);
     }
+  };
+
+  const handleOpenPrivacySettings = () => {
+    setShowPrivacySettings(true);
   };
 
   const handleCancel = () => {
@@ -384,16 +390,18 @@ export function DocumentEditor() {
             </div>
 
             <div className="min-w-[180px]">
-              <Label htmlFor="doc-privacy">Privacy:</Label>
-              <select
+              <Label htmlFor="doc-privacy">
+                {isPublic ? 'Public:' : 'Private:'}
+              </Label>
+              <Button
                 id="doc-privacy"
-                value={isPublic ? 'public' : 'private'}
-                onChange={e => setIsPublic(e.target.value === 'public')}
-                className="w-full rounded-md border border-border-20 bg-select-bg-8 px-3 py-2 text-sm text-foreground-87 focus:border-primary-500 focus:outline-none focus:bg-select-bg-10 focus:ring-2 focus:ring-primary-500/20"
+                variant="secondary"
+                type="button"
+                onClick={handleOpenPrivacySettings}
+                className="w-full"
               >
-                <option value="private">Private (encrypted)</option>
-                <option value="public">Public (not encrypted)</option>
-              </select>
+                Privacy Settings
+              </Button>
             </div>
 
             {canEdit && (
@@ -447,8 +455,16 @@ export function DocumentEditor() {
           userPub={sharingDoc.userPub}
           isPublic={sharingDoc.isPublic}
           docKey={sharingDoc.docKey}
+          onOpenPrivacySettings={handleOpenPrivacySettings}
         />
       )}
+
+      <PrivacySettingsModal
+        isOpen={showPrivacySettings}
+        onClose={() => setShowPrivacySettings(false)}
+        docId={docId!}
+        currentIsPublic={isPublic}
+      />
 
       <AuthModal
         isOpen={showAuthModal}

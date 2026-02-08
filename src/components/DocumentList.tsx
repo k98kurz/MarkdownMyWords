@@ -4,6 +4,7 @@ import { useDocumentStore } from '@/stores/documentStore';
 import { useAuthStore } from '@/stores/authStore';
 import { ConfirmModal } from '@/components/ConfirmModal';
 import { SharingModal } from '@/components/SharingModal';
+import { PrivacySettingsModal } from '@/components/PrivacySettingsModal';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { MinimalDocListItem } from '@/types/document';
@@ -40,6 +41,11 @@ export function DocumentList() {
     userPub: string;
     isPublic: boolean;
     docKey?: string;
+  } | null>(null);
+  const [showPrivacySettings, setShowPrivacySettings] = useState(false);
+  const [privacySettingsDoc, setPrivacySettingsDoc] = useState<{
+    docId: string;
+    currentIsPublic: boolean;
   } | null>(null);
   const hasLoadedList = useRef(false);
 
@@ -167,6 +173,14 @@ export function DocumentList() {
       setDocToDelete(undefined);
       setShowDeleteConfirm(false);
     }
+  };
+
+  const handleOpenPrivacySettings = (
+    docId: string,
+    currentIsPublic: boolean
+  ) => {
+    setPrivacySettingsDoc({ docId, currentIsPublic });
+    setShowPrivacySettings(true);
   };
 
   const setItemRef = (docId: string, element: HTMLLIElement | null) => {
@@ -334,6 +348,18 @@ export function DocumentList() {
         userPub={sharingDoc?.userPub || ''}
         isPublic={sharingDoc?.isPublic || false}
         docKey={sharingDoc?.docKey}
+        onOpenPrivacySettings={() => {
+          if (sharingDoc) {
+            handleOpenPrivacySettings(sharingDoc.docId, sharingDoc.isPublic);
+          }
+        }}
+      />
+
+      <PrivacySettingsModal
+        isOpen={showPrivacySettings}
+        onClose={() => setShowPrivacySettings(false)}
+        docId={privacySettingsDoc?.docId || ''}
+        currentIsPublic={privacySettingsDoc?.currentIsPublic || false}
       />
     </>
   );

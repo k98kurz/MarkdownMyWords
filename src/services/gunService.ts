@@ -859,6 +859,42 @@ class GunService {
     }, transformGunError);
   }
 
+  /**
+   * Delete encrypted private data from user storage
+   * @param plainPath - Array of plain text path parts
+   * @returns Promise resolving to void
+   */
+  async deletePrivateData(
+    plainPath: string[]
+  ): Promise<Result<void, GunError>> {
+    return tryCatch<void, GunError>(async () => {
+      const gun = this.getGun();
+      const privatePathResult = await this.getPrivatePath(plainPath);
+      if (!privatePathResult.success) {
+        throw privatePathResult.error;
+      }
+      const privatePath = privatePathResult.data;
+
+      const node = privatePath.reduce(
+        (path: unknown, part) => (path as GunNodeRef).get(part),
+        gun.user()
+      ) as GunNodeRef;
+
+      await new Promise<void>((resolve, reject) => {
+        const putNode = node as {
+          put: (data: unknown, cb?: (ack: GunAck) => void) => void;
+        };
+        putNode.put(null, (ack: GunAck) => {
+          if (ack.err) {
+            reject(new Error(`Failed to delete private data: ${ack.err}`));
+          } else {
+            resolve();
+          }
+        });
+      });
+    }, transformGunError);
+  }
+
   async logoutAndWait(): Promise<Result<void, GunError>> {
     return tryCatch<void, GunError>(async () => {
       const gun = this.getGun();
