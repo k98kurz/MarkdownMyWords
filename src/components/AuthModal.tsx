@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from './ui/Button';
 import { LoginForm } from './LoginForm';
 import { RegisterForm } from './RegisterForm';
@@ -18,6 +18,10 @@ export function AuthModal({
   onOpenSettings,
 }: AuthModalProps) {
   const [activeTab, setActiveTab] = useState<'login' | 'register'>(defaultTab);
+
+  useEffect(() => {
+    setActiveTab(defaultTab);
+  }, [defaultTab]);
 
   const handleSuccess = () => {
     if (onClose) {

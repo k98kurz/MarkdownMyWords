@@ -1,0 +1,83 @@
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { useAuthStore } from '@/stores/authStore';
+import { AuthModal } from './AuthModal';
+import { Button } from './ui/Button';
+
+export function HomePage() {
+  const { isAuthenticated } = useAuthStore();
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [defaultTab, setDefaultTab] = useState<'login' | 'register'>('login');
+
+  if (isAuthenticated) {
+    return (
+      <div className="flex min-h-[50vh] flex-col items-center justify-center px-4">
+        <p className="mb-6 text-muted-foreground">
+          The dashboard is under construction
+        </p>
+        <Link to="/docs">
+          <Button variant="primary" size="lg">
+            Go to Documents
+          </Button>
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="flex min-h-[50vh] flex-col items-center justify-center px-4">
+        <h1 className="mb-6 text-3xl font-bold text-card-foreground text-center">
+          Secure Markdown Editor
+        </h1>
+
+        <ul className="mb-8 space-y-3 text-lg text-card-foreground text-center">
+          <li>• End-to-end encrypted document storage</li>
+          <li>• Markdown with live preview and Mermaid diagram support</li>
+          <li>• Share documents securely with password/key protection</li>
+          <li>• Coming soon: collaborative editing and AI review/revise via OpenRouter</li>
+        </ul>
+
+        <div className="mb-8 flex gap-6 text-lg">
+          <a
+            href="https://github.com/k98kurz/MarkdownMyWords"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Repository
+          </a>
+          <Link to="/doc/CRvT_srNCT84hcK_lqfWxrHQwBf4YWm49z-Hzisu4D4.Z9UEC9spJp3vp4q61fCohO9dFVkp6k97KFkObkYPf4s/913ac870-af4f-44e2-ad76-cb1bb6a41405">
+            Readme
+          </Link>
+        </div>
+
+        <div className="flex gap-4">
+          <Button
+            variant="primary"
+            onClick={() => {
+              setDefaultTab('login');
+              setShowAuthModal(true);
+            }}
+          >
+            Login
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setDefaultTab('register');
+              setShowAuthModal(true);
+            }}
+          >
+            Register
+          </Button>
+        </div>
+      </div>
+
+      <AuthModal
+        isOpen={showAuthModal}
+        defaultTab={defaultTab}
+        onClose={() => setShowAuthModal(false)}
+      />
+    </>
+  );
+}

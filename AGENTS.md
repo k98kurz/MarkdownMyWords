@@ -105,7 +105,7 @@ For proper usage with `.map()` to collect profiles, see `discoverUsers()` in
 
 ### Functional Result Utility
 
-Type-safe error handling utility at `src/utils/functionalResult.ts` for operations
+Type-safe error handling library at `src/lib/functionalResult.ts` for operations
 that may fail. Use for predictable error types and composable operations.
 
 Notes:
@@ -118,7 +118,7 @@ single file. Write it **once**.
 Example usage from `src/stores/authStore.ts`:
 
 ```typescript
-import { pipe, chain, match } from '../utils/functionalResult';
+import { pipe, chain, match } from '../lib/functionalResult';
 
 // Compose operations with error handling
 const result = await pipe(
@@ -151,7 +151,7 @@ See `src/test/functionalResult.test.ts` for comprehensive examples.
 2. **Read**: Library documentation and examples
 3. **Search**: For existing usage patterns in codebase
 4. **Document**: Why a custom implementation was necessary (if it truly is)
-5. **For type-safe error handling**, use `functionalResult` from `src/utils/functionalResult.ts`
+5. **For type-safe error handling**, use `functionalResult` from `src/lib/functionalResult.ts`
    - See `src/stores/authStore.ts` for real-world usage example
    - See `src/test/functionalResult.test.ts` for comprehensive examples
 
@@ -210,7 +210,7 @@ IN TYPE ANNOTATIONS AND FUNCTION DEFINITIONS.
 
 - Because GunDB does not work reliably in node, all tests must be done in the
   browser dev console
-- There are helpful tools for testing in `src/utils/testRunner.ts`
+- There are helpful tools for testing in `src/dev/testRunner.ts`
 
 ### React
 
@@ -240,7 +240,7 @@ IN TYPE ANNOTATIONS AND FUNCTION DEFINITIONS.
 ### NEVER USE "any" TYPE OR "as any" ASSERTIONS
 
 - **ABSOLUTELY FORBIDDEN**: The use of `any` type or `as any` type assertions is strictly prohibited
-- **ONLY 1 EXCEPTION**: ONLY the functionalResult utility is allowed to use `any` because it is necessary for `pipe`
+- **ONLY 1 EXCEPTION**: ONLY the functionalResult library is allowed to use `any` because it is necessary for `pipe`
 - `as any` covers up type errors and leads to runtime bugs and maintenance issues
 - If you encounter a type error, fix it properly by:
   - Adding proper type definitions

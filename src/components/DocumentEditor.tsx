@@ -156,7 +156,15 @@ export function DocumentEditor() {
   };
 
   const handleCancel = () => {
-    navigate('/docs');
+    handleBackwardNavigation();
+  };
+
+  const handleBackwardNavigation = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate('/');
+    }
   };
 
   const handleDelete = async () => {
@@ -166,7 +174,7 @@ export function DocumentEditor() {
 
     const result = await deleteDocument(docId);
     if (result.success) {
-      navigate('/docs');
+      handleBackwardNavigation();
     }
   };
 
@@ -179,9 +187,7 @@ export function DocumentEditor() {
   if (viewError) {
     let title = 'Access Denied';
     let description = 'An error occurred.';
-    let actions = (
-      <Button onClick={() => navigate('/docs')}>Go to Documents</Button>
-    );
+    let actions = <Button onClick={() => navigate('/')}>Home</Button>;
 
     if (viewError === 'NOT_FOUND') {
       title = 'Document Not Found';
@@ -202,7 +208,7 @@ export function DocumentEditor() {
       actions = (
         <div className="flex gap-2">
           {isAuthenticated && (
-            <Button onClick={() => navigate('/docs')}>Go to Documents</Button>
+            <Button onClick={() => navigate('/')}>Home</Button>
           )}
           {!isAuthenticated && (
             <Button variant="primary" onClick={() => setShowAuthModal(true)}>
@@ -291,7 +297,7 @@ export function DocumentEditor() {
               <Button
                 variant="secondary"
                 type="button"
-                onClick={() => navigate('/docs')}
+                onClick={handleBackwardNavigation}
                 className="w-full sm:w-auto"
               >
                 Close

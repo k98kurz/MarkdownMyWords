@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
+import { Routes, Route, useLocation, Link } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
 import { AuthModal } from './components/AuthModal';
 import { AuthComponent } from './components/AuthComponent';
@@ -10,6 +10,7 @@ import { StatusBar } from './components/StatusBar';
 import { DocumentList } from './components/DocumentList';
 import { DocumentEditor } from './components/DocumentEditor';
 import { NotFound } from './components/NotFound';
+import { HomePage } from './components/HomePage';
 import { AppWidthProvider, useAppWidth } from './contexts/AppWidthContext';
 
 function AppContent() {
@@ -50,7 +51,8 @@ function AppContent() {
       setShowAuthModal(false);
     } else {
       const isDocumentRoute = location.pathname.match(/^\/doc\/[^/]+\/[^/]+$/);
-      setShowAuthModal(!isDocumentRoute);
+      const isHomePage = location.pathname === '/';
+      setShowAuthModal(!isDocumentRoute && !isHomePage);
     }
   }, [isAuthenticated, location.pathname]);
 
@@ -93,12 +95,12 @@ function AppContent() {
               {/* Authenticated-only routes */}
               {isAuthenticated ? (
                 <>
-                  <Route path="/" element={<Navigate to="/docs" replace />} />
+                  <Route path="/" element={<HomePage />} />
                   <Route path="/docs" element={<DocumentList />} />
                   <Route path="/doc/new" element={<DocumentEditor />} />
                 </>
               ) : (
-                <Route path="/" element={<Navigate to="/" replace />} />
+                <Route path="/" element={<HomePage />} />
               )}
 
               <Route path="*" element={<NotFound />} />

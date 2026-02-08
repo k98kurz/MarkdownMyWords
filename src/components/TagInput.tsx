@@ -75,10 +75,30 @@ export function TagInput({ tags, onChange }: TagInputProps) {
   };
 
   return (
-    <div>
-      <Label htmlFor="doc-tags">
-        Tags ({tags.length}/{MAX_TAGS}):
-      </Label>
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+        <Label htmlFor="doc-tags">
+          Tags ({tags.length}/{MAX_TAGS}):
+        </Label>
+
+        {tags.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {tags.map(tag => (
+              <Badge key={tag} variant="default" className="gap-1">
+                <span>{tag}</span>
+                <button
+                  type="button"
+                  onClick={() => removeTag(tag)}
+                  className="hover:bg-rose-100 dark:hover:bg-rose-900 rounded-full p-0.5 transition-colors"
+                  aria-label={`Remove tag ${tag}`}
+                >
+                  ×
+                </button>
+              </Badge>
+            ))}
+          </div>
+        )}
+      </div>
 
       <Input
         id="doc-tags"
@@ -95,27 +115,7 @@ export function TagInput({ tags, onChange }: TagInputProps) {
         disabled={tags.length >= MAX_TAGS}
       />
 
-      {error && (
-        <div className="text-rose-500 text-sm mt-1">{error.message}</div>
-      )}
-
-      {tags.length > 0 && (
-        <div className="flex flex-wrap gap-2 mt-2">
-          {tags.map(tag => (
-            <Badge key={tag} variant="default" className="gap-1">
-              <span>{tag}</span>
-              <button
-                type="button"
-                onClick={() => removeTag(tag)}
-                className="hover:bg-rose-100 dark:hover:bg-rose-900 rounded-full p-0.5 transition-colors"
-                aria-label={`Remove tag ${tag}`}
-              >
-                ×
-              </button>
-            </Badge>
-          ))}
-        </div>
-      )}
+      {error && <div className="text-rose-500 text-sm">{error.message}</div>}
     </div>
   );
 }
