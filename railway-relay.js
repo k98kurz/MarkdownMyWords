@@ -12,36 +12,18 @@ import http from 'http';
 
 const SHUTDOWN_TIMEOUT = 2000;
 
-const server = http.createServer();
+const PORT = process.env.PORT || process.env.GUN_PORT || 8765;
+
+const server = http.createServer(Gun.serve);
+
 const gun = Gun({
-  web: server,
+  web: server.listen(PORT),
   localStorage: false,
   radisk: false,
 });
 
-// Add HTTP health check endpoint for Railway health probes
-// This prevents Railway from sending SIGTERM due to failed health checks
-//server.on('request', (req, res) => {
-//  console.log(
-//    `[HealthCheck] ${req.method} ${req.url} from ${req.headers.host}`
-//  );
-//
-//  if (req.url === '/health' || req.url === '/') {
-//    res.writeHead(200, { 'Content-Type': 'text/plain' });
-//    res.end('OK');
-//    return;
-//  }
-//
-//  console.log(`[HealthCheck] 404 for ${req.url}`);
-//});
-
-const PORT = process.env.PORT || process.env.GUN_PORT || 8765;
-
-server.listen(PORT, () => {
-  console.log(`🔫 GunDB relay server running on http://localhost:${PORT}/gun`);
-  console.log(`   WebSocket: ws://localhost:${PORT}/gun`);
-  console.log(`   Health check: http://localhost:${PORT}/health`);
-});
+console.log(`🔫 GunDB relay server running on http://localhost:${PORT}/gun`);
+console.log(`   WebSocket: ws://localhost:${PORT}/gun`);
 
 // Handle server errors
 server.on('error', error => {
