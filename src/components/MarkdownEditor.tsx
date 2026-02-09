@@ -4,9 +4,11 @@ import {
   lineNumbers,
   drawSelection,
   dropCursor,
+  keymap,
 } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
 import { markdown } from '@codemirror/lang-markdown';
+import { defaultKeymap } from '@codemirror/commands';
 
 interface MarkdownEditorProps {
   value: string;
@@ -31,6 +33,7 @@ export function MarkdownEditor({
       dropCursor(),
       markdown(),
       EditorView.lineWrapping,
+      keymap.of(defaultKeymap),
       EditorView.updateListener.of(update => {
         if (update.docChanged) {
           onChange(update.state.doc.toString());
