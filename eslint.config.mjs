@@ -34,8 +34,7 @@ export default [
 
   // JavaScript files (Node.js environment, CommonJS)
   {
-    files: ['**/*.{js,cjs}'],
-    excludedFiles: ['railway-relay.js'],
+    files: ['**/*.{js,cjs}', '!railway-relay.js'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'commonjs',
