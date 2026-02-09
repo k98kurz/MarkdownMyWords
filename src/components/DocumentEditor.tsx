@@ -329,77 +329,71 @@ export function DocumentEditor() {
         </div>
       )}
 
-      <form
-        onSubmit={e => {
-          e.preventDefault();
-          handleSave();
-        }}
-      >
-        <div className="rounded-lg border border-border-20 bg-card mb-7">
-          <div className="min-h-[70vh]">
-            <EditorArea
-              title={title}
-              content={content}
-              onContentChange={setContent}
-              onTitleChange={setTitle}
-              enableViewSwitch={true}
-              defaultViewMode="edit"
-              isReadOnly={false}
-            />
+      <div className="rounded-lg border border-border-20 bg-card mb-7">
+        <div className="min-h-[70vh]">
+          <EditorArea
+            title={title}
+            content={content}
+            onContentChange={setContent}
+            onTitleChange={setTitle}
+            enableViewSwitch={true}
+            defaultViewMode="edit"
+            isReadOnly={false}
+          />
+        </div>
+
+        <div className="flex flex-col gap-4 p-4 lg:flex-row lg:items-end">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:gap-4 lg:flex-1">
+            <div className="w-full lg:flex-1 lg:min-w-[400px]">
+              <TagInput tags={tags} onChange={setTags} />
+            </div>
           </div>
 
-          <div className="flex flex-col gap-4 p-4 lg:flex-row lg:items-end">
-            <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:gap-4 lg:flex-1">
-              <div className="w-full lg:flex-1 lg:min-w-[400px]">
-                <TagInput tags={tags} onChange={setTags} />
-              </div>
-            </div>
-
-            {canEdit && (
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:gap-2">
-                {docId && docId !== 'new' && (
-                  <Button
-                    variant="danger"
-                    type="button"
-                    onClick={() => setShowDeleteConfirm(true)}
-                    disabled={docStatus === 'SAVING'}
-                    className="w-full sm:w-auto"
-                  >
-                    Delete
-                  </Button>
-                )}
+          {canEdit && (
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:gap-2">
+              {docId && docId !== 'new' && (
+                <Button
+                  variant="danger"
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  disabled={docStatus === 'SAVING'}
+                  className="w-full sm:w-auto"
+                >
+                  Delete
+                </Button>
+              )}
+              <Button
+                variant="secondary"
+                type="button"
+                onClick={handleCancel}
+                className="w-full sm:w-auto"
+              >
+                {!docId || docId === 'new' ? 'Cancel' : 'Close'}
+              </Button>
+              {docId && docId !== 'new' && (
                 <Button
                   variant="secondary"
                   type="button"
-                  onClick={handleCancel}
+                  onClick={handleShareClick}
                   className="w-full sm:w-auto"
                 >
-                  {!docId || docId === 'new' ? 'Cancel' : 'Close'}
+                  Sharing/Privacy
                 </Button>
-                {docId && docId !== 'new' && (
-                  <Button
-                    variant="secondary"
-                    type="button"
-                    onClick={handleShareClick}
-                    className="w-full sm:w-auto"
-                  >
-                    Sharing/Privacy
-                  </Button>
-                )}
-                <Button
-                  variant="primary"
-                  type="submit"
-                  disabled={docStatus === 'SAVING'}
-                  isLoading={docStatus === 'SAVING'}
-                  className="w-full sm:w-auto"
-                >
-                  Save
-                </Button>
-              </div>
-            )}
-          </div>
+              )}
+              <Button
+                variant="primary"
+                type="button"
+                onClick={handleSave}
+                disabled={docStatus === 'SAVING'}
+                isLoading={docStatus === 'SAVING'}
+                className="w-full sm:w-auto"
+              >
+                Save
+              </Button>
+            </div>
+          )}
         </div>
-      </form>
+      </div>
 
       {sharingDoc && (
         <SharingModal
