@@ -32,7 +32,7 @@ export function AuthModal({
   return (
     <Modal isOpen={isOpen} onClose={onClose} className="max-w-md">
       <div className="p-6">
-        <div className="mb-6 flex items-center justify-between border-b border-border-20">
+        <div className="mb-6 mr-4 flex items-center justify-between border-b border-border-20">
           <div className="flex gap-2">
             <button
               className={`px-4 pb-3 text-sm font-medium transition-colors ${

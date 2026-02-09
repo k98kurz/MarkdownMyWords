@@ -21,6 +21,12 @@ function AppContent() {
   const location = useLocation();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [defaultTab, setDefaultTab] = useState<'login' | 'register'>('login');
+
+  const handleOpenAuthModal = (tab: 'login' | 'register') => {
+    setDefaultTab(tab);
+    setShowAuthModal(true);
+  };
 
   useEffect(() => {
     const handleError = (event: ErrorEvent) => {
@@ -95,12 +101,18 @@ function AppContent() {
               {/* Authenticated-only routes */}
               {isAuthenticated ? (
                 <>
-                  <Route path="/" element={<HomePage />} />
+                  <Route
+                    path="/"
+                    element={<HomePage onOpenAuthModal={handleOpenAuthModal} />}
+                  />
                   <Route path="/docs" element={<DocumentList />} />
                   <Route path="/doc/new" element={<DocumentEditor />} />
                 </>
               ) : (
-                <Route path="/" element={<HomePage />} />
+                <Route
+                  path="/"
+                  element={<HomePage onOpenAuthModal={handleOpenAuthModal} />}
+                />
               )}
 
               <Route path="*" element={<NotFound />} />
@@ -111,8 +123,8 @@ function AppContent() {
 
       <AuthModal
         isOpen={showAuthModal}
-        onClose={isAuthenticated ? () => setShowAuthModal(false) : undefined}
-        defaultTab="login"
+        onClose={() => setShowAuthModal(false)}
+        defaultTab={defaultTab}
         onOpenSettings={() => setShowSettingsModal(true)}
       />
 

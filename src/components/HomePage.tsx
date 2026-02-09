@@ -1,13 +1,13 @@
-import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
-import { AuthModal } from './AuthModal';
 import { Button } from './ui/Button';
 
-export function HomePage() {
+interface HomePageProps {
+  onOpenAuthModal: (tab: 'login' | 'register') => void;
+}
+
+export function HomePage({ onOpenAuthModal }: HomePageProps) {
   const { isAuthenticated } = useAuthStore();
-  const [showAuthModal, setShowAuthModal] = useState(false);
-  const [defaultTab, setDefaultTab] = useState<'login' | 'register'>('login');
 
   if (isAuthenticated) {
     return (
@@ -35,7 +35,10 @@ export function HomePage() {
           <li>• End-to-end encrypted document storage</li>
           <li>• Markdown with live preview and Mermaid diagram support</li>
           <li>• Share documents securely with password/key protection</li>
-          <li>• Coming soon: collaborative editing and AI review/revise via OpenRouter</li>
+          <li>
+            • Coming soon: collaborative editing and AI review/revise via
+            OpenRouter
+          </li>
         </ul>
 
         <div className="mb-8 flex gap-6 text-lg">
@@ -59,32 +62,17 @@ export function HomePage() {
         </div>
 
         <div className="flex gap-4">
-          <Button
-            variant="primary"
-            onClick={() => {
-              setDefaultTab('login');
-              setShowAuthModal(true);
-            }}
-          >
+          <Button variant="primary" onClick={() => onOpenAuthModal('login')}>
             Login
           </Button>
           <Button
             variant="secondary"
-            onClick={() => {
-              setDefaultTab('register');
-              setShowAuthModal(true);
-            }}
+            onClick={() => onOpenAuthModal('register')}
           >
             Register
           </Button>
         </div>
       </div>
-
-      <AuthModal
-        isOpen={showAuthModal}
-        defaultTab={defaultTab}
-        onClose={() => setShowAuthModal(false)}
-      />
     </>
   );
 }

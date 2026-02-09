@@ -60,6 +60,7 @@ export function DocumentEditor() {
     | 'AUTH_REQUIRED'
     | undefined;
   const [viewError, setViewError] = useState<ViewError>(undefined);
+  const [cameFromNewDoc, setCameFromNewDoc] = useState(false);
 
   useEffect(() => {
     mermaidCache.clear();
@@ -134,6 +135,7 @@ export function DocumentEditor() {
         return;
       }
 
+      setCameFromNewDoc(true);
       navigate(`/doc/${currentUserPub}/${result.data.id}`);
     }
   };
@@ -169,6 +171,9 @@ export function DocumentEditor() {
   const handleBackwardNavigation = () => {
     if (arrivedViaBackOrDirect) {
       navigate('/');
+    } else if (cameFromNewDoc) {
+      navigate('/docs');
+      setCameFromNewDoc(false);
     } else if (window.history.length > 1) {
       navigate(-1);
     } else {
