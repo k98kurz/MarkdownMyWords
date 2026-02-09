@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import './index.css';
 import App from './App.tsx';
 import { ThemeProvider } from './providers/ThemeProvider';
+import { PwaInstallProvider } from './contexts/PwaInstallContext';
 import { gunService } from './services/gunService';
 import { encryptionService } from './services/encryptionService';
 import { testVariousDocumentSizes } from './test/testDocumentSizes';
@@ -134,10 +135,12 @@ if (
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BrowserRouter>
-      <ThemeProvider>
-        <App />
-      </ThemeProvider>
-    </BrowserRouter>
+    <PwaInstallProvider>
+      <BrowserRouter>
+        <ThemeProvider>
+          <App />
+        </ThemeProvider>
+      </BrowserRouter>
+    </PwaInstallProvider>
   </StrictMode>
 );

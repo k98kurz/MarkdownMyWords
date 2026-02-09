@@ -1,6 +1,8 @@
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { Button } from './ui/Button';
+import { Spinner } from './ui/Spinner';
+import { usePwaInstall } from '@/contexts/PwaInstallContext';
 
 interface HomePageProps {
   onOpenAuthModal: (tab: 'login' | 'register') => void;
@@ -8,6 +10,8 @@ interface HomePageProps {
 
 export function HomePage({ onOpenAuthModal }: HomePageProps) {
   const { isAuthenticated } = useAuthStore();
+  const { canInstall, promptInstall, isInstalled, isInstalling } =
+    usePwaInstall();
 
   if (isAuthenticated) {
     return (
@@ -40,6 +44,38 @@ export function HomePage({ onOpenAuthModal }: HomePageProps) {
             OpenRouter
           </li>
         </ul>
+
+        {canInstall && (
+          <div className="mb-6 flex items-center justify-center">
+            <Button
+              onClick={promptInstall}
+              disabled={isInstalled || isInstalling}
+              variant="ghost"
+              size="md"
+              className="gap-2"
+            >
+              {isInstalling ? (
+                <Spinner size="sm" />
+              ) : (
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4v4"
+                  />
+                </svg>
+              )}
+              {isInstalled ? 'Installed' : 'Install Web App'}
+            </Button>
+          </div>
+        )}
 
         <div className="mb-8 flex gap-6 text-lg">
           <a
