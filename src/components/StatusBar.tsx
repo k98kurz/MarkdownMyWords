@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
 import { useConnectionStore } from '@/stores/connectionStore';
 import { Modal } from './ui/Modal';
+import { ChangelogModal } from './ChangelogModal';
+import { getChangelogTitle } from '@/lib/changelog';
 
 export const StatusBar: React.FC = () => {
   const { status, relays, peerConnectionTimes } = useConnectionStore();
   const [isRelayModalOpen, setIsRelayModalOpen] = useState(false);
+  const [isChangelogModalOpen, setIsChangelogModalOpen] = useState(false);
+  const changelogTitle = getChangelogTitle();
 
   const connectedCount = Array.from(relays.values()).filter(
     s => s === 'connected'
@@ -64,16 +68,26 @@ export const StatusBar: React.FC = () => {
 
   return (
     <div className="fixed bottom-0 left-0 right-0 border-t border-border-20 bg-background/95 backdrop-blur px-4 py-2">
-      <div className="mx-auto flex max-w-7xl items-center gap-2 text-sm">
-        <div
-          className={`h-2.5 w-2.5 rounded-full ${statusInfo.colorClass} ${statusInfo.animate ? 'animate-blink' : ''}`}
-        />
-        <span
-          className="cursor-pointer text-card-foreground/80"
-          onClick={() => setIsRelayModalOpen(true)}
-        >
-          {statusText}
-        </span>
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 text-sm">
+        <div className="flex items-center gap-2">
+          <div
+            className={`h-2.5 w-2.5 rounded-full ${statusInfo.colorClass} ${statusInfo.animate ? 'animate-blink' : ''}`}
+          />
+          <span
+            className="cursor-pointer text-card-foreground/80"
+            onClick={() => setIsRelayModalOpen(true)}
+          >
+            {statusText}
+          </span>
+        </div>
+        <div>
+          <span
+            className="cursor-pointer text-card-foreground/80 hover:text-card-foreground transition-colors"
+            onClick={() => setIsChangelogModalOpen(true)}
+          >
+            {changelogTitle}
+          </span>
+        </div>
       </div>
       <Modal
         isOpen={isRelayModalOpen}
@@ -123,6 +137,10 @@ export const StatusBar: React.FC = () => {
           </div>
         </div>
       </Modal>
+      <ChangelogModal
+        isOpen={isChangelogModalOpen}
+        onClose={() => setIsChangelogModalOpen(false)}
+      />
     </div>
   );
 };
