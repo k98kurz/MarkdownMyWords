@@ -41,6 +41,7 @@ radata*
 *.md
 !readme.md
 !AGENTS.md
+!src/changelog.md
 .ralph/
 .research/
 .old/
