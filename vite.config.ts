@@ -47,6 +47,10 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        globIgnores: [
+          '**/flowchart-elk-definition-*.js',
+          '**/mindmap-definition-*.js',
+        ],
         runtimeCaching: [],
       },
     }),
