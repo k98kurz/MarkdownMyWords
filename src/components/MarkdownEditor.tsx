@@ -14,15 +14,22 @@ interface MarkdownEditorProps {
   value: string;
   onChange: (value: string) => void;
   readOnly?: boolean;
+  onSave?: () => void;
 }
 
 export function MarkdownEditor({
   value,
   onChange,
   readOnly = false,
+  onSave,
 }: MarkdownEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
+  const onSaveRef = useRef(onSave);
+
+  useEffect(() => {
+    onSaveRef.current = onSave;
+  }, [onSave]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -40,6 +47,20 @@ export function MarkdownEditor({
         }
       }),
     ];
+
+    if (onSave) {
+      extensions.push(
+        keymap.of([
+          {
+            key: 'Mod-s',
+            run: () => {
+              onSaveRef.current?.();
+              return true;
+            },
+          },
+        ])
+      );
+    }
 
     if (readOnly) {
       extensions.push(EditorState.readOnly.of(true));

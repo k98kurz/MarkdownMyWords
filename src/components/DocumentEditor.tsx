@@ -344,6 +344,7 @@ export function DocumentEditor() {
             enableViewSwitch={true}
             defaultViewMode="edit"
             isReadOnly={false}
+            onSave={canEdit ? handleSave : undefined}
           />
         </div>
 

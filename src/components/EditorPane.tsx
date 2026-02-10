@@ -14,6 +14,7 @@ interface EditorPaneProps {
   enableViewSwitch?: boolean;
   defaultViewMode?: ViewMode;
   isReadOnly?: boolean;
+  onSave?: () => void;
 }
 
 export function EditorPane({
@@ -25,6 +26,7 @@ export function EditorPane({
   enableViewSwitch = true,
   defaultViewMode = 'edit',
   isReadOnly = false,
+  onSave,
 }: EditorPaneProps) {
   const [viewMode, setViewMode] = useState<ViewMode>(defaultViewMode);
   const { setAppWidth } = useAppWidth();
@@ -106,6 +108,7 @@ export function EditorPane({
               value={content}
               onChange={onContentChange}
               readOnly={isReadOnly}
+              onSave={onSave}
             />
           </div>
         )}
@@ -123,6 +126,7 @@ export function EditorPane({
                 value={content}
                 onChange={onContentChange}
                 readOnly={isReadOnly}
+                onSave={onSave}
               />
             </div>
             <div className="h-full w-1/2 overflow-auto p-6 scrollbar-thin">
