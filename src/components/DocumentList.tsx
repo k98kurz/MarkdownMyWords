@@ -312,12 +312,45 @@ export function DocumentList() {
         <p className="mb-0 text-lg">
           No documents yet. Create your first document!
         </p>
-        <Link
-          to="/doc/new"
-          className="mt-6 inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover hover:text-primary-hover-text bg-primary"
-        >
-          Create New Document
-        </Link>
+        <div className="mt-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-center">
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            accept=".md"
+            className="hidden"
+          />
+          <button
+            type="button"
+            className="group relative rounded-md border border-border-20 bg-background-5 p-2 text-foreground-70 hover:bg-foreground-10 hover:text-foreground-90 transition-colors"
+            onClick={handleUploadFile}
+            title="Upload"
+          >
+            <svg
+              className="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+              />
+            </svg>
+            <span className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 rounded-md bg-gray-900 px-2 py-1 text-xs text-white group-hover:block whitespace-nowrap">
+              Upload
+            </span>
+          </button>
+          <Link
+            to="/doc/new"
+            className="inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover hover:text-primary-hover-text bg-primary"
+          >
+            Create New Document
+          </Link>
+        </div>
       </div>
     );
   }
