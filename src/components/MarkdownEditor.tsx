@@ -8,7 +8,7 @@ import {
 } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
 import { markdown } from '@codemirror/lang-markdown';
-import { defaultKeymap } from '@codemirror/commands';
+import { defaultKeymap, indentWithTab } from '@codemirror/commands';
 
 interface MarkdownEditorProps {
   value: string;
@@ -40,7 +40,7 @@ export function MarkdownEditor({
       dropCursor(),
       markdown(),
       EditorView.lineWrapping,
-      keymap.of(defaultKeymap),
+      keymap.of([...defaultKeymap, indentWithTab]),
       EditorView.updateListener.of(update => {
         if (update.docChanged) {
           onChange(update.state.doc.toString());
