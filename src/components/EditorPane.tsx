@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { MarkdownEditor } from '@/components/MarkdownEditor';
 import { MarkdownPreview } from '@/components/MarkdownPreview';
 import { useAppWidth } from '@/contexts/AppWidthContext';
+import { usePreferences } from '@/providers/PreferenceProvider';
 
 type ViewMode = 'edit' | 'preview' | 'split';
 
@@ -32,6 +33,7 @@ export function EditorPane({
 }: EditorPaneProps) {
   const [viewMode, setViewMode] = useState<ViewMode>(defaultViewMode);
   const { setAppWidth } = useAppWidth();
+  const { editorPreferences } = usePreferences();
 
   useEffect(() => {
     setAppWidth(viewMode === 'split' ? '100rem' : '80rem');
@@ -139,6 +141,9 @@ export function EditorPane({
               onChange={onContentChange}
               readOnly={isReadOnly}
               onSave={onSave}
+              syntaxHighlightingEnabled={
+                editorPreferences.syntaxHighlightingEnabled
+              }
             />
           </div>
         )}
@@ -157,6 +162,9 @@ export function EditorPane({
                 onChange={onContentChange}
                 readOnly={isReadOnly}
                 onSave={onSave}
+                syntaxHighlightingEnabled={
+                  editorPreferences.syntaxHighlightingEnabled
+                }
               />
             </div>
             <div className="h-full w-1/2 overflow-auto p-6 scrollbar-thin">

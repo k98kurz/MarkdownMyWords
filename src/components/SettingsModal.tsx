@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
-import { useTheme } from '@/providers/ThemeProvider';
+import { usePreferences } from '@/providers/PreferenceProvider';
 import { gunService } from '@/services/gunService';
 import {
   success,
@@ -66,7 +66,8 @@ const validateRelayUrl = (
 };
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, editorPreferences, setEditorPreference } =
+    usePreferences();
   const [tempRelays, setTempRelays] = useState<RelayItem[]>([]);
   const [validationErrors, setValidationErrors] = useState<
     Map<number, RelayValidationError>
@@ -227,6 +228,39 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 {t.charAt(0).toUpperCase() + t.slice(1)}
               </button>
             ))}
+          </div>
+        </section>
+
+        <section>
+          <h3 className="text-sm font-medium mb-3">Editor Options</h3>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm">Enable syntax highlighting</span>
+              <button
+                type="button"
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  editorPreferences.syntaxHighlightingEnabled
+                    ? 'bg-primary'
+                    : 'bg-secondary'
+                }`}
+                onClick={() =>
+                  setEditorPreference(
+                    'syntaxHighlightingEnabled',
+                    !editorPreferences.syntaxHighlightingEnabled
+                  )
+                }
+                role="switch"
+                aria-checked={editorPreferences.syntaxHighlightingEnabled}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    editorPreferences.syntaxHighlightingEnabled
+                      ? 'translate-x-6'
+                      : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
           </div>
         </section>
 

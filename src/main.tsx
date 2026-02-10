@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import './index.css';
 import App from './App.tsx';
-import { ThemeProvider } from './providers/ThemeProvider';
+import { PreferenceProvider } from './providers/PreferenceProvider';
 import { PwaInstallProvider } from './contexts/PwaInstallContext';
 import { gunService } from './services/gunService';
 import { encryptionService } from './services/encryptionService';
@@ -137,9 +137,9 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <PwaInstallProvider>
       <BrowserRouter>
-        <ThemeProvider>
+        <PreferenceProvider>
           <App />
-        </ThemeProvider>
+        </PreferenceProvider>
       </BrowserRouter>
     </PwaInstallProvider>
   </StrictMode>

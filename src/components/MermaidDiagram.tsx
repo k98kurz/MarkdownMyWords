@@ -2,7 +2,7 @@ import { useEffect, useState, memo } from 'react';
 import mermaid from 'mermaid';
 import { useDebounce } from '@/hooks/useDebounce';
 import { mermaidCache } from '@/lib/cache';
-import { useTheme } from '@/providers/ThemeProvider';
+import { usePreferences } from '@/providers/PreferenceProvider';
 
 interface MermaidDiagramProps {
   code: string;
@@ -12,7 +12,7 @@ export const MermaidDiagram = memo(function MermaidDiagram({
   code,
 }: MermaidDiagramProps) {
   const trimmedCode = code.trim();
-  const { resolvedTheme } = useTheme();
+  const { resolvedTheme } = usePreferences();
   const mermaidTheme = resolvedTheme === 'dark' ? 'dark' : 'default';
   const [displaySvg, setDisplaySvg] = useState(() => {
     const cached = mermaidCache.get(`${trimmedCode}-${resolvedTheme}`);

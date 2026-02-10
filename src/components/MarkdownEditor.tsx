@@ -22,6 +22,7 @@ interface MarkdownEditorProps {
   onChange: (value: string) => void;
   readOnly?: boolean;
   onSave?: () => void;
+  syntaxHighlightingEnabled?: boolean;
 }
 
 export function MarkdownEditor({
@@ -29,6 +30,7 @@ export function MarkdownEditor({
   onChange,
   readOnly = false,
   onSave,
+  syntaxHighlightingEnabled = true,
 }: MarkdownEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -46,7 +48,9 @@ export function MarkdownEditor({
       drawSelection(),
       dropCursor(),
       markdown(),
-      syntaxHighlighting(classHighlighter),
+      ...(syntaxHighlightingEnabled
+        ? [syntaxHighlighting(classHighlighter)]
+        : []),
       EditorView.lineWrapping,
       history(),
       keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
