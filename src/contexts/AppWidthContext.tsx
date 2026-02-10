@@ -27,6 +27,7 @@ export function AppWidthProvider({
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAppWidth(): AppWidthContextType {
   const context = useContext(AppWidthContext);
   if (context === undefined) {

@@ -1,4 +1,4 @@
-import Gun, { ISEAPair } from 'gun';
+import Gun from 'gun';
 import 'gun/sea';
 import { gunService } from '@/services';
 

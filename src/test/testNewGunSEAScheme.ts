@@ -137,25 +137,30 @@ async function writePrivateData(
     gun.user()
   ) as GunNodeRef;
   assert(!!node, 'no node!?!?');
-  await new Promise<void>(async (resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     const seaPair = getUserSEA(gun.user());
     if (!seaPair) {
       reject(new Error('user cryptographic keypair not available'));
+      return;
     }
-    const ciphertext = await (gun as { sea?: typeof Gun.SEA }).sea?.encrypt(
-      plaintext,
-      seaPair as ISEAPair
-    );
-    if (!ciphertext) {
-      reject(new Error('sea.encrypt failed: returned undefined'));
-    }
-    node.put(ciphertext, (ack: unknown) => {
-      if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
-        reject(new Error(`Failed to write private data: ${String(ack.err)}`));
-      } else {
-        resolve();
-      }
-    });
+    (gun as { sea?: typeof Gun.SEA }).sea
+      ?.encrypt(plaintext, seaPair as ISEAPair)
+      .then(ciphertext => {
+        if (!ciphertext) {
+          reject(new Error('sea.encrypt failed: returned undefined'));
+          return;
+        }
+        node.put(ciphertext, (ack: unknown) => {
+          if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
+            reject(
+              new Error(`Failed to write private data: ${String(ack.err)}`)
+            );
+          } else {
+            resolve();
+          }
+        });
+      })
+      .catch(reject);
   });
 }
 

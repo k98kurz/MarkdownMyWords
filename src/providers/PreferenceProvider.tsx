@@ -109,6 +109,7 @@ export function PreferenceProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function usePreferences() {
   const context = useContext(PreferenceContext);
   if (context === undefined) {

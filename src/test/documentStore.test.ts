@@ -174,6 +174,7 @@ async function setupTestUser(): Promise<void> {
   try {
     await gunService.createUser(TEST_USERNAME, TEST_PASSWORD);
     console.log(`  ✅ Created user: ${TEST_USERNAME}`);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
   } catch (error) {
     console.log(`  ℹ️  User already exists: ${TEST_USERNAME}`);
   }

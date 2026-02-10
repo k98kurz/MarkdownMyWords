@@ -11,6 +11,7 @@ const http = require('http');
 const SHUTDOWN_TIMEOUT = 2000;
 
 const server = http.createServer();
+// eslint-disable-next-line no-unused-vars
 const gun = Gun({
   web: server,
   localStorage: false,
@@ -25,10 +26,12 @@ server.listen(PORT, () => {
 });
 
 // Handle server errors
-server.on('error', (error) => {
+server.on('error', error => {
   if (error.code === 'EADDRINUSE') {
     console.error(`❌ Port ${PORT} is already in use.`);
-    console.error(`   Another GunDB relay might be running, or you can set GUN_PORT environment variable.`);
+    console.error(
+      `   Another GunDB relay might be running, or you can set GUN_PORT environment variable.`
+    );
   } else {
     console.error('❌ GunDB relay server error:', error);
   }

@@ -18,12 +18,12 @@ export default [
     ],
   },
 
-  // Railway relay (ES module)
+  // JavaScript files (Node.js environment, CommonJS)
   {
-    files: ['railway-relay.js'],
+    files: ['**/*.{js,cjs}'],
     languageOptions: {
       ecmaVersion: 'latest',
-      sourceType: 'module',
+      sourceType: 'commonjs',
       globals: globals.node,
     },
     rules: {
@@ -32,12 +32,12 @@ export default [
     },
   },
 
-  // JavaScript files (Node.js environment, CommonJS)
+  // ES module files (override)
   {
-    files: ['**/*.{js,cjs}', '!railway-relay.js'],
+    files: ['railway-relay.js', 'postcss.config.js'],
     languageOptions: {
       ecmaVersion: 'latest',
-      sourceType: 'commonjs',
+      sourceType: 'module',
       globals: globals.node,
     },
     rules: {
@@ -61,6 +61,7 @@ export default [
       globals: {
         ...globals.browser,
         ...globals.node,
+        React: 'readonly',
       },
     },
     plugins: {

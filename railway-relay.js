@@ -16,6 +16,7 @@ const PORT = process.env.PORT || process.env.GUN_PORT || 8765;
 
 const server = http.createServer(Gun.serve);
 
+// eslint-disable-next-line no-unused-vars
 const gun = Gun({
   web: server.listen(PORT),
   localStorage: false,

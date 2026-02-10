@@ -100,17 +100,20 @@ if (
   typeof window !== 'undefined' &&
   import.meta.env.VITE_APP_DEV_MODE === 'true'
 ) {
-  (window as any).testDocumentSizes = testVariousDocumentSizes;
-  (window as any).testGunService = testGunService;
-  (window as any).testAuthStore = testAuthStore;
-  (window as any).testEncryptionService = testEncryptionService;
-  (window as any).testFunctionalResult = testFunctionalResult;
-  (window as any).testNewGunSEAScheme = testNewGunSEAScheme;
-  (window as any).testDocumentStore = testDocumentStore;
-  (window as any).runAllTests = runAllTests;
-  (window as any).clearGunDB = clearGunDBLocalStorage;
-  (window as any).gunService = gunService;
-  (window as any).listUsers = listUsers;
+  // Dev tools: expose functions to window for browser console testing
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const win = window as any;
+  win.testDocumentSizes = testVariousDocumentSizes;
+  win.testGunService = testGunService;
+  win.testAuthStore = testAuthStore;
+  win.testEncryptionService = testEncryptionService;
+  win.testFunctionalResult = testFunctionalResult;
+  win.testNewGunSEAScheme = testNewGunSEAScheme;
+  win.testDocumentStore = testDocumentStore;
+  win.runAllTests = runAllTests;
+  win.clearGunDB = clearGunDBLocalStorage;
+  win.gunService = gunService;
+  win.listUsers = listUsers;
   console.log('🧪 Dev console functions available:');
   console.log(
     '   - window.testDocumentSizes() - Test encryption with various document sizes'

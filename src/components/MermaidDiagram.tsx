@@ -68,7 +68,7 @@ export const MermaidDiagram = memo(function MermaidDiagram({
     return () => {
       isMounted = false;
     };
-  }, [debouncedCode, id, resolvedTheme]);
+  }, [debouncedCode, id, mermaidTheme, resolvedTheme]);
 
   if (error) {
     return (

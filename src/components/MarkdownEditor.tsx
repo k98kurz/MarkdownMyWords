@@ -95,7 +95,8 @@ export function MarkdownEditor({
       view.destroy();
       viewRef.current = null;
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [syntaxHighlightingEnabled, readOnly]);
 
   useEffect(() => {
     if (viewRef.current) {
