@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useAuthStore } from '@/stores/authStore';
 import { ConfirmModal } from '@/components/ConfirmModal';
@@ -23,6 +23,7 @@ type SortOption =
 export function DocumentList() {
   const { user } = useAuthStore();
   const currentUserPub = user?.is?.pub;
+  const navigate = useNavigate();
   const {
     documentList,
     status,
@@ -56,6 +57,7 @@ export function DocumentList() {
   const [sortOption, setSortOption] = useState<SortOption>('most-recent');
   const [filterText, setFilterText] = useState<string>('');
   const hasLoadedList = useRef(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     mermaidCache.clear();
@@ -245,6 +247,35 @@ export function DocumentList() {
     }
   };
 
+  const handleUploadFile = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (event: { target: { files: FileList | null } }) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.endsWith('.md')) {
+      alert('Please select a markdown file (.md)');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = e => {
+      const content = e.target?.result as string;
+      const title = file.name.replace(/\.md$/, '');
+      navigate('/doc/new', { state: { title, content } });
+    };
+    reader.onerror = () => {
+      alert('Failed to read file');
+    };
+    reader.readAsText(file);
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const setItemRef = (docId: string, element: HTMLLIElement | null) => {
     if (element) {
       itemRefs.current.set(docId, element);
@@ -319,6 +350,37 @@ export function DocumentList() {
               <option value="title-desc">Title Z-A</option>
               <option value="id-asc">ID asc</option>
             </Select>
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              accept=".md"
+              className="hidden"
+            />
+            <button
+              type="button"
+              className="group relative rounded-md border border-border-20 bg-background-5 p-2 text-foreground-70 hover:bg-foreground-10 hover:text-foreground-90 transition-colors"
+              onClick={handleUploadFile}
+              title="Upload"
+            >
+              <svg
+                className="h-5 w-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                />
+              </svg>
+              <span className="absolute bottom-full left-1/2 mb-2 hidden -translate-x-1/2 rounded-md bg-gray-900 px-2 py-1 text-xs text-white group-hover:block whitespace-nowrap">
+                Upload
+              </span>
+            </button>
             <Link
               to="/doc/new"
               className="inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover hover:text-primary-hover-text bg-primary"

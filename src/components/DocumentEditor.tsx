@@ -4,6 +4,7 @@ import {
   useNavigate,
   NavigationType,
   useNavigationType,
+  useLocation,
 } from 'react-router-dom';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -21,6 +22,7 @@ import { mermaidCache } from '@/lib/cache';
 export function DocumentEditor() {
   const { userPub, docId } = useParams<{ userPub?: string; docId?: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const navigationType = useNavigationType();
   const arrivedViaBackOrDirect = navigationType === NavigationType.Pop;
   const { user: currentUser, isAuthenticated } = useAuthStore();
@@ -65,6 +67,8 @@ export function DocumentEditor() {
   useEffect(() => {
     mermaidCache.clear();
 
+    const state = location.state as { title?: string; content?: string } | null;
+
     if (docId && docId !== 'new' && userPub) {
       getDocument(docId, userPub).then(result => {
         if (result.success && result.data) {
@@ -93,6 +97,22 @@ export function DocumentEditor() {
           setViewError('NOT_FOUND');
         }
       });
+    } else if (
+      (docId === 'new' || docId === undefined) &&
+      state?.title &&
+      state?.content
+    ) {
+      setTitle(state.title);
+      setContent(state.content);
+      setTags([]);
+      setIsPublic(false);
+      setViewError(undefined);
+    } else if (docId === 'new') {
+      setTitle('');
+      setContent('');
+      setTags([]);
+      setIsPublic(false);
+      setViewError(undefined);
     } else if (!(userPub === undefined && docId === undefined)) {
       setTitle('');
       setContent('');
@@ -106,7 +126,34 @@ export function DocumentEditor() {
       setIsPublic(false);
       setViewError(undefined);
     }
-  }, [docId, userPub, getDocument]);
+  }, [docId, userPub, getDocument, location.state]);
+
+  const handleDownload = () => {
+    const currentTitle =
+      title || (docId && docId !== 'new' ? docId : 'untitled');
+    const safeTitle = currentTitle.replace(/[^a-z0-9_-]/gi, '_');
+    let filename;
+
+    if (title && title.toLowerCase() !== 'untitled') {
+      filename = `${safeTitle}.md`;
+    } else if (docId && docId !== 'new') {
+      const timestamp = Date.now();
+      filename = `MMW-${docId}-${timestamp}.md`;
+    } else {
+      const timestamp = Date.now();
+      filename = `MMW-untitled-${timestamp}.md`;
+    }
+
+    const blob = new Blob([content], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   const handleSave = async () => {
     clearDocError();
@@ -288,6 +335,7 @@ export function DocumentEditor() {
               enableViewSwitch={true}
               defaultViewMode="preview"
               isReadOnly={true}
+              onDownload={handleDownload}
             />
           </div>
 
@@ -345,6 +393,7 @@ export function DocumentEditor() {
             defaultViewMode="edit"
             isReadOnly={false}
             onSave={canEdit ? handleSave : undefined}
+            onDownload={handleDownload}
           />
         </div>
 

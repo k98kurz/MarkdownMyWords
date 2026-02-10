@@ -10,6 +10,7 @@ interface EditorAreaProps {
   defaultViewMode?: 'edit' | 'preview' | 'split';
   isReadOnly?: boolean;
   onSave?: () => void;
+  onDownload?: () => void;
 }
 
 export function EditorArea({
@@ -21,6 +22,7 @@ export function EditorArea({
   defaultViewMode = 'edit',
   isReadOnly = false,
   onSave,
+  onDownload,
 }: EditorAreaProps) {
   return (
     <div className="flex h-full w-full flex-col">
@@ -33,6 +35,7 @@ export function EditorArea({
         defaultViewMode={defaultViewMode}
         isReadOnly={isReadOnly}
         onSave={onSave}
+        onDownload={onDownload}
       />
     </div>
   );
