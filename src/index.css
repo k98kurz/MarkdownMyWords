@@ -240,3 +240,57 @@
   border-radius: 0.25rem;
   border: 1px solid rgb(var(--code-border) / 0.5);
 }
+
+/* CodeMirror markdown syntax highlighting */
+.cm-editor .tok-heading {
+  font-weight: bold;
+  color: rgb(var(--primary));
+}
+
+.cm-editor .tok-strong {
+  font-weight: bold;
+  color: rgb(var(--primary));
+}
+
+.cm-editor .tok-emphasis {
+  font-style: italic;
+  color: rgb(var(--foreground));
+}
+
+.cm-editor .tok-link {
+  color: rgb(var(--primary));
+  text-decoration: underline;
+}
+
+.cm-editor .tok-strikethrough {
+  text-decoration: line-through;
+}
+
+.cm-editor .tok-monospace {
+  font-family: 'Courier New', 'Fira Code', ui-monospace, monospace;
+  background-color: rgb(var(--code-background) / 0.5);
+  padding: 0.1em 0.3em;
+  border-radius: 0.25rem;
+  border: 1px solid rgb(var(--code-border) / 0.5);
+  color: rgb(var(--code-text));
+}
+
+.cm-editor .tok-list {
+  color: rgb(var(--foreground));
+}
+
+.cm-editor .tok-quote {
+  color: rgb(var(--foreground) / 0.8);
+  border-left: 3px solid rgb(var(--primary) / 0.5);
+  padding-left: 0.75rem;
+  margin-left: 0;
+}
+
+.cm-editor .tok-string {
+  color: rgb(var(--code-text));
+}
+
+.cm-editor .tok-comment {
+  color: rgb(var(--foreground) / 0.6);
+  font-style: italic;
+}

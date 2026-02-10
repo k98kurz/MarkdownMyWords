@@ -9,6 +9,8 @@ import {
 import { EditorState } from '@codemirror/state';
 import { markdown } from '@codemirror/lang-markdown';
 import { defaultKeymap, indentWithTab } from '@codemirror/commands';
+import { classHighlighter } from '@lezer/highlight';
+import { syntaxHighlighting } from '@codemirror/language';
 
 interface MarkdownEditorProps {
   value: string;
@@ -39,6 +41,7 @@ export function MarkdownEditor({
       drawSelection(),
       dropCursor(),
       markdown(),
+      syntaxHighlighting(classHighlighter),
       EditorView.lineWrapping,
       keymap.of([...defaultKeymap, indentWithTab]),
       EditorView.updateListener.of(update => {
