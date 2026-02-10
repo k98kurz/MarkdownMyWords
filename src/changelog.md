@@ -6,6 +6,7 @@
 - Added this changelog feature
 - Enabled toggleable syntax highlighting that works in both light and dark themes
 - Enabled edit history with ctrl-z and ctrl-shift-z/ctrl-y key bindings
+- Enabled KaTeX support for maths
 
 ## 2026-02-09
 

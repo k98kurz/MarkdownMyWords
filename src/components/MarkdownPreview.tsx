@@ -1,8 +1,11 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import { MermaidDiagram } from './MermaidDiagram';
 import { useMemo } from 'react';
 import { hashString } from '@/lib/cache';
+import 'katex/dist/katex.min.css';
 
 interface MarkdownPreviewProps {
   content: string;
@@ -64,7 +67,8 @@ export function MarkdownPreview({ content }: MarkdownPreviewProps) {
         ) : (
           <ReactMarkdown
             key={segment.key}
-            remarkPlugins={[remarkGfm]}
+            remarkPlugins={[remarkGfm, remarkMath]}
+            rehypePlugins={[rehypeKatex]}
             components={{
               code(props) {
                 const { className, children, ...rest } = props;
