@@ -5,6 +5,7 @@
 - Added simple file upload/download feature
 - Added this changelog feature
 - Enabled simple syntax highlighting that works in both light and dark themes
+- Enabled edit history with ctrl-z and ctrl-shift-z/ctrl-y key bindings
 
 ## 2026-02-09
 

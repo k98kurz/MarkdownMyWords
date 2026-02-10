@@ -8,7 +8,12 @@ import {
 } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
 import { markdown } from '@codemirror/lang-markdown';
-import { defaultKeymap, indentWithTab } from '@codemirror/commands';
+import {
+  defaultKeymap,
+  indentWithTab,
+  history,
+  historyKeymap,
+} from '@codemirror/commands';
 import { classHighlighter } from '@lezer/highlight';
 import { syntaxHighlighting } from '@codemirror/language';
 
@@ -43,7 +48,8 @@ export function MarkdownEditor({
       markdown(),
       syntaxHighlighting(classHighlighter),
       EditorView.lineWrapping,
-      keymap.of([...defaultKeymap, indentWithTab]),
+      history(),
+      keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
       EditorView.updateListener.of(update => {
         if (update.docChanged) {
           onChange(update.state.doc.toString());
