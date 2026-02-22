@@ -1,3 +1,10 @@
+## 2026-02-22
+
+- Slightly improved UX for editor on mobile:
+    - Moved Save button to the top of the action buttons
+    - Moved Delete button to the bottom of the action buttons
+    - Desktop/non-mobile remains unchanged
+
 ## 2026-02-10
 
 - Added ctrl+s/cmd+s to save in editor

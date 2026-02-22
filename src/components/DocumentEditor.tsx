@@ -412,7 +412,7 @@ export function DocumentEditor() {
                   type="button"
                   onClick={() => setShowDeleteConfirm(true)}
                   disabled={docStatus === 'SAVING'}
-                  className="w-full sm:w-auto"
+                  className="w-full sm:w-auto order-last sm:order-none"
                 >
                   Delete
                 </Button>
@@ -441,7 +441,7 @@ export function DocumentEditor() {
                 onClick={handleSave}
                 disabled={docStatus === 'SAVING'}
                 isLoading={docStatus === 'SAVING'}
-                className="w-full sm:w-auto"
+                className="w-full sm:w-auto order-first sm:order-none"
               >
                 Save
               </Button>
