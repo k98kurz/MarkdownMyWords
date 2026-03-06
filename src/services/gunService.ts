@@ -154,14 +154,24 @@ class GunService {
   }
 
   /**
-   * Get namespaced path for a node type
-   * All paths are prefixed with app namespace to avoid collisions
-   * @param nodeType - Node type (e.g., 'user', 'doc', 'branch')
-   * @param id - Node ID(s)
-   * @returns Namespaced path
+   * Gets a namespaced graph path to the node
+   * @param parts - array of path parts
+   * @returns Namespaced node
    */
-  public getNodePath(...parts: string[]): string {
-    return `${this.appNamespace}~${parts.join('~')}`;
+  public getNodePath(...parts: string[]): GunNodeRef {
+    let node = this.getGun().get(this.appNamespace);
+    for (const p of parts) {
+      if (!p || p.length === 0) {
+        const gunError: GunError = {
+          code: GunErrorCode.INVALID_DATA,
+          message: 'Every path part must be non-empty string',
+          details: null,
+        };
+        throw gunError;
+      }
+      node = node.get(p);
+    }
+    return node;
   }
 
   /**
