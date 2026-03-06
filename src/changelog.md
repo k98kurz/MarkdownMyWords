@@ -1,6 +1,6 @@
-## 2026-02-22
+## 2026-03-06
 
-- Slightly improved UX for editor on mobile:
+- Slightly improved UX for document list and editor on mobile:
     - Moved Save button to the top of the action buttons
     - Moved Delete button to the bottom of the action buttons
     - Desktop/non-mobile remains unchanged

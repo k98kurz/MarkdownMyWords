@@ -482,7 +482,7 @@ export function DocumentList() {
                     <Button
                       size="sm"
                       variant="danger"
-                      className="w-full sm:w-auto"
+                      className="w-full sm:w-auto order-last sm:order-none"
                       onClick={() => handleDelete(doc.docId)}
                     >
                       Delete
@@ -497,7 +497,7 @@ export function DocumentList() {
                     </Button>
                     <Link
                       to={`/doc/${currentUserPub}/${doc.docId}`}
-                      className="inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover hover:text-primary-hover-text bg-primary"
+                      className="inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover hover:text-primary-hover-text bg-primary order-first sm:order-none"
                     >
                       Open
                     </Link>
