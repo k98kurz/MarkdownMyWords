@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { usePreferences } from '@/providers/PreferenceProvider';
 import { gunService } from '@/services/gunService';
+import { useKeyboardShortcutsStore } from '@/stores/keyboardShortcutsStore';
 import {
   success,
   failure,
@@ -161,7 +162,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     });
   };
 
-  const validateAllRelays = (): Result<string[], RelayValidationError> => {
+  const validateAllRelays = useCallback((): Result<string[], RelayValidationError> => {
     return sequence(
       tempRelays.map((relay, index) =>
         validateRelayUrl(
@@ -171,9 +172,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         )
       )
     );
-  };
+  }, [tempRelays]);
 
-  const handleSaveAll = () => {
+  const handleSaveAll = useCallback(() => {
     const result = validateAllRelays();
 
     match<string[], RelayValidationError, void>(
@@ -203,7 +204,21 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         setValidationErrors(newErrors);
       }
     )(result);
-  };
+  }, [validateAllRelays, tempRelays, onClose]);
+
+  const registerShortcut = useKeyboardShortcutsStore(s => s.registerShortcut);
+  const unregisterShortcut = useKeyboardShortcutsStore(s => s.unregisterShortcut);
+
+  useEffect(() => {
+    if (isOpen) {
+      registerShortcut('ctrl+s', 'Save settings', handleSaveAll);
+      registerShortcut('meta+s', 'Save settings', handleSaveAll);
+      return () => {
+        unregisterShortcut('ctrl+s');
+        unregisterShortcut('meta+s');
+      };
+    }
+  }, [isOpen, handleSaveAll, registerShortcut, unregisterShortcut]);
 
   if (!isOpen) return null;
 

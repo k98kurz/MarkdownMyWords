@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   useParams,
   useNavigate,
@@ -8,6 +8,7 @@ import {
 } from 'react-router-dom';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useAuthStore } from '@/stores/authStore';
+import { useKeyboardShortcutsStore } from '@/stores/keyboardShortcutsStore';
 import { EditorArea } from '@/components/EditorArea';
 import { ConfirmModal } from '@/components/ConfirmModal';
 import { SharingModal } from '@/components/SharingModal';
@@ -40,6 +41,9 @@ export function DocumentEditor() {
     clearError: clearDocError,
     getDocumentKey,
   } = useDocumentStore();
+
+  const registerShortcut = useKeyboardShortcutsStore(s => s.registerShortcut);
+  const unregisterShortcut = useKeyboardShortcutsStore(s => s.unregisterShortcut);
 
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -155,7 +159,7 @@ export function DocumentEditor() {
     URL.revokeObjectURL(url);
   };
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     clearDocError();
 
     if (docId && docId !== 'new') {
@@ -185,7 +189,7 @@ export function DocumentEditor() {
       setCameFromNewDoc(true);
       navigate(`/doc/${currentUserPub}/${result.data.id}`);
     }
-  };
+  }, [clearDocError, docId, updateDocument, title, content, tags, clearDocumentMetadata, createDocument, isPublic, currentUserPub, navigate]);
 
   const handleShareClick = async () => {
     if (!currentDocument) return;
@@ -238,6 +242,19 @@ export function DocumentEditor() {
       handleBackwardNavigation();
     }
   };
+
+  const canEdit = !userPub || userPub === currentUserPub;
+
+  useEffect(() => {
+    if (canEdit) {
+      registerShortcut('ctrl+s', 'Save document', handleSave);
+      registerShortcut('meta+s', 'Save document', handleSave);
+      return () => {
+        unregisterShortcut('ctrl+s');
+        unregisterShortcut('meta+s');
+      };
+    }
+  }, [canEdit, handleSave, registerShortcut, unregisterShortcut]);
 
   if (docId && loadingDocId === docId && !currentDocument && !viewError) {
     return (
@@ -319,8 +336,6 @@ export function DocumentEditor() {
       </div>
     );
   }
-
-  const canEdit = !userPub || userPub === currentUserPub;
 
   if (!canEdit && !viewError && currentDocument) {
     return (

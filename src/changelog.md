@@ -1,3 +1,9 @@
+## 2026-05-11
+
+- Implemented global keyboard shortcuts system with extensible architecture
+- Fixed Ctrl+S to save document regardless of which input has focus (editor, title, tags)
+- Added Ctrl+S support to Settings modal and Sharing modal
+
 ## 2026-03-06
 
 - Slightly improved UX for document list and editor on mobile:

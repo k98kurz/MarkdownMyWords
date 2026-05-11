@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Routes, Route, useLocation, Link } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
+import { useKeyboardShortcutsStore } from './stores/keyboardShortcutsStore';
 import { AuthModal } from './components/AuthModal';
 import { AuthComponent } from './components/AuthComponent';
 import { SettingsModal } from './components/SettingsModal';
@@ -67,6 +68,15 @@ function AppContent() {
       setAppWidth('80rem');
     }
   }, [isAuthenticated, setAppWidth]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      useKeyboardShortcutsStore.getState().handleEvent(e);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   return (
     <div

@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import { Label } from './ui/Label';
 import { useDocumentStore } from '@/stores/documentStore';
 import { encryptionService } from '@/services/encryptionService';
+import { useKeyboardShortcutsStore } from '@/stores/keyboardShortcutsStore';
 
 interface SharingModalProps {
   isOpen: boolean;
@@ -48,7 +49,11 @@ export function SharingModal({
   const keyChanged = !currentIsPublic && keyInput !== currentKey;
   const hasChanges = privacyChanged || keyChanged;
 
-  const handleApplyChanges = async () => {
+  const handleApplyChanges = useCallback(async () => {
+    if (!hasChanges) {
+      return;
+    }
+
     setError(null);
 
     setIsLoading(true);
@@ -93,7 +98,7 @@ export function SharingModal({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [setError, setIsLoading, selectedPrivacy, currentIsPublic, keyInput, keyChanged, docId, hasChanges]);
 
   const handleGenerateKey = async () => {
     try {
@@ -148,6 +153,20 @@ export function SharingModal({
 
     fetchCurrentKey();
   }, [docId, currentIsPublic, isOpen]);
+
+  const registerShortcut = useKeyboardShortcutsStore(s => s.registerShortcut);
+  const unregisterShortcut = useKeyboardShortcutsStore(s => s.unregisterShortcut);
+
+  useEffect(() => {
+    if (isOpen) {
+      registerShortcut('ctrl+s', 'Apply changes', handleApplyChanges);
+      registerShortcut('meta+s', 'Apply changes', handleApplyChanges);
+      return () => {
+        unregisterShortcut('ctrl+s');
+        unregisterShortcut('meta+s');
+      };
+    }
+  }, [isOpen, handleApplyChanges, registerShortcut, unregisterShortcut]);
 
   const handleCopyPath = async () => {
     setCopyError(null);
