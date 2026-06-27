@@ -447,16 +447,43 @@ export function DocumentList() {
                   </div>
                 </div>
               ) : metadataErrors.has(doc.docId) ? (
-                <div className="flex min-w-0 flex-1">
-                  <div className="flex items-center gap-3">
-                    <strong className="text-rose-500 text-sm">
-                      Error loading doc metadata
-                    </strong>
-                    <span className="text-muted-foreground/50 text-sm">
-                      {new Date(doc.updatedAt).toLocaleDateString()}
-                    </span>
+                <>
+                  <div className="flex min-w-0 flex-1 flex-col sm:flex-1">
+                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3 md:mb-2">
+                      <strong className="text-rose-500 text-sm">
+                        Error loading doc metadata
+                      </strong>
+                      <span className="text-muted-foreground/50 text-sm">
+                        {new Date(doc.updatedAt).toLocaleDateString()}
+                      </span>
+                    </div>
                   </div>
-                </div>
+
+                  <div className="flex gap-2 ml-0 flex-col w-full sm:flex-row sm:ml-4 sm:w-auto">
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      className="w-full sm:w-auto order-last sm:order-none"
+                      onClick={() => handleDelete(doc.docId)}
+                    >
+                      Delete
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="w-full sm:w-auto"
+                      onClick={() => handleShareClick(doc.docId)}
+                    >
+                      Sharing/Privacy
+                    </Button>
+                    <Link
+                      to={`/doc/${currentUserPub}/${doc.docId}`}
+                      className="inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover hover:text-primary-hover-text bg-primary order-first sm:order-none"
+                    >
+                      Open
+                    </Link>
+                  </div>
+                </>
               ) : (
                 <>
                   <div className="flex min-w-0 flex-1 flex-col sm:flex-1">
