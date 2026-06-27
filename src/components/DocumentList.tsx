@@ -67,22 +67,20 @@ export function DocumentList() {
     async (docId: string) => {
       setLoadingMetadata((prev: Set<string>) => new Set(prev).add(docId));
 
-      try {
-        const result = await getDocumentMetadata(docId);
+      const result = await getDocumentMetadata(docId);
 
-        if (result.success && result.data) {
-          setLoadedMetadata(docId);
-          setDocumentMetadata(docId, result.data);
-        }
-      } catch {
+      if (result.success && result.data) {
+        setLoadedMetadata(docId);
+        setDocumentMetadata(docId, result.data);
+      } else {
         setMetadataErrors((prev: Set<string>) => new Set(prev).add(docId));
-      } finally {
-        setLoadingMetadata((prev: Set<string>) => {
-          const newSet = new Set(prev);
-          newSet.delete(docId);
-          return newSet;
-        });
       }
+
+      setLoadingMetadata((prev: Set<string>) => {
+        const newSet = new Set(prev);
+        newSet.delete(docId);
+        return newSet;
+      });
     },
     [getDocumentMetadata, setLoadedMetadata, setDocumentMetadata]
   );
@@ -156,6 +154,12 @@ export function DocumentList() {
     loadingMetadataRef.current = loadingMetadata;
   }, [loadingMetadata]);
 
+  const metadataErrorsRef = useRef(metadataErrors);
+
+  useEffect(() => {
+    metadataErrorsRef.current = metadataErrors;
+  }, [metadataErrors]);
+
   useEffect(() => {
     if (observerRef.current) {
       observerRef.current.disconnect();
@@ -168,10 +172,12 @@ export function DocumentList() {
             const docId = entry.target.getAttribute('data-doc-id');
             const currentLoadedMetadata = loadedMetadataRef.current;
             const currentLoadingMetadata = loadingMetadataRef.current;
+            const currentMetadataErrors = metadataErrorsRef.current;
             if (
               docId &&
               !currentLoadedMetadata.has(docId) &&
-              !currentLoadingMetadata.has(docId)
+              !currentLoadingMetadata.has(docId) &&
+              !currentMetadataErrors.has(docId)
             ) {
               loadDocumentMetadata(docId);
             }

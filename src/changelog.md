@@ -1,3 +1,7 @@
+## 2026-06-27
+
+- Fixed bug where failure to load metadata for a doc caused it to flash forever
+
 ## 2026-05-11
 
 - Implemented global keyboard shortcuts system with extensible architecture
