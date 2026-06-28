@@ -15,7 +15,7 @@ import { testFunctionalResult } from './test/functionalResult.test';
 import { printTestSummary, type TestSuiteResult } from './dev/testRunner';
 import { testNewGunSEAScheme } from './test/testNewGunSEAScheme';
 import { testDocumentStore } from './test/documentStore.test';
-import { clearGunDBLocalStorage } from './dev/clearGunDB';
+import { clearHolsterStorage } from './dev/clearHolsterStorage';
 import { listUsers } from './dev/consoleTools';
 import { useConnectionStore } from './stores/connectionStore';
 
@@ -23,7 +23,7 @@ import { useConnectionStore } from './stores/connectionStore';
 async function initializeServices() {
   try {
     gunService.initialize();
-    console.log('✅ GunDB initialized');
+    console.log('✅ Holster initialized');
 
     const seaResult = await encryptionService.initializeSEA();
     if (seaResult.success) {
@@ -59,7 +59,7 @@ async function runAllTests(): Promise<void> {
 
     console.log('\n' + '='.repeat(60));
 
-    console.log('\n📦 Test Suite 2: GunDB Service\n');
+    console.log('\n📦 Test Suite 2: Holster Service\n');
     const gunResults = await testGunService();
     allSuiteResults.push(...gunResults);
 
@@ -111,14 +111,14 @@ if (
   win.testNewGunSEAScheme = testNewGunSEAScheme;
   win.testDocumentStore = testDocumentStore;
   win.runAllTests = runAllTests;
-  win.clearGunDB = clearGunDBLocalStorage;
+  win.clearHolsterStorage = clearHolsterStorage;
   win.gunService = gunService;
   win.listUsers = listUsers;
   console.log('🧪 Dev console functions available:');
   console.log(
     '   - window.testDocumentSizes() - Test encryption with various document sizes'
   );
-  console.log('   - window.testGunService() - Test GunDB service operations');
+    console.log('   - window.testGunService() - Test Holster service operations');
   console.log('   - window.testAuthStore() - Test authentication store');
   console.log(
     '   - window.testEncryptionService() - Test encryption service (full test suite)'
@@ -130,7 +130,7 @@ if (
     '   - window.testDocumentStore() - Test document store operations (full test suite)'
   );
   console.log('   - window.runAllTests() - Run all test suites');
-  console.log('   - window.clearGunDB(options) - Clear local GunDB storage');
+    console.log('   - window.clearHolsterStorage(options) - Clear local Holster storage');
   console.log(
     '   - window.listUsers(usernames) - List users by usernames array'
   );

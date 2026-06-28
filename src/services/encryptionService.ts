@@ -1,5 +1,4 @@
-import Gun from '@mblaney/holster/src/holster.js';
-import type { GunInstance } from '@/types/gun';
+import type { GunInstance, SEAInstance } from '@/types/gun';
 import { gunService } from '@/services/gunService';
 import { getUserSEA } from '@/misc/seaHelpers';
 import {
@@ -10,11 +9,6 @@ import {
   pipe,
   chain,
 } from '@/lib/functionalResult';
-
-/**
- * SEA instance type (from GunDB)
- */
-type SEA = typeof Gun.SEA;
 
 /**
  * Encrypted Document (for manual encryption fallback)
@@ -55,7 +49,7 @@ function createEncryptionError(
  * - Other: use GunDB/SEA automatic encryption for user data storage
  */
 class EncryptionService {
-  public sea: SEA | null = null;
+  public sea: SEAInstance | null = null;
   private gun: GunInstance | null = null;
   private isInitialized = false;
 
@@ -82,7 +76,7 @@ class EncryptionService {
         }
 
         this.gun = gunInstance;
-        this.sea = Gun.SEA;
+        this.sea = gunInstance.SEA;
 
         if (!this.sea) {
           throw new Error('SEA not available. Make sure gun/sea is imported.');

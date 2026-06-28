@@ -13,7 +13,7 @@ import {
   sleep,
 } from '@/dev/testRunner';
 import { isFailure, isSuccess } from '@/lib/functionalResult';
-import { clearGunDBLocalStorage } from '@/dev/clearGunDB';
+import { clearHolsterStorage } from '@/dev/clearHolsterStorage';
 import type { DocumentError, MinimalDocListItem } from '@/types/document';
 
 const TEST_USERNAME = 'testuser_doc_tests';
@@ -156,11 +156,8 @@ async function cleanupDocumentStore(): Promise<void> {
 async function setupTestUser(): Promise<void> {
   console.log('🔐 Setting up test user...');
 
-  await clearGunDBLocalStorage({
+  await clearHolsterStorage({
     logout: true,
-    clearIndexedDB: true,
-    clearLocalStorage: true,
-    clearSessionStorage: true,
   });
   await sleep(500);
 
@@ -196,11 +193,8 @@ async function cleanupTestUser(): Promise<void> {
     await sleep(500);
     console.log('  Logged out test user');
   }
-  await clearGunDBLocalStorage({
+  await clearHolsterStorage({
     logout: true,
-    clearIndexedDB: true,
-    clearLocalStorage: true,
-    clearSessionStorage: true,
   });
   console.log('  GunDB cleared');
 }
