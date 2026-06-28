@@ -1,5 +1,4 @@
-import Gun from 'gun';
-import 'gun/sea';
+import Gun from '@mblaney/holster/src/holster.js';
 import { gunService } from '@/services';
 
 /**

@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import type { IGunUserInstance } from 'gun/types';
+import type { GunUserNode } from '@/types/gun';
 import { Button } from './ui/Button';
 
 interface AuthComponentProps {
-  user: IGunUserInstance | null;
+  user: GunUserNode | null;
   username: string | null;
   onLogout: () => void;
   onLogin?: () => void;

@@ -2,14 +2,73 @@
  * GunDB Type Definitions
  *
  * Type definitions for GunDB nodes and operations used throughout the application.
+ * These types are compatible with both GunDB and Holster.
  */
 
-import type { IGunInstance } from 'gun/types';
+/**
+ * SEA Instance type
+ */
+export interface SEAInstance {
+  encrypt(
+    data: unknown,
+    pair: { epriv: string } | string
+  ): Promise<string>;
+  decrypt<T = any>(
+    message: string,
+    pair: { epriv: string } | string
+  ): Promise<T>;
+  secret(
+    key: string | { epub: string },
+    pair: { epriv: string; epub: string }
+  ): Promise<string | undefined>;
+  pair(): Promise<{ epriv: string; epub: string; priv: string; pub: string }>;
+  work(
+    data: unknown,
+    salt?: unknown,
+    callback?: unknown
+  ): Promise<string | undefined>;
+  sign(
+    data: unknown,
+    pair: { priv: string; pub: string }
+  ): Promise<string>;
+  verify<T = any>(
+    message: string,
+    pair: string | { pub: string }
+  ): Promise<T>;
+}
+
+/**
+ * GunDB/Holster Constructor type
+ */
+export interface GunConstructor {
+  (options?: Record<string, unknown>): GunInstance;
+  SEA: SEAInstance;
+}
+
+/**
+ * SEA Key Pair (matching GunDB ISEAPair and Holster UserPair)
+ */
+export interface ISEAPair {
+  /** private key for encryption */
+  epriv: string;
+  /** public key for encryption */
+  epub: string;
+  /** private key */
+  priv: string;
+  /** public key */
+  pub: string;
+}
 
 /**
  * GunDB instance type
+ * Compatible with both GunDB and Holster APIs
  */
-export type GunInstance = IGunInstance;
+export interface GunInstance {
+  get: (key: string) => GunNodeRef;
+  user: () => GunUserNode;
+  on: (event: string, callback: (peer: { url: string }) => void) => void;
+  opt: (config: { peers: string[] }) => void;
+}
 
 /**
  * User Profile
@@ -53,7 +112,14 @@ export interface User {
 /**
  * GunDB Node Reference
  */
-export type GunNodeRef = ReturnType<GunInstance['get']>;
+export interface GunNodeRef {
+  get: (key: string) => GunNodeRef;
+  put: (data: unknown, callback?: (ack: GunAck) => void) => GunNodeRef | void;
+  once: (callback: (data: unknown, key: string) => void) => GunNodeRef;
+  on: (callback: (data: unknown, key: string) => void) => GunNodeRef | void;
+  map: () => GunNodeRef;
+  off: (callback?: (data: unknown) => void) => GunNodeRef | void;
+}
 
 /**
  * GunDB Error Types
@@ -127,10 +193,13 @@ export interface GunUserSession {
  * GunDB user node with session state
  */
 export interface GunUserNode {
-  is: GunUserSession;
+  is?: GunUserSession;
+  _: {
+    sea: ISEAPair;
+  };
   get: (path: string) => GunNodeRef;
   put: (data: unknown, callback?: (ack: GunAck) => void) => void;
-  once: (callback: (data: unknown, key?: string) => void) => void;
+  once: (callback: (data: unknown, key: string) => void) => void;
   auth: (
     alias: string,
     password: string,
@@ -142,4 +211,5 @@ export interface GunUserNode {
     callback?: (ack: GunAck) => void
   ) => void;
   leave: () => void;
+  recall: (options?: { sessionStorage?: boolean }, callback?: (ack: unknown) => void) => void;
 }

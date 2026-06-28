@@ -13,9 +13,8 @@
  * await testNewGunSEAScheme()
  */
 
-import Gun from 'gun';
-import 'gun/sea';
-import type { ISEAPair } from 'gun/types';
+import Gun from '@mblaney/holster/src/holster.js';
+import type { ISEAPair } from '@/types/gun';
 import { gunService } from '@/services/gunService';
 import type { GunAck, GunInstance, GunNodeRef } from '@/types/gun';
 import { TestRunner, type TestSuiteResult } from '@/dev/testRunner';
