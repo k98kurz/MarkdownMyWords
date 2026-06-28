@@ -78,12 +78,24 @@ function transformGunError(error: unknown): GunError {
  * Default namespace: 'markdownmywords'
  */
 class GunService {
-  gun: GunInstance | null = null;
+  holster: GunInstance | null = null;
   isInitialized = false;
   appNamespace: string = 'markdownmywords';
   relays: Map<string, 'init' | 'connecting' | 'connected' | 'disconnected'> =
     new Map();
   peerConnectionTimes: Map<string, number> = new Map();
+
+  /**
+   * Convert HTTP/HTTPS URLs to WebSocket protocol for Holster
+   * Holster requires ws:// or wss:// protocol for peer connections
+   * @param url - URL to convert
+   * @returns URL with WebSocket protocol
+   */
+  private convertToWebSocketUrl(url: string): string {
+    return url.replace(/^https?:\/\//, (match) =>
+      match === 'https://' ? 'wss://' : 'ws://'
+    );
+  }
 
   /**
    * Get default relay URL based on environment
@@ -97,12 +109,12 @@ class GunService {
   }
 
   /**
-   * Initialize GunDB client
-   * @param config - Additional GunDB configuration
+   * Initialize Holster client
+   * @param config - Additional Holster configuration
    */
   initialize(config?: GunConfig): void {
     if (this.isInitialized) {
-      console.warn('GunDB already initialized');
+      console.warn('Holster already initialized');
       return;
     }
 
@@ -112,44 +124,47 @@ class GunService {
 
       // Read relay settings from localStorage
       const relaySettings = localStorage.getItem('relaySettings');
-      const relayUrls: string[] = relaySettings
+      const rawRelayUrls: string[] = relaySettings
         ? JSON.parse(relaySettings)
         : [this.getDefaultRelay()];
+
+      // Convert all relay URLs to WebSocket protocol
+      const relayUrls = rawRelayUrls.map(url =>
+        this.convertToWebSocketUrl(url)
+      );
 
       // Initialize all relays as connecting
       relayUrls.forEach(url => {
         this.relays.set(url, 'init');
       });
 
-      console.log('[DEBUG] Initializing GunDB with relays:', relayUrls);
+      console.log('[DEBUG] Initializing Holster with relays:', relayUrls);
 
-      const gunConfig: {
+      const holsterConfig: {
         peers: string[];
-        localStorage?: boolean;
-        radisk?: boolean;
+        indexedDB?: boolean;
       } = {
         peers: relayUrls,
-        localStorage: config?.localStorage ?? true,
-        radisk: config?.radisk ?? true, // Enable IndexedDB storage
+        indexedDB: true,
       };
 
-      this.gun = Gun(gunConfig) as GunInstance;
+      this.holster = Gun(holsterConfig) as GunInstance;
 
       // Set up connection state monitoring
       console.log(
-        '[DEBUG] Initializing GunDB - calling setupConnectionMonitoring()'
+        '[DEBUG] Initializing Holster - calling setupConnectionMonitoring()'
       );
       this.setupConnectionMonitoring();
 
       this.isInitialized = true;
-      console.log('GunDB initialized successfully', {
+      console.log('Holster initialized successfully', {
         relayUrls,
         appNamespace: this.appNamespace,
       });
     } catch (error) {
       const gunError: GunError = {
         code: GunErrorCode.INIT_FAILED,
-        message: 'Failed to initialize GunDB',
+        message: 'Failed to initialize Holster',
         details: error,
       };
       throw gunError;
@@ -182,9 +197,9 @@ class GunService {
    */
   setupConnectionMonitoring(): boolean {
     console.log('[DEBUG] setupConnectionMonitoring() called', this.relays);
-    if (!this.gun) {
+    if (!this.holster) {
       console.log(
-        '[DEBUG] setupConnectionMonitoring() - no gun instance, returning'
+        '[DEBUG] setupConnectionMonitoring() - no holster instance, returning'
       );
       return false;
     }
@@ -215,7 +230,7 @@ class GunService {
 
     const timeouts = new Map<string, number>();
 
-    this.gun.on('hi', peer => {
+    this.holster.on('hi', peer => {
       console.log('[DEBUG] hi event fired, peer:', peer);
       if (peer.url && this.relays.has(peer.url)) {
         this.relays.set(peer.url, 'connected');
@@ -227,15 +242,15 @@ class GunService {
           timeouts.delete(peer.url);
         }
 
-        console.log(`GunDB peer connected: ${peer.url}`);
+        console.log(`Holster peer connected: ${peer.url}`);
       }
     });
 
-    this.gun.on('bye', peer => {
+    this.holster.on('bye', peer => {
       console.log('[DEBUG] bye event fired, peer:', peer);
       if (peer.url && this.relays.has(peer.url)) {
         this.relays.set(peer.url, 'disconnected');
-        console.log(`GunDB peer disconnected: ${peer.url}`);
+        console.log(`Holster peer disconnected: ${peer.url}`);
       }
     });
 
@@ -261,17 +276,17 @@ class GunService {
   }
 
   /**
-   * Get GunDB instance
-   * @throws {GunError} If GunDB is not initialized
+   * Get Holster instance
+   * @throws {GunError} If Holster is not initialized
    */
   getGun(): GunInstance {
-    if (!this.gun || !this.isInitialized) {
+    if (!this.holster || !this.isInitialized) {
       throw {
         code: GunErrorCode.INIT_FAILED,
-        message: 'GunDB not initialized. Call initialize() first.',
+        message: 'Holster not initialized. Call initialize() first.',
       } as GunError;
     }
-    return this.gun;
+    return this.holster;
   }
 
   /**
@@ -302,13 +317,13 @@ class GunService {
   }
 
   /**
-   * Update GunDB configuration with new relay list
+   * Update Holster configuration with new relay list
    * @param relayUrls - Array of relay URLs to connect to
    */
   updateRelays(relayUrls: string[]): void {
     console.log('[DEBUG] updateRelays() called with:', relayUrls);
-    if (!this.gun) {
-      console.log('[DEBUG] updateRelays() - no gun instance, returning');
+    if (!this.holster) {
+      console.log('[DEBUG] updateRelays() - no holster instance, returning');
       return;
     }
 
@@ -328,18 +343,18 @@ class GunService {
       }
     }
 
-    // Save to localStorage
+    // Save to localStorage (already in ws:// format)
     this.saveRelaySettings(relayUrls);
 
     // Restart connection monitoring (set up hi/bye listeners BEFORE connecting)
     if (!this.setupConnectionMonitoring()) {
-      console.log('[DEBUG] Skipping redundant call to gun.opt()');
+      console.log('[DEBUG] Skipping redundant call to holster.opt()');
       return;
     }
 
-    // Use GunDB's opt() method to update peers dynamically
-    console.log('[DEBUG] Calling gun.opt() with peers:', relayUrls);
-    this.gun.opt({ peers: relayUrls });
+    // Use Holster's opt() method to update peers dynamically
+    console.log('[DEBUG] Calling holster.opt() with peers:', relayUrls);
+    this.holster.opt({ peers: relayUrls });
   }
 
   /**
@@ -403,7 +418,7 @@ class GunService {
    * Check if service is initialized
    */
   isReady(): boolean {
-    return this.isInitialized && this.gun !== null;
+    return this.isInitialized && this.holster !== null;
   }
 
   /**
@@ -441,13 +456,13 @@ class GunService {
 
   /**
    * Write user profile for discovery by other users
-   * Stores the user's epub and username at their user node
+   * Stores the user's epub and username at their user node's profile sub-path
    * Reference: code_references/gundb.md:49-58
    */
   async writeProfile(): Promise<Result<void, GunError>> {
     return tryCatch<void, GunError>(async () => {
-      const gun = this.getGun();
-      const userNode = gun.user();
+      const holster = this.getGun();
+      const userNode = holster.user();
       const userState = userNode.is;
 
       if (!userState || !('epub' in userState) || !userState.epub) {
@@ -466,7 +481,7 @@ class GunService {
       }
 
       await new Promise<void>((resolve, reject) => {
-        userNode.put(profileData, (ack: GunAck) => {
+        userNode.get('profile').put(profileData, (ack: GunAck) => {
           if (ack.err) {
             reject(new Error(`Profile storage failed: ${ack.err}`));
           } else {
@@ -483,8 +498,8 @@ class GunService {
    */
   async readUsername(): Promise<Result<string, GunError>> {
     return tryCatch<string, GunError>(async () => {
-      const gun = this.getGun();
-      const userNode = gun.user();
+      const holster = this.getGun();
+      const userNode = holster.user();
       const userState = userNode.is;
 
       if (!userState || !userState.pub) {
@@ -495,9 +510,16 @@ class GunService {
       }
 
       const username = await new Promise<string>((resolve, reject) => {
-        gun.get(`~${userState.pub}`).once((data: unknown) => {
-          if (data && typeof data === 'object' && 'username' in data) {
-            resolve((data as { username: string }).username);
+        holster.get(`~${userState.pub}`).get((data: unknown) => {
+          if (
+            data &&
+            typeof data === 'object' &&
+            'profile' in data &&
+            data.profile &&
+            typeof data.profile === 'object' &&
+            'username' in data.profile
+          ) {
+            resolve((data.profile as { username: string }).username);
           } else {
             reject(new Error('Username not found in user profile'));
           }
@@ -519,13 +541,13 @@ class GunService {
     password: string
   ): Promise<Result<void, GunError>> {
     return tryCatch<void, GunError>(async () => {
-      if (!this.gun) {
-        throw createGunError(GunErrorCode.INIT_FAILED, 'GunDB not initialized');
+      if (!this.holster) {
+        throw createGunError(GunErrorCode.INIT_FAILED, 'Holster not initialized');
       }
 
       await new Promise<void>((resolve, reject) => {
-        const gun = this.gun!;
-        gun.user().create(username, password, ack => {
+        const holster = this.holster!;
+        holster.user().create(username, password, ack => {
           if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
             reject(new Error(`User creation failed: ${String(ack.err)}`));
           } else {
@@ -548,13 +570,13 @@ class GunService {
     password: string
   ): Promise<Result<void, GunError>> {
     return tryCatch<void, GunError>(async () => {
-      if (!this.gun) {
-        throw createGunError(GunErrorCode.INIT_FAILED, 'GunDB not initialized');
+      if (!this.holster) {
+        throw createGunError(GunErrorCode.INIT_FAILED, 'Holster not initialized');
       }
 
       await new Promise<void>((resolve, reject) => {
-        const gun = this.gun!;
-        gun.user().auth(username, password, ack => {
+        const holster = this.holster!;
+        holster.user().auth(username, password, ack => {
           if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
             reject(new Error(`Authentication failed: ${String(ack.err)}`));
           } else {
@@ -575,20 +597,42 @@ class GunService {
     username: string
   ): Promise<Result<DiscoveredUser[], GunError>> {
     return tryCatch<DiscoveredUser[], GunError>(async () => {
-      const gun = this.getGun();
+      const holster = this.getGun();
       const profiles = await new Promise<DiscoveredUser[]>(resolve => {
-        const collectedProfiles: DiscoveredUser[] = [];
-        setTimeout(() => resolve(collectedProfiles), 500);
-
-        gun
+        holster
           .get(`~@${username}`)
-          .map()
-          .once((data: unknown, pub: string) => {
-            if (!data) return;
-            const cleanPub = pub.startsWith('~') ? pub.slice(1) : pub;
-            gun.get(`~${cleanPub}`).once((userNode: unknown) => {
-              collectedProfiles.push({ pub: cleanPub, data, userNode });
-            });
+          .get((data: unknown) => {
+            if (!data || typeof data !== 'object') {
+              resolve([]);
+              return;
+            }
+
+            const entries = Object.entries(data || {})
+              .filter(([k, v]) => k !== '_' && v != null)
+              .map(([pub, profileData]) => ({
+                soul: pub,
+                data: profileData,
+              }));
+
+            const collectedProfiles: DiscoveredUser[] = [];
+
+            Promise.all(
+              entries.map(entry =>
+                new Promise<void>(resolveProfile => {
+                  const cleanPub = entry.soul.startsWith('~')
+                    ? entry.soul.slice(1)
+                    : entry.soul;
+                  holster.get(`~${cleanPub}`).get((userNode: unknown) => {
+                    collectedProfiles.push({
+                      pub: cleanPub,
+                      data: entry.data,
+                      userNode,
+                    });
+                    resolveProfile();
+                  });
+                })
+              )
+            ).then(() => resolve(collectedProfiles));
           });
       });
       return profiles;
@@ -605,26 +649,46 @@ class GunService {
     startNode?: GunNodeRef | GunUserNode
   ): Promise<Result<ListItemResult[], GunError>> {
     return tryCatch<ListItemResult[], GunError>(async () => {
-      const gun = this.getGun();
+      const holster = this.getGun();
       const items = await new Promise<ListItemResult[]>(resolve => {
-        const collectedItems: ListItemResult[] = [];
-        setTimeout(() => resolve(collectedItems), 500);
-
         const node = nodePath.reduce(
           (n, part) => (n as GunNodeRef).get(part),
-          startNode ?? gun
+          startNode ?? holster
         ) as GunNodeRef;
 
-        node.map().once((data: unknown, soul: string) => {
-          if (!data) return;
-          const cleanSoul = soul.startsWith('~') ? soul.slice(1) : soul;
-          gun.get(`~${cleanSoul}`).once((node: unknown) => {
-            const typedData: string | Record<string, unknown> =
-              typeof data === 'string'
-                ? data
-                : (data as Record<string, unknown>);
-            collectedItems.push({ soul: cleanSoul, data: typedData, node });
-          });
+        node.get((data: unknown) => {
+          if (!data || typeof data !== 'object') {
+            resolve([]);
+            return;
+          }
+
+          const entries = Object.entries(data || {})
+            .filter(([k, v]) => k !== '_' && v != null)
+            .map(([soul, data]) => ({ soul, data }));
+
+          const collectedItems: ListItemResult[] = [];
+
+          Promise.all(
+            entries.map(entry =>
+              new Promise<void>(resolveItem => {
+                const cleanSoul = entry.soul.startsWith('~')
+                  ? entry.soul.slice(1)
+                  : entry.soul;
+                holster.get(`~${cleanSoul}`).get((node: unknown) => {
+                  const typedData: string | Record<string, unknown> =
+                    typeof entry.data === 'string'
+                      ? entry.data
+                      : (entry.data as Record<string, unknown>);
+                  collectedItems.push({
+                    soul: cleanSoul,
+                    data: typedData,
+                    node,
+                  });
+                  resolveItem();
+                });
+              })
+            )
+          ).then(() => resolve(collectedItems));
         });
       });
       return items;
@@ -652,12 +716,12 @@ class GunService {
     plainPath: string
   ): Promise<Result<string, GunError>> {
     return tryCatch<string, GunError>(async () => {
-      const SEA = Gun.SEA;
+      const SEA = this.getGun().SEA;
       if (!SEA) {
         throw createGunError(GunErrorCode.MISC_ERROR, 'SEA not available');
       }
-      const gun = this.getGun();
-      const user = gun.user();
+      const holster = this.getGun();
+      const user = holster.user();
 
       if (
         !user._ ||
@@ -710,7 +774,7 @@ class GunService {
     plaintext: string
   ): Promise<Result<void, GunError>> {
     return tryCatch<void, GunError>(async () => {
-      const gun = this.getGun();
+      const holster = this.getGun();
       const privatePathResult = await this.getPrivatePath(plainPath);
       if (!privatePathResult.success) {
         throw privatePathResult.error;
@@ -719,19 +783,19 @@ class GunService {
 
       const node = privatePath.reduce(
         (path: unknown, part) => (path as GunNodeRef).get(part),
-        gun.user()
+        holster.user()
       ) as GunNodeRef;
 
       await new Promise<void>((resolve, reject) => {
-        const SEA = Gun.SEA;
-        const sea = getUserSEA(gun.user());
+        const SEA = holster.SEA;
+        const sea = getUserSEA(holster.user());
         if (!sea) {
           reject(new Error('User cryptographic keypair not available'));
           return;
         }
 
         SEA?.encrypt(plaintext, sea)
-          .then(ciphertext => {
+          .then((ciphertext: string | undefined) => {
             if (!ciphertext) {
               reject(new Error('SEA.encrypt failed: returned undefined'));
               return;
@@ -771,7 +835,7 @@ class GunService {
     hashedPath?: string[]
   ): Promise<Result<string, GunError>> {
     return tryCatch<string, GunError>(async () => {
-      const gun = this.getGun();
+      const holster = this.getGun();
       const pathResult = await this.getPrivatePath(plainPath);
       if (!pathResult.success) {
         throw pathResult.error;
@@ -780,11 +844,11 @@ class GunService {
 
       const node = path.reduce(
         (p: unknown, part) => (p as GunNodeRef).get(part),
-        gun.user()
+        holster.user()
       ) as GunNodeRef;
 
       const plaintext = await new Promise<string>((resolve, reject) => {
-        const sea = getUserSEA(gun.user());
+        const sea = getUserSEA(holster.user());
         if (!sea) {
           reject(new Error('User cryptographic keypair not available'));
           return;
@@ -799,7 +863,7 @@ class GunService {
               new Error('Private data not found or could not be decrypted')
             );
           } else {
-            const SEA = Gun.SEA;
+            const SEA = holster.SEA;
             const plaintext = await SEA?.decrypt(ciphertext as string, sea);
             resolve(plaintext);
           }
@@ -821,13 +885,13 @@ class GunService {
     fields: string[]
   ): Promise<Result<Record<string, string>[], GunError>> {
     return tryCatch<Record<string, string>[], GunError>(async () => {
-      const gun = this.getGun();
+      const holster = this.getGun();
       const privatePathResult = await this.getPrivatePath(plainPath);
       if (!privatePathResult.success) {
         throw privatePathResult.error;
       }
       const privatePath = privatePathResult.data;
-      const user = gun.user();
+      const user = holster.user();
       let privateNode: unknown = user;
       for (const part of privatePath) {
         const getNode = (privateNode as Record<string, unknown>).get as (
@@ -837,18 +901,17 @@ class GunService {
       }
 
       const keys: string[] = await new Promise<string[]>(resolve => {
-        const collectedKeys: string[] = [];
-        setTimeout(() => resolve(collectedKeys), 500);
-
-        const mapNode = privateNode as {
-          map: () => {
-            once: (cb: (data: unknown, key: string) => void) => void;
-          };
-        };
-        mapNode.map().once((_data: unknown, key: string) => {
-          if (key) {
-            collectedKeys.push(key);
+        const getNode = (privateNode as Record<string, unknown>).get as (
+          callback: (data: unknown) => void
+        ) => void;
+        getNode((data: unknown) => {
+          if (!data || typeof data !== 'object') {
+            resolve([]);
+            return;
           }
+
+          const nodeKeys = Object.keys(data || {}).filter(k => k !== '_' && (data as Record<string, unknown>)[k] != null);
+          resolve(nodeKeys);
         });
       });
 
@@ -897,7 +960,7 @@ class GunService {
     plainPath: string[]
   ): Promise<Result<void, GunError>> {
     return tryCatch<void, GunError>(async () => {
-      const gun = this.getGun();
+      const holster = this.getGun();
       const privatePathResult = await this.getPrivatePath(plainPath);
       if (!privatePathResult.success) {
         throw privatePathResult.error;
@@ -906,7 +969,7 @@ class GunService {
 
       const node = privatePath.reduce(
         (path: unknown, part) => (path as GunNodeRef).get(part),
-        gun.user()
+        holster.user()
       ) as GunNodeRef;
 
       await new Promise<void>((resolve, reject) => {

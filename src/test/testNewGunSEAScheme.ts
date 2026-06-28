@@ -216,7 +216,7 @@ async function readPrivateData(
 /**
  * Read private structured data (like contacts) by iterating keys and accessing fields
  * Unlike discoverUsers which reads unencrypted data, here we must:
- * 1. First get the keys from .map() (hashed usernames)
+ * 1. First get the keys from .get() + Object.entries() (hashed usernames)
  * 2. Then access each field at plainPath + [key] + [fieldName]
  */
 async function readPrivateMap(
@@ -230,15 +230,14 @@ async function readPrivateMap(
     gun.user()
   ) as GunNodeRef;
 
-  // First, collect all keys from map
   const keys: string[] = await new Promise<string[]>(resolve => {
-    const collectedKeys: string[] = [];
-    setTimeout(() => resolve(collectedKeys), 500);
-
-    privateNode.map().once((_data: unknown, key: string) => {
-      if (key) {
-        collectedKeys.push(key);
+    privateNode.get((data: unknown) => {
+      if (!data || typeof data !== 'object') {
+        resolve([]);
+        return;
       }
+      const nodeKeys = Object.keys(data || {}).filter(k => k !== '_' && (data as Record<string, unknown>)[k] != null);
+      resolve(nodeKeys);
     });
   });
 
@@ -248,7 +247,7 @@ async function readPrivateMap(
     try {
       const record: Record<string, string> = {};
       for (const fieldName of fields) {
-        // privatePath is already hashed, key from map() is hashed, only fieldName needs hashing
+      // privatePath is already hashed, key is from .get() + Object.entries(), only fieldName needs hashing
         const fieldNameHash = await getPrivatePathPart(gun, fieldName);
         const fullHashedPath = [...privatePath, key, fieldNameHash];
         const fieldValue = await readPrivateData(gun, [], fullHashedPath);
@@ -289,24 +288,21 @@ async function discoverUsers(
   username: string
 ): Promise<{ pub: string; data: unknown; userNode: unknown }[]> {
   return new Promise(resolve => {
-    const collectedProfiles: {
-      pub: string;
-      data: unknown;
-      userNode: unknown;
-    }[] = [];
-    // wait 500 ms to read them all from the local db
-    setTimeout(() => resolve(collectedProfiles), 500);
+    gun.get(`~@${username}`).get((data: unknown) => {
+      if (!data || typeof data !== 'object') {
+        resolve([]);
+        return;
+      }
 
-    gun
-      .get(`~@${username}`)
-      .map()
-      .once((data: unknown, pub: string) => {
-        if (!data) return;
-        const cleanPub = pub.startsWith('~') ? pub.slice(1) : pub;
-        gun.get(`~${cleanPub}`).once((userNode: unknown) => {
-          collectedProfiles.push({ pub: cleanPub, data, userNode });
+      const profiles = Object.entries(data || {})
+        .filter(([key]) => key !== '_' && key.startsWith('~'))
+        .map(([key, value]) => {
+          const cleanPub = key.startsWith('~') ? key.slice(1) : key;
+          return { pub: cleanPub, data: value, userNode: undefined as unknown };
         });
-      });
+
+      resolve(profiles);
+    });
   });
 }
 

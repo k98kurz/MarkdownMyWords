@@ -68,6 +68,7 @@ export interface GunInstance {
   user: () => GunUserNode;
   on: (event: string, callback: (peer: { url: string }) => void) => void;
   opt: (config: { peers: string[] }) => void;
+  SEA: SEAInstance;
 }
 
 /**
@@ -113,11 +114,10 @@ export interface User {
  * GunDB Node Reference
  */
 export interface GunNodeRef {
-  get: (key: string) => GunNodeRef;
+  get: ((key: string) => GunNodeRef) & ((callback: (data: unknown) => void) => void);
   put: (data: unknown, callback?: (ack: GunAck) => void) => GunNodeRef | void;
   once: (callback: (data: unknown, key: string) => void) => GunNodeRef;
   on: (callback: (data: unknown, key: string) => void) => GunNodeRef | void;
-  map: () => GunNodeRef;
   off: (callback?: (data: unknown) => void) => GunNodeRef | void;
 }
 
