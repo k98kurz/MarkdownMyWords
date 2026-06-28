@@ -1,6 +1,5 @@
-import Gun from 'gun';
-import 'gun/sea';
-import type { IGunInstance } from 'gun/types';
+import Gun from '@mblaney/holster/src/holster.js';
+import type { GunInstance } from '@/types/gun';
 import { gunService } from '@/services/gunService';
 import { getUserSEA } from '@/misc/seaHelpers';
 import {
@@ -57,7 +56,7 @@ function createEncryptionError(
  */
 class EncryptionService {
   public sea: SEA | null = null;
-  private gun: IGunInstance | null = null;
+  private gun: GunInstance | null = null;
   private isInitialized = false;
 
   /**

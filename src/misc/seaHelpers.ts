@@ -1,10 +1,10 @@
 /**
- * SEA Helper Utilities
- *
  * Type-safe utilities for working with GunDB SEA encryption.
  */
 
-import type { ISEAPair } from 'gun/types';
+import type { ISEAPair } from '@/types/gun';
+
+export type { ISEAPair };
 
 /**
  * Extract SEA keypair from GunDB user node

@@ -5,10 +5,7 @@
  * user management, and some read/write methods.
  */
 
-import Gun from 'gun';
-import 'gun/sea'; // GunDB SEA for encryption
-import 'gun/lib/radix'; // Radix for storage
-import 'gun/lib/radisk'; // Radisk for IndexedDB
+import Gun from '@mblaney/holster/src/holster.js';
 import { retryWithBackoff } from '@/lib/retry';
 import { getUserSEA } from '@/misc/seaHelpers';
 import {
@@ -19,9 +16,15 @@ import {
   failure,
   success,
 } from '@/lib/functionalResult';
-import type { GunInstance, GunConfig, GunError } from '@/types/gun';
-import { GunErrorCode, GunNodeRef, GunAck } from '@/types/gun';
-import type { IGunUserInstance, ISEAPair } from 'gun/types';
+import type {
+  GunInstance,
+  GunConfig,
+  GunError,
+  GunUserNode,
+  GunAck,
+} from '@/types/gun';
+import { GunErrorCode, GunNodeRef } from '@/types/gun';
+import type { ISEAPair } from '@/misc/seaHelpers';
 
 export interface SEAUser {
   alias: string;
@@ -599,7 +602,7 @@ class GunService {
    */
   async listItems(
     nodePath: string[],
-    startNode?: GunNodeRef | IGunUserInstance
+    startNode?: GunNodeRef | GunUserNode
   ): Promise<Result<ListItemResult[], GunError>> {
     return tryCatch<ListItemResult[], GunError>(async () => {
       const gun = this.getGun();

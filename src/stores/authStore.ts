@@ -17,7 +17,7 @@ import {
   isFailure,
   type Result,
 } from '@/lib/functionalResult';
-import type { IGunUserInstance } from 'gun/types';
+import type { GunUserNode } from '@/types/gun';
 import { mermaidCache } from '@/lib/cache';
 
 // Replace all 'any' types with discriminated union
@@ -31,7 +31,7 @@ type AuthError =
 
 // Type-safe user object (replace 'any')
 interface AuthenticatedUser {
-  user: IGunUserInstance;
+  user: GunUserNode;
   pub: string;
 }
 
@@ -43,7 +43,7 @@ export type { AuthError, AuthenticatedUser };
 interface AuthState {
   // State - Replace 'any' with proper types
   username: string | null;
-  user: IGunUserInstance | null;
+  user: GunUserNode | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
