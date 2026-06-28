@@ -3,7 +3,7 @@ import http from 'http'
 
 const SHUTDOWN_TIMEOUT = 2000
 
-const PORT = process.env.PORT || process.env.GUN_PORT || 8765
+const PORT = process.env.GUN_PORT || 8765
 
 const server = http.createServer()
 Holster({ web: server, indexedDB: false })

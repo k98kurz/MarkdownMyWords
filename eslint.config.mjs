@@ -34,7 +34,7 @@ export default [
 
   // ES module files (override)
   {
-    files: ['railway-relay.js', 'postcss.config.js'],
+    files: ['railway-relay.js', 'holster-relay.js', 'postcss.config.js'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',

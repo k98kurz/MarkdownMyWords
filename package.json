@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "concurrently -n \"vite,relay\" -c \"blue,green\" \"npm run dev:server\" \"npm run dev:relay\"",
     "dev:server": "vite",
-    "dev:relay": "node gun-relay.cjs",
+    "dev:relay": "node holster-relay.js",
     "relay": "node railway-relay.js",
     "build": "tsc && vite build",
     "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
