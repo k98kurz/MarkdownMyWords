@@ -1,5 +1,10 @@
 # GunDB + SEA
 
+> **DEPRECATED**: This project has migrated from GunDB to Holster
+> (`@mblaney/holster`). Do not use this reference for new code — see
+> [`code_references/holster.md`](./holster.md) for the current, verified
+> Holster + SEA patterns. This file is retained for historical reference only.
+
 This has been an ordeal of constant hallucination and suffering. It is time to
 specify once and for all how exactly this library is supposed to be used.
 

@@ -30,18 +30,19 @@ function assert(condition: unknown, message: string): asserts condition {
 
 /**
  * Helper to safely access user's SEA key pair
- * GunDB stores SEA key pair in user._.sea, NOT in user.is
+ * Holster stores the SEA key pair directly on user.is (NOT in user._.sea)
  */
 function getUserSEA(user: unknown): ISEAPair | undefined {
   if (
     user &&
     typeof user === 'object' &&
-    '_' in user &&
-    user._ &&
-    typeof user._ === 'object' &&
-    'sea' in user._
+    'is' in user &&
+    user.is &&
+    typeof user.is === 'object' &&
+    'priv' in user.is &&
+    'epriv' in user.is
   ) {
-    return user._.sea as ISEAPair;
+    return user.is as ISEAPair;
   }
   return undefined;
 }
@@ -131,10 +132,11 @@ async function writePrivateData(
   plaintext: string
 ): Promise<void> {
   const privatePath = await getPrivatePath(gun, plainPath);
-  const node = privatePath.reduce(
-    (path: unknown, part) => (path as GunNodeRef).get(part),
-    gun.user()
-  ) as GunNodeRef;
+  const [first, ...rest] = privatePath;
+  let node: GunNodeRef = gun.user().get(first);
+  for (const part of rest) {
+    node = node.next(part);
+  }
   assert(!!node, 'no node!?!?');
   await new Promise<void>((resolve, reject) => {
     const seaPair = getUserSEA(gun.user());
@@ -173,12 +175,13 @@ async function readPrivateData(
   hashedPath?: string[]
 ): Promise<string> {
   const path = hashedPath || (await getPrivatePath(gun, plainPath));
-  const node = path.reduce(
-    (p: unknown, part) => (p as GunNodeRef).get(part),
-    gun.user()
-  ) as GunNodeRef;
+  const [first, ...rest] = path;
+  let node: GunNodeRef = gun.user().get(first);
+  for (const part of rest) {
+    node = node.next(part);
+  }
   return await new Promise<string>((resolve, reject) => {
-    node.once(async (ciphertext: unknown) => {
+    node.next(null, async (ciphertext: unknown) => {
       if (ciphertext === undefined) {
         reject(new Error('Private data not found or could not be decrypted'));
       } else {
@@ -225,13 +228,14 @@ async function readPrivateMap(
   fields: string[]
 ): Promise<Record<string, string>[]> {
   const privatePath = await getPrivatePath(gun, plainPath);
-  const privateNode = privatePath.reduce(
-    (path: unknown, part) => (path as GunNodeRef).get(part),
-    gun.user()
-  ) as GunNodeRef;
+  const [first, ...rest] = privatePath;
+  let privateNode: GunNodeRef = gun.user().get(first);
+  for (const part of rest) {
+    privateNode = privateNode.next(part);
+  }
 
   const keys: string[] = await new Promise<string[]>(resolve => {
-    privateNode.get((data: unknown) => {
+    privateNode.next(null, (data: unknown) => {
       if (!data || typeof data !== 'object') {
         resolve([]);
         return;
@@ -288,7 +292,7 @@ async function discoverUsers(
   username: string
 ): Promise<{ pub: string; data: unknown; userNode: unknown }[]> {
   return new Promise(resolve => {
-    gun.get(`~@${username}`).get((data: unknown) => {
+    gun.get(`~@${username}`, (data: unknown) => {
       if (!data || typeof data !== 'object') {
         resolve([]);
         return;
@@ -343,12 +347,12 @@ async function testUserCreationAndProfileStorage(
   const pair = getUserSEA(user);
   assert(pair && pair.epub, 'User SEA pair not available');
   const userSession = user.is;
-  if (!userSession || !userSession.alias || !userSession.pub) {
+  if (!userSession || !userSession.username || !userSession.pub) {
     throw new Error('User session not available');
   }
   assert(
-    userSession.alias == username,
-    `Alias issue: ${userSession.alias} != ${username}`
+    userSession.username == username,
+    `Username issue: ${userSession.username} != ${username}`
   );
 
   console.log(`   Storing profile in ~@${username}...`);
@@ -690,12 +694,13 @@ async function testPrivateDataEncryptionValidation(
   console.log(`   Hashed path: ${hashedPath.join(' -> ')}`);
 
   // Try to read raw encrypted data without decryption
-  const rawNode = hashedPath.reduce(
-    (node: unknown, part) => (node as GunNodeRef).get(part),
-    gun.user()
-  ) as GunNodeRef;
+  const [first, ...rest] = hashedPath;
+  let rawNode: GunNodeRef = gun.user().get(first);
+  for (const part of rest) {
+    rawNode = rawNode.next(part);
+  }
   const rawData = await new Promise(resolve => {
-    rawNode.once((data: unknown) => resolve(data));
+    rawNode.next(null, (data: unknown) => resolve(data));
   });
 
   console.log(`   Raw data: ${JSON.stringify(rawData)}`);

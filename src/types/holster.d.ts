@@ -13,7 +13,7 @@ interface SEAInstance {
     data: unknown,
     pair: { epriv: string } | string
   ): Promise<string>;
-  decrypt<T = any>(
+  decrypt<T = unknown>(
     message: string,
     pair: { epriv: string } | string
   ): Promise<T>;
@@ -31,7 +31,7 @@ interface SEAInstance {
     data: unknown,
     pair: { priv: string; pub: string }
   ): Promise<string>;
-  verify<T = any>(
+  verify<T = unknown>(
     message: string,
     pair: string | { pub: string }
   ): Promise<T>;
@@ -41,7 +41,7 @@ interface SEAInstance {
  * GunDB/Holster Constructor type
  */
 interface GunConstructor {
-  (options?: Record<string, unknown>): any;
+  (options?: Record<string, unknown>): unknown;
   SEA: SEAInstance;
 }
 

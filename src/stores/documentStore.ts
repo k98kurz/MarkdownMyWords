@@ -376,7 +376,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           }
         }
 
-        const docNode = userNode.get('docs').get(docId);
+        const docNode = userNode.get('docs').next(docId);
         const document: Partial<Document> = {
           id: docId,
           title: title,
@@ -437,10 +437,10 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       const result = (await tryCatch(async () => {
         const gun = gunService.getGun();
 
-        const docNode = gun.get(`~${userPub}`).get('docs').get(docId);
+        const docNode = gun.get(`~${userPub}`).next('docs').next(docId);
 
         const docData = await new Promise<unknown>((resolve, reject) => {
-          docNode.once((data: unknown) => {
+          docNode.next(null, (data: unknown) => {
             if (data === null || data === undefined) {
               reject(new Error('Document not found'));
             } else {
@@ -607,10 +607,10 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
         const gun = gunService.getGun();
         const userNode = gun.user();
-        const docNode = userNode.get('docs').get(docId);
+        const docNode = userNode.get('docs').next(docId);
 
         const docData = await new Promise<unknown>((resolve, reject) => {
-          docNode.once((data: unknown) => {
+          docNode.next(null, (data: unknown) => {
             if (data === null || data === undefined) {
               reject(new Error('Document not found'));
             } else {
@@ -820,10 +820,10 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       const result = (await tryCatch(async () => {
         const gun = gunService.getGun();
         const userNode = gun.user();
-        const docNode = userNode.get('docs').get(docId);
+        const docNode = userNode.get('docs').next(docId);
 
         const docData = await new Promise<unknown>((resolve, reject) => {
-          docNode.once((data: unknown) => {
+          docNode.next(null, (data: unknown) => {
             if (data === null || data === undefined) {
               reject(new Error('Document not found'));
             } else {
@@ -858,10 +858,11 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           if (!privatePathResult.success) {
             throw privatePathResult.error;
           }
-          const node = privatePathResult.data.reduce(
-            (n: unknown, part: string) => (n as GunNodeRef).get(part),
-            userNode
-          ) as GunNodeRef;
+          const [first, ...rest] = privatePathResult.data;
+          let node: GunNodeRef = userNode.get(first);
+          for (const part of rest) {
+            node = node.next(part);
+          }
 
           await new Promise<void>((resolve, reject) => {
             node.put(null, (ack: GunAck) => {
@@ -969,10 +970,10 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       const result = (await tryCatch(async () => {
         const gun = gunService.getGun();
         const userNode = gun.user();
-        const docNode = userNode.get('docs').get(docId);
+        const docNode = userNode.get('docs').next(docId);
 
         const docData = await new Promise<unknown>((resolve, reject) => {
-          docNode.once((data: unknown) => {
+          docNode.next(null, (data: unknown) => {
             if (data === null || data === undefined) {
               reject(new Error('Document not found'));
             } else {
@@ -1066,10 +1067,10 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       const result = (await tryCatch(async () => {
         const gun = gunService.getGun();
         const userNode = gun.user();
-        const docNode = userNode.get('docs').get(docId);
+        const docNode = userNode.get('docs').next(docId);
 
         const docData = await new Promise<unknown>((resolve, reject) => {
-          docNode.once((data: unknown) => {
+          docNode.next(null, (data: unknown) => {
             if (data === null || data === undefined) {
               reject(new Error('Document not found'));
             } else {
@@ -1146,7 +1147,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         const updatedAccess = [...currentAccess, newAccessEntry];
 
         const notification: SharedDocNotification = {
-          senderAlias: currentUser.alias,
+          senderAlias: currentUser.username,
           senderPub: currentUser.pub as string,
           senderEpub: currentUser.epub as string,
           docId,
@@ -1199,10 +1200,10 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       const result = (await tryCatch(async () => {
         const gun = gunService.getGun();
         const userNode = gun.user();
-        const docNode = userNode.get('docs').get(docId);
+        const docNode = userNode.get('docs').next(docId);
 
         const docData = await new Promise<unknown>((resolve, reject) => {
-          docNode.once((data: unknown) => {
+          docNode.next(null, (data: unknown) => {
             if (data === null || data === undefined) {
               reject(new Error('Document not found'));
             } else {
@@ -1267,10 +1268,10 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
         const gun = gunService.getGun();
         const userNode = gun.user();
-        const docNode = userNode.get('docs').get(docId);
+        const docNode = userNode.get('docs').next(docId);
 
         const docData = await new Promise<unknown>((resolve, reject) => {
-          docNode.once((data: unknown) => {
+          docNode.next(null, (data: unknown) => {
             if (data === null || data === undefined) {
               reject(new Error('Document not found'));
             } else {
@@ -1324,10 +1325,10 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
         const gun = gunService.getGun();
         const userNode = gun.user();
-        const docNode = userNode.get('docs').get(docId);
+        const docNode = userNode.get('docs').next(docId);
 
         const docData = await new Promise<unknown>((resolve, reject) => {
-          docNode.once((data: unknown) => {
+          docNode.next(null, (data: unknown) => {
             if (data === null || data === undefined) {
               reject(new Error('Document not found'));
             } else {
@@ -1474,10 +1475,10 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
         const gun = gunService.getGun();
         const userNode = gun.user();
-        const docNode = userNode.get('docs').get(docId);
+        const docNode = userNode.get('docs').next(docId);
 
         const docData = await new Promise<unknown>((resolve, reject) => {
-          docNode.once((data: unknown) => {
+          docNode.next(null, (data: unknown) => {
             if (data === null || data === undefined) {
               reject(new Error('Document not found'));
             } else {
@@ -1629,10 +1630,10 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
         const gun = gunService.getGun();
         const userNode = gun.user();
-        const docNode = userNode.get('docs').get(docId);
+        const docNode = userNode.get('docs').next(docId);
 
         const docData = await new Promise<unknown>((resolve, reject) => {
-          docNode.once((data: unknown) => {
+          docNode.next(null, (data: unknown) => {
             if (data === null || data === undefined) {
               reject(new Error('Document not found'));
             } else {

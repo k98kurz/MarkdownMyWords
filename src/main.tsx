@@ -29,7 +29,7 @@ async function initializeServices() {
     if (seaResult.success) {
       console.log('✅ SEA initialized');
     } else {
-      console.error('❌ Failed to initialize SEA:', seaResult.error);
+      throw new Error(`SEA initialization failed: ${JSON.stringify(seaResult.error)}`);
     }
 
     const updateConnectionStatus = () => {
@@ -41,10 +41,38 @@ async function initializeServices() {
     setInterval(updateConnectionStatus, 5000);
   } catch (error) {
     console.error('❌ Failed to initialize services:', error);
+    throw error;
   }
 }
 
-initializeServices();
+(async () => {
+  try {
+    await initializeServices();
+
+    createRoot(document.getElementById('root')!).render(
+      <StrictMode>
+        <PwaInstallProvider>
+          <BrowserRouter>
+            <PreferenceProvider>
+              <App />
+            </PreferenceProvider>
+          </BrowserRouter>
+        </PwaInstallProvider>
+      </StrictMode>
+    );
+  } catch (error) {
+    console.error('❌ Failed to initialize application:', error);
+    const rootElement = document.getElementById('root');
+    if (rootElement) {
+      rootElement.innerHTML = `
+        <div style="padding: 2rem; text-align: center;">
+          <h1 style="color: #e53e3e;">Initialization Failed</h1>
+          <p>Failed to initialize required services. Please check the console for details and refresh the page.</p>
+        </div>
+      `;
+    }
+  }
+})();
 
 async function runAllTests(): Promise<void> {
   console.log('🚀 Running All Tests\n');
@@ -135,15 +163,3 @@ if (
     '   - window.listUsers(usernames) - List users by usernames array'
   );
 }
-
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <PwaInstallProvider>
-      <BrowserRouter>
-        <PreferenceProvider>
-          <App />
-        </PreferenceProvider>
-      </BrowserRouter>
-    </PwaInstallProvider>
-  </StrictMode>
-);
