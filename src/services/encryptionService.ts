@@ -346,7 +346,7 @@ class EncryptionService {
             );
           }
 
-          const decrypted = await this.sea!.decrypt(
+          const decrypted = await this.sea!.decrypt<string>(
             encryptedData,
             sharedSecret
           );

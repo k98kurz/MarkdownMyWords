@@ -1,8 +1,17 @@
 /**
- * GunDB Type Definitions
+ * Holster Type Definitions
  *
- * Type definitions for GunDB nodes and operations used throughout the application.
- * These types are compatible with both GunDB and Holster.
+ * Type definitions for Holster nodes and operations used throughout the
+ * application. These mirror the actual Holster runtime API (see
+ * node_modules/@mblaney/holster/src/holster.js).
+ *
+ * CRITICAL: Holster's chain API is exactly `next`, `put`, `on`, `off`.
+ * There is no `.get(cb)` on chains and no `.once()` anywhere:
+ * - Start a chain from the root instance or user node with `.get(key)`
+ * - Extend a chain with `.next(key)`
+ * - Read the current chain node with `.next(null, cb)`
+ * - Read a child with `.next(key, cb)`
+ * - Root/user-level single reads use `.get(key, cb)`
  */
 
 /**
@@ -13,7 +22,7 @@ export interface SEAInstance {
     data: unknown,
     pair: { epriv: string } | string
   ): Promise<string>;
-  decrypt<T = any>(
+  decrypt<T = unknown>(
     message: string,
     pair: { epriv: string } | string
   ): Promise<T>;
@@ -31,7 +40,7 @@ export interface SEAInstance {
     data: unknown,
     pair: { priv: string; pub: string }
   ): Promise<string>;
-  verify<T = any>(
+  verify<T = unknown>(
     message: string,
     pair: string | { pub: string }
   ): Promise<T>;
@@ -60,13 +69,12 @@ export interface ISEAPair {
 }
 
 /**
- * GunDB instance type
- * Compatible with both GunDB and Holster APIs
+ * Holster instance type (root API)
  */
 export interface GunInstance {
-  get: (key: string) => GunNodeRef;
+  get: ((key: string) => GunNodeRef) &
+    ((key: string, callback: (data: unknown) => void) => void);
   user: () => GunUserNode;
-  on: (event: string, callback: (peer: { url: string }) => void) => void;
   opt: (config: { peers: string[] }) => void;
   SEA: SEAInstance;
 }
@@ -111,14 +119,18 @@ export interface User {
 }
 
 /**
- * GunDB Node Reference
+ * Holster Node Reference (chain API)
+ *
+ * Chains are started with `.get(key)` on a GunInstance or GunUserNode and
+ * extended with `.next(key)`. Reads happen via the `next` callback overloads.
  */
 export interface GunNodeRef {
-  get: ((key: string) => GunNodeRef) & ((callback: (data: unknown) => void) => void);
-  put: (data: unknown, callback?: (ack: GunAck) => void) => GunNodeRef | void;
-  once: (callback: (data: unknown, key: string) => void) => GunNodeRef;
-  on: (callback: (data: unknown, key: string) => void) => GunNodeRef | void;
-  off: (callback?: (data: unknown) => void) => GunNodeRef | void;
+  next: ((key: string) => GunNodeRef) &
+    ((key: string, callback: (data: unknown) => void) => void) &
+    ((key: null, callback: (data: unknown) => void) => void);
+  put: (data: unknown, callback?: (ack: GunAck) => void) => void;
+  on: (lex: unknown, callback: (data: unknown) => void) => void;
+  off: (callback?: (data: unknown) => void) => void;
 }
 
 /**
@@ -144,18 +156,15 @@ export interface GunError {
 }
 
 /**
- * GunDB Configuration
+ * Holster Configuration
  */
 export interface GunConfig {
-  relayUrl?: string;
   peers?: string[];
-  localStorage?: boolean;
-  radisk?: boolean;
+  indexedDB?: boolean;
   /**
    * Application namespace for collision avoidance.
-   * All GunDB paths will be prefixed with this namespace.
+   * All Holster paths will be prefixed with this namespace.
    * Default: 'markdownmywords'
-   * Example: With namespace 'markdownmywords', user paths become 'markdownmywords~user~{userId}'
    */
   appNamespace?: string;
 }
@@ -171,7 +180,7 @@ export type UserCallback = (user: User | null) => void;
 export type Unsubscribe = () => void;
 
 /**
- * GunDB acknowledgment from put/set operations
+ * Acknowledgment from put/set operations
  */
 export interface GunAck {
   err?: string | null;
@@ -180,26 +189,31 @@ export interface GunAck {
 }
 
 /**
- * GunDB user session state (gun.user().is)
+ * Holster user session state (holster.user().is)
+ *
+ * Holster stores the SEA key pair directly on the session (NOT under
+ * user._.sea like GunDB): auth() sets
+ * {username, pub, epub, priv, epriv}.
  */
 export interface GunUserSession {
-  alias?: string;
+  username?: string;
   pub?: string;
   epub?: string;
-  sea?: unknown;
+  priv?: string;
+  epriv?: string;
 }
 
 /**
- * GunDB user node with session state
+ * Holster user node with session state
+ *
+ * `user()` merges the user API with the chain API. Its `get` override
+ * behaves like the root `get` (chain start, or read with callback).
  */
 export interface GunUserNode {
   is?: GunUserSession;
-  _: {
-    sea: ISEAPair;
-  };
-  get: (path: string) => GunNodeRef;
+  get: ((key: string) => GunNodeRef) &
+    ((key: string, callback: (data: unknown) => void) => void);
   put: (data: unknown, callback?: (ack: GunAck) => void) => void;
-  once: (callback: (data: unknown, key: string) => void) => void;
   auth: (
     alias: string,
     password: string,
@@ -211,5 +225,5 @@ export interface GunUserNode {
     callback?: (ack: GunAck) => void
   ) => void;
   leave: () => void;
-  recall: (options?: { sessionStorage?: boolean }, callback?: (ack: unknown) => void) => void;
+  recall: () => void;
 }

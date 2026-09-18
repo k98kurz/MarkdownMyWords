@@ -1,7 +1,7 @@
 /**
- * GunDB Service
+ * Holster Service
  *
- * Service layer for GunDB operations including initialization,
+ * Service layer for Holster operations including initialization,
  * user management, and some read/write methods.
  */
 
@@ -24,7 +24,6 @@ import type {
   GunAck,
 } from '@/types/gun';
 import { GunErrorCode, GunNodeRef } from '@/types/gun';
-import type { ISEAPair } from '@/misc/seaHelpers';
 
 export interface SEAUser {
   alias: string;
@@ -71,10 +70,10 @@ function transformGunError(error: unknown): GunError {
 }
 
 /**
- * GunDB Service Class
+ * Holster Service Class
  *
- * All GunDB paths are namespaced with the app name to avoid collisions
- * when multiple applications share the same GunDB relay server.
+ * All Holster paths are namespaced with the app name to avoid collisions
+ * when multiple applications share the same Holster relay server.
  * Default namespace: 'markdownmywords'
  */
 class GunService {
@@ -84,6 +83,7 @@ class GunService {
   relays: Map<string, 'init' | 'connecting' | 'connected' | 'disconnected'> =
     new Map();
   peerConnectionTimes: Map<string, number> = new Map();
+  private connectionProbeInterval: number | null = null;
 
   /**
    * Convert HTTP/HTTPS URLs to WebSocket protocol for Holster
@@ -172,31 +172,67 @@ class GunService {
   }
 
   /**
-   * Gets a namespaced graph path to the node
-   * @param parts - array of path parts
-   * @returns Namespaced node
+   * Probe a single relay with a throwaway WebSocket connection.
+   * Holster does not expose peer connection events, so relay connectivity is
+   * determined by whether the relay's WebSocket endpoint is reachable.
    */
-  public getNodePath(...parts: string[]): GunNodeRef {
-    let node = this.getGun().get(this.appNamespace);
-    for (const p of parts) {
-      if (!p || p.length === 0) {
-        const gunError: GunError = {
-          code: GunErrorCode.INVALID_DATA,
-          message: 'Every path part must be non-empty string',
-          details: null,
-        };
-        throw gunError;
-      }
-      node = node.get(p);
+  private probeRelay(url: string): void {
+    if (!this.relays.has(url)) return;
+    if (this.relays.get(url) === 'init') {
+      this.relays.set(url, 'connecting');
     }
-    return node;
+
+    let opened = false;
+    const socket = new WebSocket(url);
+
+    const finish = (status: 'connected' | 'disconnected') => {
+      window.clearTimeout(timeout);
+      if (socket.readyState !== WebSocket.CLOSED) {
+        socket.close();
+      }
+      if (!this.relays.has(url)) return;
+      if (status === 'connected') {
+        this.relays.set(url, 'connected');
+        this.peerConnectionTimes.set(url, Date.now());
+      } else {
+        this.relays.set(url, 'disconnected');
+        this.peerConnectionTimes.delete(url);
+      }
+    };
+
+    const timeout = window.setTimeout(() => {
+      if (!opened) finish('disconnected');
+    }, 5000);
+
+    socket.onopen = () => {
+      opened = true;
+      finish('connected');
+      console.log(`Holster relay reachable: ${url}`);
+    };
+    socket.onclose = () => {
+      if (!opened) finish('disconnected');
+    };
+    socket.onerror = () => {
+      if (!opened) finish('disconnected');
+    };
+  }
+
+  /**
+   * Probe all configured relays
+   */
+  private probeAllRelays(): void {
+    this.relays.forEach((_, url) => this.probeRelay(url));
   }
 
   /**
    * Set up connection state monitoring
+   *
+   * Holster does not expose peer connection events (GunDB's 'hi'/'bye' do not
+   * exist in Holster), so relay connectivity is tracked with periodic
+   * WebSocket probes. Returns true when new relays were registered, allowing
+   * callers to skip redundant peer updates otherwise.
    */
   setupConnectionMonitoring(): boolean {
-    console.log('[DEBUG] setupConnectionMonitoring() called', this.relays);
     if (!this.holster) {
       console.log(
         '[DEBUG] setupConnectionMonitoring() - no holster instance, returning'
@@ -204,7 +240,6 @@ class GunService {
       return false;
     }
 
-    // If no relay is configured, always be in disconnected state
     if (this.relays.size === 0) {
       console.log(
         '[DEBUG] No relay configured - running in local-only mode, returning early'
@@ -212,65 +247,26 @@ class GunService {
       return false;
     }
 
-    // if all relays have been initialized, return
-    if (
-      !Object.values([...this.relays.values()]).some(value => value === 'init')
-    ) {
-      console.log('[DEBUG] No relays in init state; returning');
+    const hasNewRelays = [...this.relays.values()].some(v => v === 'init');
+    if (!hasNewRelays && this.connectionProbeInterval !== null) {
+      console.log('[DEBUG] No new relays to monitor; monitoring already active');
       return false;
     }
 
-    // Set all relays to connecting
-    this.relays.forEach((_, url) => {
-      this.relays.set(url, 'connecting');
-    });
-
-    console.log(`Connecting to ${this.relays.size} relay(s)`);
-    console.log('Configured relay URLs:', Array.from(this.relays.keys()));
-
-    const timeouts = new Map<string, number>();
-
-    this.holster.on('hi', peer => {
-      console.log('[DEBUG] hi event fired, peer:', peer);
-      if (peer.url && this.relays.has(peer.url)) {
-        this.relays.set(peer.url, 'connected');
-        this.peerConnectionTimes.set(peer.url, Date.now());
-
-        const timeout = timeouts.get(peer.url);
-        if (timeout) {
-          clearTimeout(timeout);
-          timeouts.delete(peer.url);
-        }
-
-        console.log(`Holster peer connected: ${peer.url}`);
-      }
-    });
-
-    this.holster.on('bye', peer => {
-      console.log('[DEBUG] bye event fired, peer:', peer);
-      if (peer.url && this.relays.has(peer.url)) {
-        this.relays.set(peer.url, 'disconnected');
-        console.log(`Holster peer disconnected: ${peer.url}`);
-      }
-    });
-
-    // Set connection timeout - 10 seconds for each relay
-    this.relays.forEach((_, url) => {
-      console.log('[DEBUG] Setting 10s timeout for relay:', url);
-      const timeout = window.setTimeout(() => {
-        console.log(
-          '[DEBUG] Timeout triggered for relay:',
-          url,
-          'Current status:',
-          this.relays.get(url)
-        );
-        if (this.relays.get(url) === 'connecting') {
-          this.relays.set(url, 'disconnected');
-          console.warn(`GunDB connection timed out: ${url}`);
-        }
+    if (this.connectionProbeInterval === null) {
+      console.log(
+        `Monitoring ${this.relays.size} relay(s) via WebSocket probes:`,
+        Array.from(this.relays.keys())
+      );
+      this.probeAllRelays();
+      this.connectionProbeInterval = window.setInterval(() => {
+        this.probeAllRelays();
       }, 10000);
-      timeouts.set(url, timeout);
-    });
+    } else {
+      this.relays.forEach((status, url) => {
+        if (status === 'init') this.probeRelay(url);
+      });
+    }
 
     return true;
   }
@@ -346,7 +342,8 @@ class GunService {
     // Save to localStorage (already in ws:// format)
     this.saveRelaySettings(relayUrls);
 
-    // Restart connection monitoring (set up hi/bye listeners BEFORE connecting)
+    // Register new relays for probing before updating Holster's peers; a
+    // false return means nothing new to monitor, so skip the redundant opt()
     if (!this.setupConnectionMonitoring()) {
       console.log('[DEBUG] Skipping redundant call to holster.opt()');
       return;
@@ -422,31 +419,6 @@ class GunService {
   }
 
   /**
-   * Helper to read a value with one retry (500ms delay)
-   * Returns the value or null if not found after retry
-   */
-  readWithRetry<T>(
-    node: GunNodeRef,
-    callback: (value: T | null) => void,
-    retryDelay = 500
-  ): void {
-    let retried = false;
-    const readOnce = () => {
-      node.once((value: unknown) => {
-        if (value !== null && value !== undefined) {
-          callback(value as T);
-        } else if (!retried) {
-          retried = true;
-          setTimeout(readOnce, retryDelay);
-        } else {
-          callback(null);
-        }
-      });
-    };
-    readOnce();
-  }
-
-  /**
    * Generate a new UUID.
    * @returns string
    */
@@ -457,7 +429,7 @@ class GunService {
   /**
    * Write user profile for discovery by other users
    * Stores the user's epub and username at their user node's profile sub-path
-   * Reference: code_references/gundb.md:49-58
+   * Reference: code_references/holster.md
    */
   async writeProfile(): Promise<Result<void, GunError>> {
     return tryCatch<void, GunError>(async () => {
@@ -476,13 +448,13 @@ class GunService {
         epub: userState.epub,
       };
 
-      if (userState.alias && typeof userState.alias === 'string') {
-        profileData.username = userState.alias;
+      if (userState.username && typeof userState.username === 'string') {
+        profileData.username = userState.username;
       }
 
       await new Promise<void>((resolve, reject) => {
         userNode.get('profile').put(profileData, (ack: GunAck) => {
-          if (ack.err) {
+          if (ack && typeof ack === 'object' && ack.err) {
             reject(new Error(`Profile storage failed: ${ack.err}`));
           } else {
             resolve();
@@ -510,7 +482,7 @@ class GunService {
       }
 
       const username = await new Promise<string>((resolve, reject) => {
-        holster.get(`~${userState.pub}`).get((data: unknown) => {
+        holster.get(`~${userState.pub}`, (data: unknown) => {
           if (
             data &&
             typeof data === 'object' &&
@@ -531,7 +503,7 @@ class GunService {
 
   /**
    * Create user with SEA
-   * Reference: code_references/gundb.md:26-35
+   * Reference: code_references/holster.md
    * @param username - Username/alias
    * @param password - User password
    * @returns Promise resolving to void
@@ -560,7 +532,7 @@ class GunService {
 
   /**
    * Authenticate user
-   * Reference: code_references/gundb.md:37-47
+   * Reference: code_references/holster.md
    * @param username - Username/alias
    * @param password - User password
    * @returns Promise resolving to void
@@ -589,7 +561,7 @@ class GunService {
 
   /**
    * Discover users who claim a specific username
-   * Reference: code_references/gundb.md:76-93
+   * Reference: code_references/holster.md
    * @param username - Username to search for
    * @returns Promise resolving to array of discovered user profiles
    */
@@ -599,41 +571,39 @@ class GunService {
     return tryCatch<DiscoveredUser[], GunError>(async () => {
       const holster = this.getGun();
       const profiles = await new Promise<DiscoveredUser[]>(resolve => {
-        holster
-          .get(`~@${username}`)
-          .get((data: unknown) => {
-            if (!data || typeof data !== 'object') {
-              resolve([]);
-              return;
-            }
+        holster.get(`~@${username}`, (data: unknown) => {
+          if (!data || typeof data !== 'object') {
+            resolve([]);
+            return;
+          }
 
-            const entries = Object.entries(data || {})
-              .filter(([k, v]) => k !== '_' && v != null)
-              .map(([pub, profileData]) => ({
-                soul: pub,
-                data: profileData,
-              }));
+          const entries = Object.entries(data || {})
+            .filter(([k, v]) => k !== '_' && v != null)
+            .map(([pub, profileData]) => ({
+              soul: pub,
+              data: profileData,
+            }));
 
-            const collectedProfiles: DiscoveredUser[] = [];
+          const collectedProfiles: DiscoveredUser[] = [];
 
-            Promise.all(
-              entries.map(entry =>
-                new Promise<void>(resolveProfile => {
-                  const cleanPub = entry.soul.startsWith('~')
-                    ? entry.soul.slice(1)
-                    : entry.soul;
-                  holster.get(`~${cleanPub}`).get((userNode: unknown) => {
-                    collectedProfiles.push({
-                      pub: cleanPub,
-                      data: entry.data,
-                      userNode,
-                    });
-                    resolveProfile();
+          Promise.all(
+            entries.map(entry =>
+              new Promise<void>(resolveProfile => {
+                const cleanPub = entry.soul.startsWith('~')
+                  ? entry.soul.slice(1)
+                  : entry.soul;
+                holster.get(`~${cleanPub}`, (userNode: unknown) => {
+                  collectedProfiles.push({
+                    pub: cleanPub,
+                    data: entry.data,
+                    userNode,
                   });
-                })
-              )
-            ).then(() => resolve(collectedProfiles));
-          });
+                  resolveProfile();
+                });
+              })
+            )
+          ).then(() => resolve(collectedProfiles));
+        });
       });
       return profiles;
     }, transformGunError);
@@ -646,17 +616,21 @@ class GunService {
    */
   async listItems(
     nodePath: string[],
-    startNode?: GunNodeRef | GunUserNode
+    startNode?: GunUserNode | GunInstance
   ): Promise<Result<ListItemResult[], GunError>> {
     return tryCatch<ListItemResult[], GunError>(async () => {
       const holster = this.getGun();
+      if (nodePath.length === 0) {
+        return [];
+      }
       const items = await new Promise<ListItemResult[]>(resolve => {
-        const node = nodePath.reduce(
-          (n, part) => (n as GunNodeRef).get(part),
-          startNode ?? holster
-        ) as GunNodeRef;
+        const [first, ...rest] = nodePath;
+        let node: GunNodeRef = (startNode ?? holster).get(first);
+        for (const part of rest) {
+          node = node.next(part);
+        }
 
-        node.get((data: unknown) => {
+        node.next(null, (data: unknown) => {
           if (!data || typeof data !== 'object') {
             resolve([]);
             return;
@@ -674,7 +648,7 @@ class GunService {
                 const cleanSoul = entry.soul.startsWith('~')
                   ? entry.soul.slice(1)
                   : entry.soul;
-                holster.get(`~${cleanSoul}`).get((node: unknown) => {
+                holster.get(`~${cleanSoul}`, (node: unknown) => {
                   const typedData: string | Record<string, unknown> =
                     typeof entry.data === 'string'
                       ? entry.data
@@ -708,7 +682,7 @@ class GunService {
 
   /**
    * Hash a path part for private data storage
-   * Reference: code_references/gundb.md:103-113
+   * Reference: code_references/holster.md
    * @param plainPath - Plain text path part to hash
    * @returns Promise resolving to hashed path string
    */
@@ -723,19 +697,14 @@ class GunService {
       const holster = this.getGun();
       const user = holster.user();
 
-      if (
-        !user._ ||
-        typeof user._ !== 'object' ||
-        !('sea' in user._) ||
-        !user._.sea
-      ) {
+      const sea = getUserSEA(user);
+      if (!sea) {
         throw createGunError(
           GunErrorCode.MISC_ERROR,
           'User cryptographic keypair not available'
         );
       }
 
-      const sea = user._.sea as ISEAPair;
       const result = await SEA.work(plainPath, sea);
       if (!result) {
         throw createGunError(
@@ -749,7 +718,7 @@ class GunService {
 
   /**
    * Hash all path parts for private data storage
-   * Reference: code_references/gundb.md:115-119
+   * Reference: code_references/holster.md
    * @param plainPath - Array of plain text path parts
    * @returns Promise resolving to array of hashed path strings
    */
@@ -764,7 +733,7 @@ class GunService {
 
   /**
    * Write encrypted private data to user storage
-   * Reference: code_references/gundb.md:121-145
+   * Reference: code_references/holster.md
    * @param plainPath - Array of plain text path parts
    * @param plaintext - Data to encrypt and store
    * @returns Promise resolving to void
@@ -781,10 +750,11 @@ class GunService {
       }
       const privatePath = privatePathResult.data;
 
-      const node = privatePath.reduce(
-        (path: unknown, part) => (path as GunNodeRef).get(part),
-        holster.user()
-      ) as GunNodeRef;
+      const [first, ...rest] = privatePath;
+      let node: GunNodeRef = holster.user().get(first);
+      for (const part of rest) {
+        node = node.next(part);
+      }
 
       await new Promise<void>((resolve, reject) => {
         const SEA = holster.SEA;
@@ -801,11 +771,8 @@ class GunService {
               return;
             }
 
-            const putNode = node as {
-              put: (data: unknown, cb?: (ack: GunAck) => void) => void;
-            };
-            putNode.put(ciphertext, (ack: GunAck) => {
-              if (ack.err) {
+            node.put(ciphertext, (ack: GunAck) => {
+              if (ack && typeof ack === 'object' && ack.err) {
                 reject(
                   createGunError(
                     GunErrorCode.MISC_ERROR,
@@ -825,7 +792,7 @@ class GunService {
 
   /**
    * Read and decrypt private data from user storage
-   * Reference: code_references/gundb.md:147-165
+   * Reference: code_references/holster.md
    * @param plainPath - Array of plain text path parts
    * @param hashedPath - Optional pre-hashed path (for internal use)
    * @returns Promise resolving to decrypted string
@@ -842,10 +809,11 @@ class GunService {
       }
       const path = hashedPath || pathResult.data;
 
-      const node = path.reduce(
-        (p: unknown, part) => (p as GunNodeRef).get(part),
-        holster.user()
-      ) as GunNodeRef;
+      const [first, ...rest] = path;
+      let node: GunNodeRef = holster.user().get(first);
+      for (const part of rest) {
+        node = node.next(part);
+      }
 
       const plaintext = await new Promise<string>((resolve, reject) => {
         const sea = getUserSEA(holster.user());
@@ -854,17 +822,20 @@ class GunService {
           return;
         }
 
-        const onceNode = node as {
-          once: (cb: (data: unknown) => void) => void;
-        };
-        onceNode.once(async (ciphertext: unknown) => {
-          if (ciphertext === undefined) {
+        node.next(null, async (ciphertext: unknown) => {
+          if (ciphertext === undefined || typeof ciphertext !== 'string') {
             reject(
               new Error('Private data not found or could not be decrypted')
             );
           } else {
             const SEA = holster.SEA;
-            const plaintext = await SEA?.decrypt(ciphertext as string, sea);
+            const plaintext = await SEA?.decrypt<string>(ciphertext, sea);
+            if (plaintext === undefined) {
+              reject(
+                new Error('Private data not found or could not be decrypted')
+              );
+              return;
+            }
             resolve(plaintext);
           }
         });
@@ -875,7 +846,7 @@ class GunService {
 
   /**
    * Read private structured data (like contacts) by iterating keys
-   * Reference: code_references/gundb.md:167-215
+   * Reference: code_references/holster.md
    * @param plainPath - Array of plain text path parts
    * @param fields - Array of field names to read
    * @returns Promise resolving to array of private data records
@@ -892,19 +863,14 @@ class GunService {
       }
       const privatePath = privatePathResult.data;
       const user = holster.user();
-      let privateNode: unknown = user;
-      for (const part of privatePath) {
-        const getNode = (privateNode as Record<string, unknown>).get as (
-          key: string
-        ) => unknown;
-        privateNode = getNode(part);
+      const [first, ...rest] = privatePath;
+      let privateNode: GunNodeRef = user.get(first);
+      for (const part of rest) {
+        privateNode = privateNode.next(part);
       }
 
       const keys: string[] = await new Promise<string[]>(resolve => {
-        const getNode = (privateNode as Record<string, unknown>).get as (
-          callback: (data: unknown) => void
-        ) => void;
-        getNode((data: unknown) => {
+        privateNode.next(null, (data: unknown) => {
           if (!data || typeof data !== 'object') {
             resolve([]);
             return;
@@ -967,17 +933,15 @@ class GunService {
       }
       const privatePath = privatePathResult.data;
 
-      const node = privatePath.reduce(
-        (path: unknown, part) => (path as GunNodeRef).get(part),
-        holster.user()
-      ) as GunNodeRef;
+      const [first, ...rest] = privatePath;
+      let node: GunNodeRef = holster.user().get(first);
+      for (const part of rest) {
+        node = node.next(part);
+      }
 
       await new Promise<void>((resolve, reject) => {
-        const putNode = node as {
-          put: (data: unknown, cb?: (ack: GunAck) => void) => void;
-        };
-        putNode.put(null, (ack: GunAck) => {
-          if (ack.err) {
+        node.put(null, (ack: GunAck) => {
+          if (ack && typeof ack === 'object' && ack.err) {
             reject(new Error(`Failed to delete private data: ${ack.err}`));
           } else {
             resolve();

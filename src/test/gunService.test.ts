@@ -168,9 +168,9 @@ async function testListItems(): Promise<TestSuiteResult> {
     const item3 = gunService.newId();
 
     // Write test objects to public test namespace
-    await gun.get('test').get('item1').put(item1);
-    await gun.get('test').get('item2').put(item2);
-    await gun.get('test').get('item3').put(item3);
+    await gun.get('test').next('item1').put(item1);
+    await gun.get('test').next('item2').put(item2);
+    await gun.get('test').next('item3').put(item3);
 
     // Read
     const itemsResult = await gunService.listItems(['test']);
@@ -212,13 +212,13 @@ async function testListItems(): Promise<TestSuiteResult> {
       gun
         .user()
         .get('private')
-        .get('item1')
+        .next('item1')
         .put({ content: userItem1 }, (_ack: GunAck) => {
           // Success - continue
           gun
             .user()
             .get('private')
-            .get('item2')
+            .next('item2')
             .put({ content: userItem2 }, (_ack: GunAck) => {
               // Success - continue
               resolve();
@@ -275,9 +275,9 @@ async function testListItems(): Promise<TestSuiteResult> {
     const gun = gunService.getGun();
 
     // Remove public test items
-    await gun.get('test').get('item1').put(null);
-    await gun.get('test').get('item2').put(null);
-    await gun.get('test').get('item3').put(null);
+    await gun.get('test').next('item1').put(null);
+    await gun.get('test').next('item2').put(null);
+    await gun.get('test').next('item3').put(null);
     // Verify the data is gone
     const itemsResult = await gunService.listItems(['test']);
     if (!itemsResult.success) {

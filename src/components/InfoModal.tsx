@@ -30,10 +30,10 @@ export function InfoModal({ isOpen, onClose }: InfoModalProps) {
 
           <div>
             <h3 className="font-semibold text-card-foreground mb-1">
-              About GunDB
+              About Holster
             </h3>
             <p className="text-card-foreground/80">
-              GunDB is a decentralized database that stores your data in the
+              Holster is a decentralized database that stores your data in the
               browser and syncs peer-to-peer. Your data lives locally and is
               synchronized through relays.
             </p>
@@ -44,7 +44,7 @@ export function InfoModal({ isOpen, onClose }: InfoModalProps) {
               About SEA
             </h3>
             <p className="text-card-foreground/80">
-              SEA (Security, Encryption, Authorization) is GunDB's encryption
+              SEA (Security, Encryption, Authorization) is Holster's encryption
               library. It secures your data with cryptographic keys derived from
               your password (documents have their own encryption keys which are
               encrypted with your password before being saved to your data). Your

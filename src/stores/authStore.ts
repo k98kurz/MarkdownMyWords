@@ -336,21 +336,15 @@ export const useAuthStore = create<AuthState>(set => ({
         throw new Error('GunDB not initialized');
       }
 
-      return await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          reject(new Error('Session check timeout'));
-        }, 1000);
+      // Holster's recall() is synchronous: it restores user.is from
+      // localStorage/sessionStorage if a session was persisted
+      gun.user().recall();
 
-        gun.user().recall({ sessionStorage: true }, (_ack: unknown) => {
-          clearTimeout(timeout);
-          const gunUser = gun.user();
-          if (gunUser.is?.pub) {
-            resolve();
-          } else {
-            reject(new Error('No authenticated session'));
-          }
-        });
-      });
+      const gunUser = gun.user();
+      if (gunUser.is?.pub) {
+        return;
+      }
+      throw new Error('No authenticated session');
     }, transformAuthError);
 
     await match(
