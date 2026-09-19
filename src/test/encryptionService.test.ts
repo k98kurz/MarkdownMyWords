@@ -24,77 +24,81 @@ async function testDocumentEncryption(): Promise<TestSuiteResult> {
 
   await runner.run('should generate document-specific keys', async () => {
     const keyResult = await encryptionService.generateKey();
-    assert(keyResult.success && keyResult.data, 'key not generated');
+    if (!keyResult.success) {
+      throw keyResult.error;
+    }
   });
 
   await runner.run('should encrypt document', async () => {
     const keyResult = await encryptionService.generateKey();
-    assert(keyResult.success && keyResult.data, 'key not generated');
-    const key = (keyResult as { success: true; data: string }).data;
+    if (!keyResult.success) {
+      throw keyResult.error;
+    }
     const content = 'test document content';
-    const encrypted = await encryptionService.encrypt(content, key);
-    assert(encrypted.success && encrypted.data, 'document encryption failed');
+    const encrypted = await encryptionService.encrypt(content, keyResult.data);
+    if (!encrypted.success) {
+      throw encrypted.error;
+    }
   });
 
   await runner.run('should decrypt document', async () => {
     const keyResult = await encryptionService.generateKey();
-    assert(keyResult.success && keyResult.data, 'key not generated');
-    const key = (keyResult as { success: true; data: string }).data;
+    if (!keyResult.success) {
+      throw keyResult.error;
+    }
+    const key = keyResult.data;
     const content = 'test document content';
     const encrypted = await encryptionService.encrypt(content, key);
-    assert(encrypted.success && encrypted.data, 'encryption failed');
-    const decrypted = await encryptionService.decrypt(
-      (encrypted as { success: true; data: string }).data,
-      key
-    );
-    assert(
-      decrypted.success && decrypted.data === content,
-      `Decrypted content mismatch. Expected "${content}", got "${(decrypted as { success: true; data: string }).data}"`
-    );
+    if (!encrypted.success) {
+      throw encrypted.error;
+    }
+    const decrypted = await encryptionService.decrypt(encrypted.data, key);
+    if (!decrypted.success) {
+      throw decrypted.error;
+    }
+    if (decrypted.data !== content) {
+      throw new Error(
+        `Decrypted content mismatch. Expected "${content}", got "${decrypted.data}"`
+      );
+    }
   });
 
   await runner.run(
     'should encrypt and decrypt different content correctly',
     async () => {
       const keyResult = await encryptionService.generateKey();
-      assert(keyResult.success && keyResult.data, 'key not generated');
-      const key = (keyResult as { success: true; data: string }).data;
+      if (!keyResult.success) {
+        throw keyResult.error;
+      }
+      const key = keyResult.data;
       const content1 = 'First document';
       const content2 = 'Second document';
 
       const encrypted1 = await encryptionService.encrypt(content1, key);
       const encrypted2 = await encryptionService.encrypt(content2, key);
-      assert(
-        encrypted1.success &&
-          encrypted1.data &&
-          encrypted2.success &&
-          encrypted2.data,
-        'encryption failed'
-      );
-
-      if (
-        (encrypted1 as { success: true; data: string }).data ===
-        (encrypted2 as { success: true; data: string }).data
-      ) {
+      if (!encrypted1.success) {
+        throw encrypted1.error;
+      }
+      if (!encrypted2.success) {
+        throw encrypted2.error;
+      }
+      if (encrypted1.data === encrypted2.data) {
         throw new Error(
           'Different content should encrypt to different ciphertexts'
         );
       }
 
-      const decrypted1 = await encryptionService.decrypt(
-        (encrypted1 as { success: true; data: string }).data,
-        key
-      );
-      const decrypted2 = await encryptionService.decrypt(
-        (encrypted2 as { success: true; data: string }).data,
-        key
-      );
-
-      assert(
-        (decrypted1 as { success: true; data: string }).data === content1 &&
-          (decrypted2 as { success: true; data: string }).data === content2,
-        'Decrypted content mismatch'
-      );
+      const decrypted1 = await encryptionService.decrypt(encrypted1.data, key);
+      const decrypted2 = await encryptionService.decrypt(encrypted2.data, key);
+      if (!decrypted1.success) {
+        throw decrypted1.error;
+      }
+      if (!decrypted2.success) {
+        throw decrypted2.error;
+      }
+      if (decrypted1.data !== content1 || decrypted2.data !== content2) {
+        throw new Error('Decrypted content mismatch');
+      }
     }
   );
 
@@ -115,33 +119,35 @@ async function testKeySharing(): Promise<TestSuiteResult> {
   await runner.run(
     'SEA ECDHE sanity check: it should work without persistent key pairs',
     async () => {
-      const pair1 = await encryptionService.sea?.pair();
-      const pair2 = await encryptionService.sea?.pair();
-      const sharedKey1 = await encryptionService.sea?.secret(
-        pair2!.epub,
-        pair1!
-      );
-      const sharedKey2 = await encryptionService.sea?.secret(
-        pair1!.epub,
-        pair2!
-      );
-      assert(
-        sharedKey1 == sharedKey2,
-        `shared key derivation failed: ${sharedKey1} != ${sharedKey2}`
-      );
+      const sea = encryptionService.sea;
+      if (!sea) {
+        throw new Error('SEA not initialized');
+      }
+      const pair1 = await sea.pair();
+      const pair2 = await sea.pair();
+      // sea.secret() requires an {epub} key object — a bare epub string
+      // hits the runtime guard and returns null.
+      const sharedKey1 = await sea.secret({ epub: pair2.epub }, pair1);
+      const sharedKey2 = await sea.secret({ epub: pair1.epub }, pair2);
+      if (!sharedKey1 || !sharedKey2) {
+        throw new Error('shared key derivation failed: secret() returned null');
+      }
+      if (sharedKey1.epriv !== sharedKey2.epriv) {
+        throw new Error(
+          `shared key derivation mismatch: "${sharedKey1.epriv}" != "${sharedKey2.epriv}"`
+        );
+      }
       const plaintext = 'test 1234';
-      const encrypted = await encryptionService.sea?.encrypt(
-        plaintext,
-        sharedKey1!
-      );
-      const decrypted = await encryptionService.sea?.decrypt(
-        encrypted!,
-        sharedKey2!
-      );
-      assert(
-        decrypted == plaintext,
-        `decryption failed: "${decrypted}" != "${plaintext}"`
-      );
+      // Holster's SEA.encrypt requires an {epriv} key object and returns a
+      // {ct, iv, s} cipher object.
+      const encrypted = await sea.encrypt(plaintext, sharedKey1);
+      if (!encrypted) {
+        throw new Error('encryption failed: SEA.encrypt returned null');
+      }
+      const decrypted = await sea.decrypt(encrypted, sharedKey2);
+      if (decrypted !== plaintext) {
+        throw new Error(`decryption failed: "${decrypted}" != "${plaintext}"`);
+      }
     }
   );
 
@@ -192,20 +198,20 @@ async function testKeySharing(): Promise<TestSuiteResult> {
 
       // Bob encrypts document key for Alice (Bob is authenticated)
       const keyResult = await encryptionService.generateKey();
-      assert(keyResult.success && keyResult.data, 'key not generated');
-      const docKey = (keyResult as { success: true; data: string }).data;
+      if (!keyResult.success) {
+        throw keyResult.error;
+      }
+      const docKey = keyResult.data;
       const encryptedKey = await encryptionService.encryptECDH(
         docKey,
         aliceEpub
       );
       console.log('Bob encrypted key for Alice');
 
-      assert(
-        encryptedKey.success && encryptedKey.data,
-        'Encryption failed - missing encrypted key'
-      );
-      const encryptedKeyData = (encryptedKey as { success: true; data: string })
-        .data;
+      if (!encryptedKey.success) {
+        throw encryptedKey.error;
+      }
+      const encryptedKeyData = encryptedKey.data;
 
       // switch to Alice
       await gunService.logoutAndWait();
@@ -237,26 +243,36 @@ async function testKeySharing(): Promise<TestSuiteResult> {
         bobEpub
       );
       console.log('Alice decrypted key from Bob');
-      assert(
-        decryptedKey.success && decryptedKey.data === docKey,
-        `key decryption failed: ${docKey} != ${(decryptedKey as { success: true; data: string }).data}`
-      );
+      if (!decryptedKey.success) {
+        throw decryptedKey.error;
+      }
+      if (decryptedKey.data !== docKey) {
+        throw new Error(
+          `key decryption failed: ${docKey} != ${decryptedKey.data}`
+        );
+      }
 
       const contentECDH = 'test document for ECDH key sharing';
       const encryptedECDH = await encryptionService.encrypt(
         contentECDH,
         docKey
       );
-      assert(encryptedECDH.success && encryptedECDH.data, 'encryption failed');
+      if (!encryptedECDH.success) {
+        throw encryptedECDH.error;
+      }
       const decryptedECDH = await encryptionService.decrypt(
-        (encryptedECDH as { success: true; data: string }).data!,
-        (decryptedKey as { success: true; data: string }).data!
+        encryptedECDH.data,
+        decryptedKey.data
       );
 
-      assert(
-        decryptedECDH.success && decryptedECDH.data === contentECDH,
-        'ECDH key sharing failed - decrypted document mismatch'
-      );
+      if (!decryptedECDH.success) {
+        throw decryptedECDH.error;
+      }
+      if (decryptedECDH.data !== contentECDH) {
+        throw new Error(
+          'ECDH key sharing failed - decrypted document mismatch'
+        );
+      }
     }
   );
 

@@ -3,6 +3,14 @@
  *
  * Holster doesn't publish type definitions, so we provide minimal declarations here.
  * The actual types are defined in src/types/gun.ts.
+ *
+ * WARNING: the SEAInstance below describes the LEGACY GunDB string-based SEA
+ * API and does NOT match Holster's runtime behavior. Holster's SEA requires
+ * {epriv} key objects, returns {ct, iv, s} cipher objects, and signals
+ * failure with null (see src/types/gun.ts and docs/memory.md). These
+ * declarations are kept only so the legacy dev tool
+ * src/test/testNewGunSEAScheme.ts continues to compile — do NOT use them as
+ * a reference for new code.
  */
 
 /**

@@ -4,7 +4,7 @@
  * Tests for GunDB service operations that can be run from the browser console.
  */
 
-import { gunService, GunService } from '@/services/gunService';
+import { gunService, GunService, type ListItemResult } from '@/services/gunService';
 import type { GunAck } from '@/types/gun';
 import { GunErrorCode } from '@/types/gun';
 import {
@@ -13,6 +13,7 @@ import {
   type TestSuiteResult,
 } from '@/dev/testRunner';
 import { isFailure } from '@/lib/functionalResult';
+import { retryWithBackoff } from '@/lib/retry';
 
 /**
  * Test GunDB Service initialization
@@ -89,17 +90,29 @@ async function testUserOperations(): Promise<TestSuiteResult> {
     if (!writeProfileResult.success) {
       throw writeProfileResult.error;
     }
-    await new Promise(resolve => setTimeout(resolve, 500));
-    const usersResult = await gunService.discoverUsers(testUsername);
-    if (!usersResult.success) {
-      throw usersResult.error;
-    }
-    const users = usersResult.data;
-    if (users.length > 0 && hasEpub(users[0].data)) {
-      const epub = users[0].data.epub;
-      console.log(`  Ephemeral pubkey retrieved: ${epub.substring(0, 20)}...`);
-    } else {
-      throw new Error('  Ephemeral pubkey retrieval failed');
+    // Poll discovery until the alias index/profile is readable instead of a
+    // blind one-shot read after a fixed sleep (see docs/memory.md).
+    try {
+      await retryWithBackoff(
+        async () => {
+          const usersResult = await gunService.discoverUsers(testUsername);
+          if (!usersResult.success) {
+            throw usersResult.error;
+          }
+          const users = usersResult.data;
+          if (users.length === 0 || !hasEpub(users[0].data)) {
+            throw new Error('user profile not discoverable yet');
+          }
+          console.log(
+            `  Ephemeral pubkey retrieved: ${users[0].data.epub.substring(0, 20)}...`
+          );
+        },
+        { maxAttempts: 6, baseDelay: 150, backoffMultiplier: 1.5 }
+      );
+    } catch (error) {
+      throw new Error(
+        `  Ephemeral pubkey retrieval failed (discovery did not propagate): ${error instanceof Error ? error.message : String(error)}`
+      );
     }
     const userState = gunService.getGun()?.user().is;
     if (userState && 'pub' in userState && userState.pub) {
@@ -166,24 +179,46 @@ async function testListItems(): Promise<TestSuiteResult> {
     const item1 = gunService.newId();
     const item2 = gunService.newId();
     const item3 = gunService.newId();
+    const itemIds = [item1, item2, item3];
 
-    // Write test objects to public test namespace
-    await gun.get('test').next('item1').put(item1);
-    await gun.get('test').next('item2').put(item2);
-    await gun.get('test').next('item3').put(item3);
+    // Write test objects to public test namespace, waiting for each put ack
+    // (fire-and-forget puts race the read below and yield empty results).
+    for (const [index, item] of itemIds.entries()) {
+      await new Promise<void>((resolve, reject) => {
+        gun
+          .get('test')
+          .next(`item${index + 1}`)
+          .put(item, (ack: GunAck) => {
+            if (ack && typeof ack === 'object' && ack.err) {
+              reject(new Error(`Failed to write item${index + 1}: ${ack.err}`));
+            } else {
+              resolve();
+            }
+          });
+      });
+    }
 
-    // Read
-    const itemsResult = await gunService.listItems(['test']);
-    if (!itemsResult.success) {
-      throw itemsResult.error;
-    }
-    const items = itemsResult.data;
-    if (items.length === 0) {
-      throw new Error('No items found in test namespace');
-    }
+    // Poll until all items are readable (condition-based, no blind delay)
+    let items: ListItemResult[] = [];
+    await retryWithBackoff(
+      async () => {
+        const itemsResult = await gunService.listItems(['test']);
+        if (!itemsResult.success) {
+          throw itemsResult.error;
+        }
+        if (itemsResult.data.length < itemIds.length) {
+          throw new Error(
+            `expected ${itemIds.length} items, found ${itemsResult.data.length}`
+          );
+        }
+        items = itemsResult.data;
+      },
+      { maxAttempts: 6, baseDelay: 150, backoffMultiplier: 1.5 }
+    );
+
     console.log(
       `  Found ${items.length} items:`,
-      `${items.map((i: { soul: string }) => i.soul.substring(0, 10)).join(', ')}`
+      `${items.map(i => i.soul.substring(0, 10)).join(', ')}`
     );
     console.log(items);
 
@@ -195,7 +230,7 @@ async function testListItems(): Promise<TestSuiteResult> {
       }
       if (
         typeof item.data === 'string' &&
-        ![item1, item2, item3].includes(item.data)
+        !itemIds.includes(item.data)
       ) {
         console.error(`Unexpected item.data: ${item.data}`);
       }

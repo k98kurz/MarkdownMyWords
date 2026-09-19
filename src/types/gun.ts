@@ -15,27 +15,44 @@
  */
 
 /**
+ * SEA cipher object returned by SEA.encrypt and required by SEA.decrypt.
+ * All fields are base64 strings.
+ */
+export interface SEACipher {
+  ct: string;
+  iv: string;
+  s: string;
+}
+
+/**
+ * SEA key object accepted by SEA.encrypt/decrypt — a bare string key is NOT
+ * accepted (the `!pair.epriv` guard returns null). `SEA.work` and
+ * `SEA.secret` return this shape so their results can be passed straight
+ * back to encrypt/decrypt.
+ */
+export interface SEAPair {
+  epriv: string;
+}
+
+/**
  * SEA Instance type
+ *
+ * Mirrors the real Holster runtime API
+ * (node_modules/@mblaney/holster/src/sea.js):
+ * - encrypt/decrypt/secret return `null` on failure (not undefined)
+ * - encrypt returns a SEACipher object, decrypt takes a SEACipher
+ * - secret only accepts `{ epub }`, never a bare string
+ * - work returns a SEAPair whose `.epriv` is the derived hash string
  */
 export interface SEAInstance {
-  encrypt(
-    data: unknown,
-    pair: { epriv: string } | string
-  ): Promise<string>;
-  decrypt<T = unknown>(
-    message: string,
-    pair: { epriv: string } | string
-  ): Promise<T>;
+  encrypt(data: unknown, pair: SEAPair): Promise<SEACipher | null>;
+  decrypt<T = unknown>(message: SEACipher, pair: SEAPair): Promise<T | null>;
   secret(
-    key: string | { epub: string },
+    key: { epub: string },
     pair: { epriv: string; epub: string }
-  ): Promise<string | undefined>;
+  ): Promise<SEAPair | null>;
   pair(): Promise<{ epriv: string; epub: string; priv: string; pub: string }>;
-  work(
-    data: unknown,
-    salt?: unknown,
-    callback?: unknown
-  ): Promise<string | undefined>;
+  work(data: unknown, salt?: unknown): Promise<SEAPair>;
   sign(
     data: unknown,
     pair: { priv: string; pub: string }

@@ -7,12 +7,6 @@
 import { encryptionService } from '@/services/encryptionService';
 import { TestRunner, type TestSuiteResult } from '@/dev/testRunner';
 
-const assert = (condition: unknown, message: string) => {
-  if (!condition) {
-    throw new Error(message);
-  }
-};
-
 /**
  * Generate test content of specified size
  */
@@ -33,24 +27,30 @@ export async function testVariousDocumentSizes(): Promise<TestSuiteResult> {
   const testSizes = [
     { name: '1 KB', bytes: 1024 },
     { name: '100 KB', bytes: 100 * 1024 },
-    { name: '10 MB', bytes: 10 * 1024 * 1024 },
+    // Boundary: MAX_PLAINTEXT_BYTES is set by SEA.decrypt's base64-string
+    // check (1 MiB base64 => ~786 KB plaintext max) — see encryptionService.
+    { name: '786 KB (max)', bytes: 786_000 },
   ];
 
   for (const testSize of testSizes) {
     await runner.run(`${testSize.name} encryption/decryption`, async () => {
       const content = generateTestContent(testSize.bytes);
       const keyResult = await encryptionService.generateKey();
-      assert(keyResult.success && keyResult.data, 'key not generated');
-      const docKey = (keyResult as { success: true; data: string }).data;
+      if (!keyResult.success) {
+        throw new Error(
+          `key generation failed: ${JSON.stringify(keyResult.error)}`
+        );
+      }
+      const docKey = keyResult.data;
 
       const encryptStart = performance.now();
       const encryptedResult = await encryptionService.encrypt(content, docKey);
-      assert(
-        encryptedResult.success && encryptedResult.data,
-        'encryption failed'
-      );
-      const encrypted = (encryptedResult as { success: true; data: string })
-        .data;
+      if (!encryptedResult.success) {
+        throw new Error(
+          `encryption failed: ${JSON.stringify(encryptedResult.error)}`
+        );
+      }
+      const encrypted = encryptedResult.data;
       const encryptTime = performance.now() - encryptStart;
 
       const decryptStart = performance.now();
@@ -58,12 +58,12 @@ export async function testVariousDocumentSizes(): Promise<TestSuiteResult> {
         encrypted,
         docKey
       );
-      assert(
-        decryptedResult.success && decryptedResult.data,
-        'decryption failed'
-      );
-      const decrypted = (decryptedResult as { success: true; data: string })
-        .data;
+      if (!decryptedResult.success) {
+        throw new Error(
+          `decryption failed: ${JSON.stringify(decryptedResult.error)}`
+        );
+      }
+      const decrypted = decryptedResult.data;
       const decryptTime = performance.now() - decryptStart;
 
       if (decrypted !== content || decrypted.length !== testSize.bytes) {
@@ -77,6 +77,32 @@ export async function testVariousDocumentSizes(): Promise<TestSuiteResult> {
       );
     });
   }
+
+  await runner.run('oversized content fails with clear error', async () => {
+    const oversized = 'A'.repeat(800_000);
+    const keyResult = await encryptionService.generateKey();
+    if (!keyResult.success) {
+      throw new Error(
+        `key generation failed: ${JSON.stringify(keyResult.error)}`
+      );
+    }
+    const encryptResult = await encryptionService.encrypt(
+      oversized,
+      keyResult.data
+    );
+    if (encryptResult.success) {
+      throw new Error('oversized content should fail encryption');
+    }
+    if (
+      encryptResult.error.code !== 'ENCRYPTION_FAILED' ||
+      !encryptResult.error.message.includes('too large')
+    ) {
+      throw new Error(
+        `expected clear size-limit error, got: ${JSON.stringify(encryptResult.error)}`
+      );
+    }
+    console.log(`  ✅ rejected as expected: ${encryptResult.error.message}`);
+  });
 
   runner.printResults();
   return runner.getResults();
