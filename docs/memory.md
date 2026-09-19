@@ -138,9 +138,12 @@ loose but fails at runtime. Rules (mirrored by `SEACipher`/`SEAPair`/
   chunking belongs at the service layer; multi-MB Holster values hit
   storage/relay limits anyway.
 
-`src/types/holster.d.ts` intentionally still declares the legacy
-string-based surface so `src/test/testNewGunSEAScheme.ts` (deprecated,
-stale) keeps compiling — do not use it as a reference.
+The legacy string-based GunDB SEA surface is preserved only as a
+historical reference: `code_references/holster.d.ts` (its original
+typing) alongside `code_references/testNewGunSEAScheme.ts` (the dev
+tool that validated the old scheme). Do not use either as a reference.
+`src/types/holster.d.ts` now declares only a loose default export; the
+real API types live in `src/types/gun.ts`.
 
 # User Profiles & Discovery: the `~@username` Alias Index (2026-09-18)
 

@@ -13,7 +13,6 @@ import { testAuthStore } from './test/authStore.test';
 import { testEncryptionService } from './test/encryptionService.test';
 import { testFunctionalResult } from './test/functionalResult.test';
 import { printTestSummary, type TestSuiteResult } from './dev/testRunner';
-import { testNewGunSEAScheme } from './test/testNewGunSEAScheme';
 import { testDocumentStore } from './test/documentStore.test';
 import { clearHolsterStorage } from './dev/clearHolsterStorage';
 import { listUsers } from './dev/consoleTools';
@@ -136,7 +135,6 @@ if (
   win.testAuthStore = testAuthStore;
   win.testEncryptionService = testEncryptionService;
   win.testFunctionalResult = testFunctionalResult;
-  win.testNewGunSEAScheme = testNewGunSEAScheme;
   win.testDocumentStore = testDocumentStore;
   win.runAllTests = runAllTests;
   win.clearHolsterStorage = clearHolsterStorage;
