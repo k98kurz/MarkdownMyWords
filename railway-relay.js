@@ -6,7 +6,7 @@ const SHUTDOWN_TIMEOUT = 2000
 const PORT = process.env.PORT || process.env.GUN_PORT || 8765
 
 const server = http.createServer()
-Holster({ web: server, indexedDB: false })
+Holster({ server, indexedDB: false })
 
 server.listen(PORT, () => {
   console.log(`Holster relay on ws://localhost:${PORT}`)

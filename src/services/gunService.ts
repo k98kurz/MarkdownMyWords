@@ -7,7 +7,7 @@
 
 import Gun from '@mblaney/holster/src/holster.js';
 import { retryWithBackoff } from '@/lib/retry';
-import { getUserSEA } from '@/misc/seaHelpers';
+import { getUserSEA, isSEACipher } from '@/misc/seaHelpers';
 import {
   Result,
   tryCatch,
@@ -706,13 +706,17 @@ class GunService {
       }
 
       const result = await SEA.work(plainPath, sea);
-      if (!result) {
+      if (!result || !result.epriv) {
         throw createGunError(
           GunErrorCode.MISC_ERROR,
           'Failed to hash path part'
         );
       }
-      return result;
+      // SEA.work returns an {epriv} pair object — .epriv is the hashed
+      // string. Returning the object itself would make Holster coerce the
+      // path via String(key) to '[object Object]', colliding every private
+      // path into one node (see docs/memory.md).
+      return result.epriv;
     }, transformGunError);
   }
 
@@ -765,9 +769,9 @@ class GunService {
         }
 
         SEA?.encrypt(plaintext, sea)
-          .then((ciphertext: string | undefined) => {
+          .then(ciphertext => {
             if (!ciphertext) {
-              reject(new Error('SEA.encrypt failed: returned undefined'));
+              reject(new Error('SEA.encrypt failed: returned null'));
               return;
             }
 
@@ -823,21 +827,23 @@ class GunService {
         }
 
         node.next(null, async (ciphertext: unknown) => {
-          if (ciphertext === undefined || typeof ciphertext !== 'string') {
+          // SEA.encrypt stores a {ct, iv, s} cipher object (plus Holster's
+          // `_` graph metadata on read-back), never a plain string.
+          if (ciphertext === undefined || !isSEACipher(ciphertext)) {
             reject(
               new Error('Private data not found or could not be decrypted')
             );
-          } else {
-            const SEA = holster.SEA;
-            const plaintext = await SEA?.decrypt<string>(ciphertext, sea);
-            if (plaintext === undefined) {
-              reject(
-                new Error('Private data not found or could not be decrypted')
-              );
-              return;
-            }
-            resolve(plaintext);
+            return;
           }
+          const SEA = holster.SEA;
+          const plaintext = await SEA?.decrypt<string>(ciphertext, sea);
+          if (plaintext === null || plaintext === undefined) {
+            reject(
+              new Error('Private data not found or could not be decrypted')
+            );
+            return;
+          }
+          resolve(plaintext);
         });
       });
       return plaintext;

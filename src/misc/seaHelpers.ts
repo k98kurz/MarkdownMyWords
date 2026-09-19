@@ -2,9 +2,26 @@
  * Type-safe utilities for working with Holster SEA encryption.
  */
 
-import type { ISEAPair } from '@/types/gun';
+import type { ISEAPair, SEACipher } from '@/types/gun';
 
 export type { ISEAPair };
+
+/**
+ * Type guard for SEA cipher objects ({ct, iv, s} with base64 fields).
+ *
+ * Values read back from Holster nodes may carry extra graph metadata
+ * (e.g. `_`) alongside the cipher fields; that is harmless because
+ * SEA.decrypt only reads ct/iv/s.
+ */
+export function isSEACipher(value: unknown): value is SEACipher {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'ct' in value &&
+    'iv' in value &&
+    's' in value
+  );
+}
 
 /**
  * Extract SEA keypair from a Holster user node.

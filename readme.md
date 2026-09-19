@@ -1,16 +1,17 @@
 # MarkdownMyWords
 
 A Free and Open Source Slopware project for local-first, collaborative document
-writing with GunDB and OpenRouter for LLM-powered spell check, grammar, review,
+writing with Holster and OpenRouter for LLM-powered spell check, grammar, review,
 revision, and proompt-based generation (if you really want that, but eww -- try
 writing creatively for a change maybe?). Bring your own OpenRouter key for LLM
 features.
 
 ## Status
 
-- [x] Correct GunDB + SEA implementation
+- [x] Correct SEA encryption implementation (via GunDB, now Holster)
 - [x] Basic document editing and rendering functionality
 - [x] Basic privacy/encryption/sharing functionality
+- [ ] Migration from GunDB to Holster
 - [ ] Contact and notification system
 - [ ] Advanced sharing with branches and merging
 - [ ] Bring-your-own-key AI review/revise features
@@ -18,8 +19,8 @@ features.
 ## Tech Stack
 
 - Frontend Framework: React + React DOM
-- Database: GunDB (peer-to-peer, decentralized)
-- Security/Encryption/Auth: SEA (GunDB project)
+- Database: Holster (peer-to-peer, decentralized)
+- Security/Encryption/Auth: SEA (bundled with Holster, from the GunDB project)
 - State Management: Zustand
 - Routing: React Router DOM
 - Editor: CodeMirror (@codemirror/state, @codemirror/view, @codemirror/lang-markdown)
@@ -60,7 +61,8 @@ to host a relay on Railway:
 ## Credits/Acknowledgements
 
 This painful project would not have been possible without the GunDB devs and their
-lackluster documentation, Gemini 3 Pro (which completely wrecked the project from
+lackluster documentation, mblaney's Holster (a GunDB fork that fixes its storage
+woes), Gemini 3 Pro (which completely wrecked the project from
 the outset), GLM-4.7 (which is okay until it gets to about 40% context window then
 rots into gaslighting itself perpetually), and all the other little AIs I met
 along the way.

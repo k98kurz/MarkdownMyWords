@@ -60,8 +60,8 @@ sharing.
 
 ```typescript
 // CORRECT: per-document symmetric keys via encryptionService
-const docKey = await encryptionService.generateDocumentKey();
-const encrypted = await encryptionService.encryptDocument(content, docKey);
+const docKey = await encryptionService.generateKey();
+const encrypted = await encryptionService.encrypt(content, docKey);
 
 // CORRECT: SEA's ECDH shares document KEYS (not documents themselves)
 // NOTE: e in epub/epriv stands for "encryption", not "ephemeral"
@@ -90,6 +90,57 @@ keys as passphrases for self-encryption, changed the encryption API's
 return types and parameters, and ignored SEA's automatic
 encryption/decryption of user data — creating real security holes.
 Don't touch any of this without a human.
+
+# Holster SEA Object Shapes (2026-09-18)
+
+Holster's SEA (`node_modules/@mblaney/holster/src/sea.js`) is NOT Gun's
+string-based SEA. Code written against Gun's API compiles if types are
+loose but fails at runtime. Rules (mirrored by `SEACipher`/`SEAPair`/
+`SEAInstance` in `src/types/gun.ts`):
+
+- Keys must be OBJECTS: `SEA.encrypt(data, {epriv: keyString})`. A bare
+  string key hits the `!pair.epriv` guard and returns null. This is why
+  `runAllTests` Suite 1 failed with "encryption failed" while
+  `generateKey()` succeeded (it uses raw WebCrypto, not SEA).
+- `SEA.encrypt` returns a cipher OBJECT `{ct, iv, s}` (base64 fields),
+  never a string. To store as a string, `JSON.stringify` it; parse
+  before decrypt. `encryptionService.encrypt/decrypt` do this — keep
+  their string-in/string-out API.
+- Failure sentinel is `null` (encrypt's key guard AND decrypt's
+  wrong-key path), never `undefined`. Check falsy/null — a
+  `=== undefined` check turns failures into `success(null)` and
+  silently corrupts data (this hid the document-store breakage).
+- `SEA.work()` and `SEA.secret()` return `{epriv}` pair objects.
+  Extract `.epriv` for hashed path strings — returning the whole
+  object as a path makes Holster coerce it with `String(key)` to the
+  literal `'[object Object]'`, colliding every private path into one
+  node (docKeys were silently overwriting each other; fixed in
+  `gunService.getPrivatePathPart`).
+- `SEA.secret()` takes `{epub}`, never a bare epub string (returns
+  null otherwise).
+- `SEA.decrypt` runs `utils.parse` on plaintext: plaintext that is
+  itself valid JSON (`123`, `{"a":1}`) comes back re-serialized, so
+  round-trips are not byte-identical. The service coerces non-strings
+  back with `JSON.stringify`.
+- Cipher values read back from nodes carry extra `_` graph metadata;
+  validate with `isSEACipher()` (`src/misc/seaHelpers.ts`), which
+  checks for ct/iv/s fields.
+- Hard size cap (asymmetric): SafeBuffer
+  (`@mblaney/holster/src/buffer.js`) limits strings to 1 MiB
+  (`MAX_STRING_LENGTH`). Encrypt allows ~1 MiB plaintext (ct binary
+  string check), but DECRYPT is the binding limit:
+  `SafeBuffer.from(ct, "base64")` (sea.js) rejects ciphertext base64
+  strings >1 MiB chars => ~786 KB plaintext max — and it throws the
+  RangeError OUTSIDE SEA.decrypt's try/catch, so it rejects the
+  promise instead of returning null. `encryptionService` pre-checks
+  `MAX_PLAINTEXT_BYTES` (786,000) and fails with a clear
+  ENCRYPTION_FAILED message. If large documents are ever needed,
+  chunking belongs at the service layer; multi-MB Holster values hit
+  storage/relay limits anyway.
+
+`src/types/holster.d.ts` intentionally still declares the legacy
+string-based surface so `src/test/testNewGunSEAScheme.ts` (deprecated,
+stale) keeps compiling — do not use it as a reference.
 
 # User Profiles & Discovery: the `~@username` Alias Index (2026-09-18)
 
@@ -161,3 +212,8 @@ storage/cache, so there is nothing to "wait for". Delays added before
 (usually GunDB-style `.get(cb)`/`.once()` calls — see the Holster Read
 API entry above). Multiple agents have tried exponentially increasing
 delays to "fix" this; it never works. Use callbacks, not delays.
+
+For write/read races in tests: wait for `put` acks (never
+fire-and-forget `await chain.put(x)`) and poll reads with
+`retryWithBackoff` (`src/lib/retry`) on a real condition — see the
+listItems and user-operations tests in `src/test/gunService.test.ts`.
