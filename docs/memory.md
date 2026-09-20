@@ -61,6 +61,33 @@ keypair not available" and documents could not be saved. Always get the
 pair via `getUserSEA()` in `src/misc/seaHelpers.ts`, which reads
 `user.is`.
 
+# Holster Callbacks Are Node-Style: String Errors, Never Object Acks (2026-09-20)
+
+Holster's `user().create()`, `user().auth()`, and chain `.put()` callbacks
+follow the Node convention: the argument is a plain STRING error message
+(`"Username already exists"`, `"Wrong username or password"`, `"error ..."`)
+or `null`/`undefined` on success. There is NO GunDB-style `{err: "..."}`
+object ack anywhere (verified in
+`node_modules/@mblaney/holster/src/user.js` and `holster.js`).
+
+- Error check is TRUTHINESS: `if (ack) reject(...)` — never
+  `typeof ack === 'object' && ack.err`. The `{err}`-shaped check silently
+  converts EVERY error into success. This broke duplicate-registration
+  detection (registering a taken username logged you into that account
+  instead of failing) and made all document write/delete/share failures
+  silent; `GunAck` in `src/types/gun.ts` encoded the wrong GunDB shape and
+  was replaced by `AckCallback = (err: string | null | undefined) => void`.
+- `transformAuthError` in `src/stores/authStore.ts` matches on the message
+  prefixes `User creation failed` / `Authentication failed` — keep those
+  prefixes intact when touching `gunService.createUser`/`authenticateUser`.
+- Wire-layer messages (`wire.get`/`wire.put` raw JSON) ARE objects with
+  `put`/`err` fields — that convention applies only to raw wire reads
+  (`gunService.readSoul`), not API callbacks.
+- In pipelines, check each Result and short-circuit before the next
+  operation (see `authStore.register`); `await`-ing several operations into
+  an array and passing them to `sequence` runs ALL of them before any
+  failure check.
+
 # SEA Encryption & ECDH for Document Sharing (2026-09-18)
 
 Documents are encrypted with `SEA.encrypt` using per-document symmetric

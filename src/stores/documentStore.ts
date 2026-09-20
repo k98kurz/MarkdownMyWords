@@ -15,7 +15,7 @@ import type {
   SharedDocNotification,
 } from '@/types/document';
 import { gunService } from '@/services/gunService';
-import { GunNodeRef, GunAck } from '@/types/gun';
+import { GunNodeRef } from '@/types/gun';
 import { encryptionService } from '@/services/encryptionService';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -395,9 +395,9 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         };
 
         await new Promise<void>((resolve, reject) => {
-          docNode.put(documentForStorage, (ack: GunAck) => {
-            if (ack.err) {
-              reject(new Error(`Failed to save document: ${String(ack.err)}`));
+          docNode.put(documentForStorage, err => {
+            if (err) {
+              reject(new Error(`Failed to save document: ${err}`));
             } else {
               resolve();
             }
@@ -724,10 +724,10 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         }
 
         await new Promise<void>((resolve, reject) => {
-          docNode.put(updatedDoc, (ack: GunAck) => {
-            if (ack.err) {
+          docNode.put(updatedDoc, err => {
+            if (err) {
               reject(
-                new Error(`Failed to update document: ${String(ack.err)}`)
+                new Error(`Failed to update document: ${err}`)
               );
             } else {
               resolve();
@@ -839,10 +839,10 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         const doc = docData as Partial<Document>;
 
         await new Promise<void>((resolve, reject) => {
-          docNode.put(null, (ack: GunAck) => {
-            if (ack.err) {
+          docNode.put(null, err => {
+            if (err) {
               reject(
-                new Error(`Failed to delete document: ${String(ack.err)}`)
+                new Error(`Failed to delete document: ${err}`)
               );
             } else {
               resolve();
@@ -865,10 +865,10 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           }
 
           await new Promise<void>((resolve, reject) => {
-            node.put(null, (ack: GunAck) => {
-              if (ack.err) {
+            node.put(null, err => {
+              if (err) {
                 reject(
-                  new Error(`Failed to delete document key: ${String(ack.err)}`)
+                  new Error(`Failed to delete document key: ${err}`)
                 );
               } else {
                 resolve();
@@ -1160,9 +1160,9 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         );
 
         await new Promise<void>((resolve, reject) => {
-          docNode.put({ access: updatedAccess }, (ack: GunAck) => {
-            if (ack.err) {
-              reject(new Error(`Failed to share document: ${String(ack.err)}`));
+          docNode.put({ access: updatedAccess }, err => {
+            if (err) {
+              reject(new Error(`Failed to share document: ${err}`));
             } else {
               resolve();
             }
@@ -1223,10 +1223,10 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         const updatedAccess = currentAccess.filter(a => a.userId !== userId);
 
         await new Promise<void>((resolve, reject) => {
-          docNode.put({ access: updatedAccess }, (ack: GunAck) => {
-            if (ack.err) {
+          docNode.put({ access: updatedAccess }, err => {
+            if (err) {
               reject(
-                new Error(`Failed to unshare document: ${String(ack.err)}`)
+                new Error(`Failed to unshare document: ${err}`)
               );
             } else {
               resolve();
@@ -1426,10 +1426,10 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           }
 
           await new Promise<void>((resolve, reject) => {
-            docNode.put(updatedDoc, (ack: GunAck) => {
-              if (ack.err) {
+            docNode.put(updatedDoc, err => {
+              if (err) {
                 reject(
-                  new Error(`Failed to update document: ${String(ack.err)}`)
+                  new Error(`Failed to update document: ${err}`)
                 );
               } else {
                 resolve();
@@ -1576,10 +1576,10 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           }
 
           await new Promise<void>((resolve, reject) => {
-            docNode.put(updatedDoc, (ack: GunAck) => {
-              if (ack.err) {
+            docNode.put(updatedDoc, err => {
+              if (err) {
                 reject(
-                  new Error(`Failed to update document: ${String(ack.err)}`)
+                  new Error(`Failed to update document: ${err}`)
                 );
               } else {
                 resolve();
@@ -1771,10 +1771,10 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         }
 
         await new Promise<void>((resolve, reject) => {
-          docNode.put(updatedDoc, (ack: GunAck) => {
-            if (ack.err) {
+          docNode.put(updatedDoc, err => {
+            if (err) {
               reject(
-                new Error(`Failed to update document: ${String(ack.err)}`)
+                new Error(`Failed to update document: ${err}`)
               );
             } else {
               resolve();

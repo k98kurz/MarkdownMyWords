@@ -21,7 +21,6 @@ import type {
   GunConfig,
   GunError,
   GunUserNode,
-  GunAck,
 } from '@/types/gun';
 import { GunErrorCode, GunNodeRef } from '@/types/gun';
 
@@ -473,9 +472,9 @@ class GunService {
       }
 
       await new Promise<void>((resolve, reject) => {
-        userNode.get('profile').put(profileData, (ack: GunAck) => {
-          if (ack && typeof ack === 'object' && ack.err) {
-            reject(new Error(`Profile storage failed: ${ack.err}`));
+        userNode.get('profile').put(profileData, err => {
+          if (err) {
+            reject(new Error(`Profile storage failed: ${err}`));
           } else {
             resolve();
           }
@@ -566,9 +565,10 @@ class GunService {
 
       await new Promise<void>((resolve, reject) => {
         const holster = this.holster!;
-        holster.user().create(username, password, ack => {
-          if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
-            reject(new Error(`User creation failed: ${String(ack.err)}`));
+        holster.user().create(username, password, err => {
+          // Holster callbacks are Node-style: err is a string or null.
+          if (err) {
+            reject(new Error(`User creation failed: ${err}`));
           } else {
             resolve();
           }
@@ -595,9 +595,10 @@ class GunService {
 
       await new Promise<void>((resolve, reject) => {
         const holster = this.holster!;
-        holster.user().auth(username, password, ack => {
-          if (ack && typeof ack === 'object' && 'err' in ack && ack.err) {
-            reject(new Error(`Authentication failed: ${String(ack.err)}`));
+        holster.user().auth(username, password, err => {
+          // Holster callbacks are Node-style: err is a string or null.
+          if (err) {
+            reject(new Error(`Authentication failed: ${err}`));
           } else {
             resolve();
           }
@@ -822,13 +823,13 @@ class GunService {
               return;
             }
 
-            node.put(ciphertext, (ack: GunAck) => {
-              if (ack && typeof ack === 'object' && ack.err) {
+            node.put(ciphertext, err => {
+              if (err) {
                 reject(
                   createGunError(
                     GunErrorCode.MISC_ERROR,
                     'Failed to write private data',
-                    ack.err
+                    err
                   )
                 );
               } else {
@@ -993,9 +994,9 @@ class GunService {
       }
 
       await new Promise<void>((resolve, reject) => {
-        node.put(null, (ack: GunAck) => {
-          if (ack && typeof ack === 'object' && ack.err) {
-            reject(new Error(`Failed to delete private data: ${ack.err}`));
+        node.put(null, err => {
+          if (err) {
+            reject(new Error(`Failed to delete private data: ${err}`));
           } else {
             resolve();
           }
