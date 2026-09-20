@@ -33,13 +33,22 @@ export interface SEAUser {
 export interface ListItemResult {
   soul: string;
   data: string | Record<string, unknown>;
-  node: unknown;
+}
+
+/**
+ * Resolved user node read from a `~pub` soul during discovery. These are
+ * the fields `user().create()` stores at the top level of the user node
+ * (see node_modules/@mblaney/holster/src/user.js).
+ */
+export interface DiscoveredUserData {
+  username?: string;
+  pub?: string;
+  epub?: string;
 }
 
 export interface DiscoveredUser {
   pub: string;
-  data: unknown;
-  userNode: unknown;
+  data: DiscoveredUserData;
 }
 
 function createGunError(
@@ -67,6 +76,17 @@ function transformGunError(error: unknown): GunError {
     return createGunError(GunErrorCode.MISC_ERROR, error.message, error);
   }
   return createGunError(GunErrorCode.MISC_ERROR, 'An error occurred', error);
+}
+
+/**
+ * Type guard for values readable from a Holster node entry. Holster values
+ * are strings, numbers, booleans, rels, or nested node objects.
+ */
+function isListEntryData(value: unknown): value is string | Record<string, unknown> {
+  if (typeof value === 'string') {
+    return true;
+  }
+  return typeof value === 'object' && value !== null;
 }
 
 /**
@@ -465,13 +485,37 @@ class GunService {
   }
 
   /**
+   * Read a standalone soul (like `~pub` or `~@username`) via the wire spec.
+   *
+   * Root-level `.get(key, cb)` only resolves properties of the `root` soul,
+   * so standalone souls are unreachable through it: the property lookup
+   * misses ("never written" branch in holster.js resolve()) and calls back
+   * null. Direct wire reads are the pattern Holster's own `user().auth()`
+   * uses. Note: wire reads do NOT inline rels — rel properties arrive as
+   * `{'#': soul}` references and must be followed manually.
+   * @param soul - Soul to read (e.g. `~abc123...` or `~@username`)
+   * @returns Promise resolving to the node object, or null if absent
+   */
+  private readSoul(soul: string): Promise<Record<string, unknown> | null> {
+    return new Promise(resolve => {
+      this.getGun().wire.get({'#': soul}, msg => {
+        const node = msg.put?.[soul];
+        resolve(
+          node && typeof node === 'object'
+            ? (node as Record<string, unknown>)
+            : null
+        );
+      });
+    });
+  }
+
+  /**
    * Read username from user profile for session restoration
    * @returns Promise resolving to username string
    */
   async readUsername(): Promise<Result<string, GunError>> {
     return tryCatch<string, GunError>(async () => {
-      const holster = this.getGun();
-      const userNode = holster.user();
+      const userNode = this.getGun().user();
       const userState = userNode.is;
 
       if (!userState || !userState.pub) {
@@ -481,23 +525,26 @@ class GunService {
         );
       }
 
-      const username = await new Promise<string>((resolve, reject) => {
-        holster.get(`~${userState.pub}`, (data: unknown) => {
-          if (
-            data &&
-            typeof data === 'object' &&
-            'profile' in data &&
-            data.profile &&
-            typeof data.profile === 'object' &&
-            'username' in data.profile
-          ) {
-            resolve((data.profile as { username: string }).username);
-          } else {
-            reject(new Error('Username not found in user profile'));
-          }
+      // Chain read rooted at the `~pub` soul: follows the profile rel and
+      // returns the profile node ({epub, username}).
+      const profile = await new Promise<unknown>(resolve => {
+        userNode.get('profile', (data: unknown) => {
+          resolve(data);
         });
       });
-      return username;
+
+      if (
+        profile &&
+        typeof profile === 'object' &&
+        'username' in profile &&
+        typeof profile.username === 'string'
+      ) {
+        return profile.username;
+      }
+      throw createGunError(
+        GunErrorCode.MISC_ERROR,
+        'Username not found in user profile'
+      );
     }, transformGunError);
   }
 
@@ -561,6 +608,11 @@ class GunService {
 
   /**
    * Discover users who claim a specific username
+   *
+   * Reads the `~@username` alias index (a standalone soul — must be read
+   * via the wire spec, see readSoul), then resolves each `~pub` user node
+   * it references. The user node carries {username, pub, epub} at its top
+   * level (written by `user().create()`).
    * Reference: code_references/holster.md
    * @param username - Username to search for
    * @returns Promise resolving to array of discovered user profiles
@@ -569,43 +621,55 @@ class GunService {
     username: string
   ): Promise<Result<DiscoveredUser[], GunError>> {
     return tryCatch<DiscoveredUser[], GunError>(async () => {
-      const holster = this.getGun();
-      const profiles = await new Promise<DiscoveredUser[]>(resolve => {
-        holster.get(`~@${username}`, (data: unknown) => {
-          if (!data || typeof data !== 'object') {
-            resolve([]);
-            return;
+      const aliasNode = await this.readSoul(`~@${username}`);
+      if (!aliasNode) {
+        return [];
+      }
+
+      // The graph layer (ham.js) enforces that alias entries are
+      // self-identifying rels ({'#': '~pub'}), so every non-`_` key is a
+      // `~pub` soul.
+      const pubSouls = Object.keys(aliasNode).filter(key => {
+        if (key === '_') {
+          return false;
+        }
+        const value = aliasNode[key];
+        return (
+          value !== null &&
+          typeof value === 'object' &&
+          '#' in value &&
+          typeof value['#'] === 'string'
+        );
+      });
+
+      const profiles = await Promise.all(
+        pubSouls.map(async pubSoul => {
+          const userNode = await this.readSoul(pubSoul);
+          if (!userNode) {
+            return null;
           }
 
-          const entries = Object.entries(data || {})
-            .filter(([k, v]) => k !== '_' && v != null)
-            .map(([pub, profileData]) => ({
-              soul: pub,
-              data: profileData,
-            }));
+          const data: DiscoveredUserData = {};
+          if (typeof userNode['username'] === 'string') {
+            data.username = userNode['username'];
+          }
+          if (typeof userNode['pub'] === 'string') {
+            data.pub = userNode['pub'];
+          }
+          if (typeof userNode['epub'] === 'string') {
+            data.epub = userNode['epub'];
+          }
 
-          const collectedProfiles: DiscoveredUser[] = [];
+          return {
+            pub: pubSoul.startsWith('~') ? pubSoul.slice(1) : pubSoul,
+            data,
+          };
+        })
+      );
 
-          Promise.all(
-            entries.map(entry =>
-              new Promise<void>(resolveProfile => {
-                const cleanPub = entry.soul.startsWith('~')
-                  ? entry.soul.slice(1)
-                  : entry.soul;
-                holster.get(`~${cleanPub}`, (userNode: unknown) => {
-                  collectedProfiles.push({
-                    pub: cleanPub,
-                    data: entry.data,
-                    userNode,
-                  });
-                  resolveProfile();
-                });
-              })
-            )
-          ).then(() => resolve(collectedProfiles));
-        });
-      });
-      return profiles;
+      return profiles.filter(
+        (profile): profile is DiscoveredUser => profile !== null
+      );
     }, transformGunError);
   }
 
@@ -636,33 +700,16 @@ class GunService {
             return;
           }
 
-          const entries = Object.entries(data || {})
-            .filter(([k, v]) => k !== '_' && v != null)
-            .map(([soul, data]) => ({ soul, data }));
+          // Chain reads inline rels, so each entry's data is already the
+          // referenced value or node — no per-entry re-read needed.
+          const items = Object.entries(data)
+            .filter(([k, v]) => k !== '_' && v != null && isListEntryData(v))
+            .map(([soul, entryData]) => ({
+              soul: soul.startsWith('~') ? soul.slice(1) : soul,
+              data: entryData,
+            }));
 
-          const collectedItems: ListItemResult[] = [];
-
-          Promise.all(
-            entries.map(entry =>
-              new Promise<void>(resolveItem => {
-                const cleanSoul = entry.soul.startsWith('~')
-                  ? entry.soul.slice(1)
-                  : entry.soul;
-                holster.get(`~${cleanSoul}`, (node: unknown) => {
-                  const typedData: string | Record<string, unknown> =
-                    typeof entry.data === 'string'
-                      ? entry.data
-                      : (entry.data as Record<string, unknown>);
-                  collectedItems.push({
-                    soul: cleanSoul,
-                    data: typedData,
-                    node,
-                  });
-                  resolveItem();
-                });
-              })
-            )
-          ).then(() => resolve(collectedItems));
+          resolve(items);
         });
       });
       return items;

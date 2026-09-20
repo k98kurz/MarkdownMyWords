@@ -19,6 +19,20 @@ Read rules (violating these hangs or corrupts reads):
   `_` keys
 - Reference implementations: `src/services/gunService.ts`
 
+**Standalone souls vs root properties** (2026-09-19): root-level
+`.get(key, cb)` reads only PROPERTIES of the `root` soul (it resolves
+`root[key]`, following rels). Souls written directly by `user().create()`
+— `~pub` (user node) and `~@username` (alias index) — are standalone
+graph souls, NOT root properties, so root-level `.get()` ALWAYS returns
+null for them (holster.js resolve() "never written" branch). This
+silently broke `discoverUsers`/`readUsername` (test suite 2 "Create
+user"); retries/timeouts can't fix a read that can never succeed. Read
+standalone souls via the wire spec:
+`holster.wire.get({'#': soul}, msg => msg.put[soul])` — the pattern
+`user().auth()` itself uses. Raw wire reads do NOT inline rels (entries
+arrive as `{'#': soul}`; follow them with further wire reads); chain
+reads DO inline rels. Helper: `gunService.readSoul()`.
+
 The hand-written types in `src/types/gun.ts` mirror the real Holster
 API — do NOT loosen them. The GunDB → Holster migration originally
 declared `once` and a chain `get`, so `tsc` passed while the app hung
@@ -155,9 +169,14 @@ mechanism — do not invent a "profiles directory" node.
 
 - App-level profile data lives at `holster.user().get('profile')`
   (soul `~pub/profile`), written by `writeProfile()`.
-- Discovery (`discoverUsers()`) reads `holster.get('~@username', cb)`
-  with `Object.entries()`, then reads each `~pub` node for the user's
-  keys/epub.
+- Discovery (`discoverUsers()`) reads the `~@username` alias soul via
+  `holster.wire.get({'#': soul})` (NOT root-level `.get()` — see the
+  standalone-souls rule above), iterates `Object.entries()`, then reads
+  each `~pub` node the same way. `epub` lives at the TOP LEVEL of the
+  `~pub` node (`create()` writes `{username, pub, epub, auth}`) — the
+  alias entry itself is just a `{'#': soul}` rel.
+- `readUsername()` reads the logged-in user's profile with the chain read
+  `holster.user().get('profile', cb)`, which follows the profile rel.
 - NEVER read `~@username` directly to fetch profiles — it is an alias
   index of pubs claiming that username, not resolved profiles. Use
   `gunService.discoverUsers()`.

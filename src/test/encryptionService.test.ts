@@ -183,15 +183,10 @@ async function testKeySharing(): Promise<TestSuiteResult> {
       }
       const aliceUsers = aliceUsersResult.data;
       assert(aliceUsers.length > 0, "Failed to discover Alice's profile");
-      assert(
-        typeof aliceUsers[0].data === 'object' &&
-          aliceUsers[0].data !== null &&
-          'epub' in aliceUsers[0].data,
-        "Failed to get Alice's data from profile"
-      );
-      const aliceEpub = (aliceUsers[0].data as Record<string, unknown>)
-        .epub as string;
-      assert(aliceEpub, "Failed to get Alice's epub from profiles");
+      const aliceEpub = aliceUsers[0].data.epub;
+      if (typeof aliceEpub !== 'string' || aliceEpub.length === 0) {
+        throw new Error("Failed to get Alice's epub from discovered profile");
+      }
       console.log(
         `Bob retrieved Alice's epub: ${aliceEpub.substring(0, 20)}...`
       );
@@ -226,15 +221,10 @@ async function testKeySharing(): Promise<TestSuiteResult> {
       }
       const bobUsers = bobUsersResult.data;
       assert(bobUsers.length > 0, "Failed to discover Bob's profile");
-      assert(
-        typeof bobUsers[0].data === 'object' &&
-          bobUsers[0].data !== null &&
-          'epub' in bobUsers[0].data,
-        "Failed to get Bob's data from profile"
-      );
-      const bobEpub = (bobUsers[0].data as Record<string, unknown>)
-        .epub as string;
-      assert(bobEpub, "Failed to get Bob's epub from profiles");
+      const bobEpub = bobUsers[0].data.epub;
+      if (typeof bobEpub !== 'string' || bobEpub.length === 0) {
+        throw new Error("Failed to get Bob's epub from discovered profile");
+      }
       console.log(`Alice retrieved Bob's epub: ${bobEpub.substring(0, 20)}...`);
 
       // Alice decrypts from Bob (Alice is authenticated)
