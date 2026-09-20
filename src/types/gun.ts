@@ -72,6 +72,35 @@ export interface GunConstructor {
 }
 
 /**
+ * Wire-spec lex identifier: a soul with an optional property filter.
+ * This is the only way to read a STANDALONE soul (like `~pub` or
+ * `~@username`) — root-level `.get(key, cb)` reads properties of the
+ * `root` soul and always returns null for standalone souls.
+ */
+export interface WireLex {
+  '#': string;
+  '.'?: string | string[] | null;
+}
+
+/**
+ * Raw wire-spec message delivered to `wire.get` callbacks. Unlike chain
+ * reads, wire reads do NOT inline rels — rel properties arrive as
+ * `{'#': soul}` references and must be followed manually.
+ */
+export interface WireMessage {
+  err?: string;
+  put?: Record<string, unknown>;
+}
+
+/**
+ * Wire spec access (mirrors holster.js `api.wire`), used by Holster's own
+ * `user().auth()` for direct soul reads.
+ */
+export interface GunWire {
+  get: (lex: WireLex, callback: (msg: WireMessage) => void) => void;
+}
+
+/**
  * SEA Key Pair (matching GunDB ISEAPair and Holster UserPair)
  */
 export interface ISEAPair {
@@ -94,6 +123,7 @@ export interface GunInstance {
   user: () => GunUserNode;
   opt: (config: { peers: string[] }) => void;
   SEA: SEAInstance;
+  wire: GunWire;
 }
 
 /**

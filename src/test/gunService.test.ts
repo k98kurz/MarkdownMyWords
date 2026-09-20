@@ -20,13 +20,6 @@ import { retryWithBackoff } from '@/lib/retry';
  */
 
 /**
- * Type guard for objects with epub property
- */
-function hasEpub(data: unknown): data is { epub: string } {
-  return typeof data === 'object' && data !== null && 'epub' in data;
-}
-
-/**
  * Test GunDB Service initialization
  */
 async function testInitialization(): Promise<TestSuiteResult> {
@@ -90,8 +83,9 @@ async function testUserOperations(): Promise<TestSuiteResult> {
     if (!writeProfileResult.success) {
       throw writeProfileResult.error;
     }
-    // Poll discovery until the alias index/profile is readable instead of a
-    // blind one-shot read after a fixed sleep (see docs/memory.md).
+    // Poll discovery until the alias index and user node are readable
+    // instead of a blind one-shot read after a fixed sleep (see
+    // docs/memory.md).
     try {
       await retryWithBackoff(
         async () => {
@@ -100,18 +94,22 @@ async function testUserOperations(): Promise<TestSuiteResult> {
             throw usersResult.error;
           }
           const users = usersResult.data;
-          if (users.length === 0 || !hasEpub(users[0].data)) {
+          if (
+            users.length === 0 ||
+            typeof users[0].data.epub !== 'string' ||
+            users[0].data.epub.length === 0
+          ) {
             throw new Error('user profile not discoverable yet');
           }
           console.log(
-            `  Ephemeral pubkey retrieved: ${users[0].data.epub.substring(0, 20)}...`
+            `  Encryption pubkey (epub) retrieved: ${users[0].data.epub.substring(0, 20)}...`
           );
         },
         { maxAttempts: 6, baseDelay: 150, backoffMultiplier: 1.5 }
       );
     } catch (error) {
       throw new Error(
-        `  Ephemeral pubkey retrieval failed (discovery did not propagate): ${error instanceof Error ? error.message : String(error)}`
+        `  Encryption pubkey retrieval failed (discovery did not propagate): ${error instanceof Error ? error.message : String(error)}`
       );
     }
     const userState = gunService.getGun()?.user().is;
@@ -126,10 +124,10 @@ async function testUserOperations(): Promise<TestSuiteResult> {
   });
 
   await runner.run('Authenticate user', async () => {
-    const gun = gunService.getGun();
-    if (gun) {
-      gun.user().leave();
-      await new Promise(resolve => setTimeout(resolve, 500));
+    // Poll until logged out instead of a blind sleep (see docs/memory.md).
+    const logoutResult = await gunService.logoutAndWait();
+    if (!logoutResult.success) {
+      throw logoutResult.error;
     }
     const authResult = await gunService.authenticateUser(
       testUsername,

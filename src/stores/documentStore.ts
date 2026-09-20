@@ -1109,9 +1109,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           throw new Error('User not found');
         }
 
-        const discoveredUser = discoveredUsers[0];
-        const userData = discoveredUser.data as { epub?: string } | undefined;
-        const recipientEpub = userData?.epub;
+        const recipientEpub = discoveredUsers[0].data.epub;
 
         if (!recipientEpub) {
           throw new Error('User not found');
