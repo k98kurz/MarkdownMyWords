@@ -12,7 +12,6 @@ import {
   match,
   chain,
   pipe,
-  sequence,
   tryCatch,
   isFailure,
   type Result,
@@ -185,6 +184,7 @@ const handleAuthResult = <T>(
         error: error.message,
         isAuthenticated: false,
         user: null,
+        username: null,
       });
 
       // IMPORTANT: No global error handling - all auth errors handled locally
@@ -217,17 +217,29 @@ export const useAuthStore = create<AuthState>(set => ({
     const result = await pipe(
       // Step 1: Validate input
       validateAuthInput(username, password),
-      // Step 2: Create user, authenticate, and write profile (async operation)
+      // Step 2: Create user, authenticate, and write profile — each step
+      // short-circuits on failure before the next runs
       async validationResult => {
         if (isFailure(validationResult)) return validationResult;
-        let res = await sequence([
-          await gunService.createUser(username.trim(), password),
-          await gunService.authenticateUser(username.trim(), password),
-          await gunService.writeProfile(),
-        ]);
-        return res.success
-          ? success(undefined)
-          : failure(transformAuthError(res.error));
+        const createResult = await gunService.createUser(
+          username.trim(),
+          password
+        );
+        if (isFailure(createResult)) {
+          return failure(transformAuthError(createResult.error));
+        }
+        const authResult = await gunService.authenticateUser(
+          username.trim(),
+          password
+        );
+        if (isFailure(authResult)) {
+          return failure(transformAuthError(authResult.error));
+        }
+        const profileResult = await gunService.writeProfile();
+        if (isFailure(profileResult)) {
+          return failure(transformAuthError(profileResult.error));
+        }
+        return success(undefined);
       },
       // Step 3: Get authenticated user
       chain(() => getAuthenticatedUser())
@@ -311,6 +323,7 @@ export const useAuthStore = create<AuthState>(set => ({
     // Clear state
     set({
       user: null,
+      username: null,
       isAuthenticated: false,
       error: null,
     });

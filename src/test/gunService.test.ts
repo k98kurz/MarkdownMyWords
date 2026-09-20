@@ -5,7 +5,6 @@
  */
 
 import { gunService, GunService, type ListItemResult } from '@/services/gunService';
-import type { GunAck } from '@/types/gun';
 import { GunErrorCode } from '@/types/gun';
 import {
   TestRunner,
@@ -186,9 +185,9 @@ async function testListItems(): Promise<TestSuiteResult> {
         gun
           .get('test')
           .next(`item${index + 1}`)
-          .put(item, (ack: GunAck) => {
-            if (ack && typeof ack === 'object' && ack.err) {
-              reject(new Error(`Failed to write item${index + 1}: ${ack.err}`));
+          .put(item, err => {
+            if (err) {
+              reject(new Error(`Failed to write item${index + 1}: ${err}`));
             } else {
               resolve();
             }
@@ -246,13 +245,13 @@ async function testListItems(): Promise<TestSuiteResult> {
         .user()
         .get('private')
         .next('item1')
-        .put({ content: userItem1 }, (_ack: GunAck) => {
+        .put({ content: userItem1 }, () => {
           // Success - continue
           gun
             .user()
             .get('private')
             .next('item2')
-            .put({ content: userItem2 }, (_ack: GunAck) => {
+            .put({ content: userItem2 }, () => {
               // Success - continue
               resolve();
             });

@@ -175,7 +175,7 @@ export interface GunNodeRef {
   next: ((key: string) => GunNodeRef) &
     ((key: string, callback: (data: unknown) => void) => void) &
     ((key: null, callback: (data: unknown) => void) => void);
-  put: (data: unknown, callback?: (ack: GunAck) => void) => void;
+  put: (data: unknown, callback?: AckCallback) => void;
   on: (lex: unknown, callback: (data: unknown) => void) => void;
   off: (callback?: (data: unknown) => void) => void;
 }
@@ -227,13 +227,13 @@ export type UserCallback = (user: User | null) => void;
 export type Unsubscribe = () => void;
 
 /**
- * Acknowledgment from put/set operations
+ * Holster callback convention (user().create/auth and chain .put()):
+ * Node-style (err) callbacks where err is a plain STRING error message,
+ * or null/undefined on success — NEVER GunDB's `{err}` object ack
+ * (see node_modules/@mblaney/holster/src/user.js and holster.js).
+ * TRUTHINESS IS THE ERROR CHECK: `if (ack)` means it failed.
  */
-export interface GunAck {
-  err?: string | null;
-  ok?: number | Record<string, number> | null;
-  v?: number | null;
-}
+export type AckCallback = (err: string | null | undefined) => void;
 
 /**
  * Holster user session state (holster.user().is)
@@ -260,17 +260,9 @@ export interface GunUserNode {
   is?: GunUserSession;
   get: ((key: string) => GunNodeRef) &
     ((key: string, callback: (data: unknown) => void) => void);
-  put: (data: unknown, callback?: (ack: GunAck) => void) => void;
-  auth: (
-    alias: string,
-    password: string,
-    callback?: (ack: GunAck) => void
-  ) => void;
-  create: (
-    alias: string,
-    password: string,
-    callback?: (ack: GunAck) => void
-  ) => void;
+  put: (data: unknown, callback?: AckCallback) => void;
+  auth: (alias: string, password: string, callback?: AckCallback) => void;
+  create: (alias: string, password: string, callback?: AckCallback) => void;
   leave: () => void;
   recall: () => void;
 }
