@@ -141,9 +141,12 @@ export class TestRunner {
   }
 }
 
-export function printTestSummary(suiteResults: TestSuiteResult[]): void {
+export function printTestSummary(
+  suiteResults: TestSuiteResult[],
+  label?: string
+): void {
   console.log('\n' + '='.repeat(60));
-  console.log('📊 TEST SUMMARY');
+  console.log(`📊 TEST SUMMARY${label ? ` — ${label}` : ''}`);
   console.log('='.repeat(60));
 
   let totalTests = 0;
