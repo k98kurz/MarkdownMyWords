@@ -357,7 +357,9 @@ async function testKeySharing(): Promise<TestSuiteResult> {
 //   return runner.getResults()
 // }
 
-export async function testEncryptionService(): Promise<TestSuiteResult[]> {
+export async function testEncryptionService(
+  suiteNumber?: number
+): Promise<TestSuiteResult[]> {
   console.log('🚀 Starting Encryption Service Tests\n');
   console.log('='.repeat(60));
 
@@ -412,7 +414,10 @@ export async function testEncryptionService(): Promise<TestSuiteResult[]> {
     }
   }
 
-  printTestSummary(suiteResults);
+  printTestSummary(
+    suiteResults,
+    suiteNumber !== undefined ? `SUITE ${suiteNumber}` : undefined
+  );
 
   return suiteResults;
 }

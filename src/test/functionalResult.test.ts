@@ -772,7 +772,9 @@ async function testEdgeCases(): Promise<TestSuiteResult> {
   return runner.getResults();
 }
 
-export async function testFunctionalResult(): Promise<TestSuiteResult[]> {
+export async function testFunctionalResult(
+  suiteNumber?: number
+): Promise<TestSuiteResult[]> {
   console.log('🚀 Starting Functional Result Utility Tests\n');
   console.log('='.repeat(60));
 
@@ -806,7 +808,10 @@ export async function testFunctionalResult(): Promise<TestSuiteResult[]> {
   suiteResults.push(edgeCasesResult);
   console.log('\n' + '='.repeat(60) + '\n');
 
-  printTestSummary(suiteResults);
+  printTestSummary(
+    suiteResults,
+    suiteNumber !== undefined ? `SUITE ${suiteNumber}` : undefined
+  );
 
   return suiteResults;
 }

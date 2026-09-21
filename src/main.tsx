@@ -84,42 +84,42 @@ async function runAllTests(): Promise<void> {
     const allSuiteResults: TestSuiteResult[] = [];
 
     console.log('\n📦 Test Suite 1: Document Encryption Sizes\n');
-    const docSizesResult = await testVariousDocumentSizes();
+    const docSizesResult = await testVariousDocumentSizes(1);
     allSuiteResults.push(docSizesResult);
 
     console.log('\n' + '='.repeat(60));
 
     console.log('\n📦 Test Suite 2: Holster Service\n');
-    const gunResults = await testGunService();
+    const gunResults = await testGunService(2);
     allSuiteResults.push(...gunResults);
 
     console.log('\n' + '='.repeat(60));
 
     console.log('\n📦 Test Suite 3: Auth Store\n');
-    const authResult = await testAuthStore();
+    const authResult = await testAuthStore(3);
     allSuiteResults.push(authResult);
 
     console.log('\n' + '='.repeat(60));
 
     console.log('\n📦 Test Suite 4: Encryption Service\n');
-    const encResults = await testEncryptionService();
+    const encResults = await testEncryptionService(4);
     allSuiteResults.push(...encResults);
 
     console.log('\n' + '='.repeat(60));
 
     console.log('\n📦 Test Suite 5: Functional Result\n');
-    const funcResults = await testFunctionalResult();
+    const funcResults = await testFunctionalResult(5);
     allSuiteResults.push(...funcResults);
 
     console.log('\n' + '='.repeat(60));
 
     console.log('\n📦 Test Suite 6: Document Store\n');
-    const docStoreResults = await testDocumentStore();
+    const docStoreResults = await testDocumentStore(6);
     allSuiteResults.push(...docStoreResults);
 
     console.log('\n' + '='.repeat(60));
 
-    printTestSummary(allSuiteResults);
+    printTestSummary(allSuiteResults, 'ALL SUITES');
   } catch (error) {
     console.error('\n❌ Error running tests:', error);
     throw error;

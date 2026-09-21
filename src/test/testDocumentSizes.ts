@@ -5,7 +5,11 @@
  */
 
 import { encryptionService } from '@/services/encryptionService';
-import { TestRunner, type TestSuiteResult } from '@/dev/testRunner';
+import {
+  TestRunner,
+  printTestSummary,
+  type TestSuiteResult,
+} from '@/dev/testRunner';
 
 /**
  * Generate test content of specified size
@@ -19,7 +23,9 @@ function generateTestContent(sizeInBytes: number): string {
  * Test encryption/decryption with various document sizes in browser console
  * @returns Promise that resolves when tests complete
  */
-export async function testVariousDocumentSizes(): Promise<TestSuiteResult> {
+export async function testVariousDocumentSizes(
+  suiteNumber?: number
+): Promise<TestSuiteResult> {
   console.log('🧪 Testing SEA encryption with various document sizes...\n');
 
   const runner = new TestRunner('Document Encryption Sizes');
@@ -105,5 +111,10 @@ export async function testVariousDocumentSizes(): Promise<TestSuiteResult> {
   });
 
   runner.printResults();
-  return runner.getResults();
+  const result = runner.getResults();
+  printTestSummary(
+    [result],
+    suiteNumber !== undefined ? `SUITE ${suiteNumber}` : undefined
+  );
+  return result;
 }

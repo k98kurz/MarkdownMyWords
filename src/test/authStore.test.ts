@@ -19,7 +19,12 @@
 
 import { useAuthStore } from '@/stores/authStore';
 import { gunService } from '@/services/gunService';
-import { TestRunner, type TestSuiteResult, sleep } from '@/dev/testRunner';
+import {
+  TestRunner,
+  printTestSummary,
+  type TestSuiteResult,
+  sleep,
+} from '@/dev/testRunner';
 import { tryCatch, isFailure } from '@/lib/functionalResult';
 import type { AuthError } from '@/stores/authStore';
 
@@ -517,7 +522,9 @@ async function testSessionTimeout(runner: TestRunner): Promise<void> {
 /**
  * Run all AuthStore tests
  */
-export async function testAuthStore(): Promise<TestSuiteResult> {
+export async function testAuthStore(
+  suiteNumber?: number
+): Promise<TestSuiteResult> {
   console.log('🧪 Testing AuthStore...\n');
   console.log('='.repeat(60));
 
@@ -541,5 +548,10 @@ export async function testAuthStore(): Promise<TestSuiteResult> {
   // Post-test cleanup
   await cleanupAuthStore();
 
-  return runner.getResults();
+  const result = runner.getResults();
+  printTestSummary(
+    [result],
+    suiteNumber !== undefined ? `SUITE ${suiteNumber}` : undefined
+  );
+  return result;
 }

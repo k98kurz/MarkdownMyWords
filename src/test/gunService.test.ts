@@ -616,7 +616,9 @@ async function testConnectionState(): Promise<TestSuiteResult> {
 /**
  * Run all GunDB Service tests
  */
-export async function testGunService(): Promise<TestSuiteResult[]> {
+export async function testGunService(
+  suiteNumber?: number
+): Promise<TestSuiteResult[]> {
   console.log('🚀 Starting GunDB Service Tests\n');
   console.log('='.repeat(60));
 
@@ -671,7 +673,10 @@ export async function testGunService(): Promise<TestSuiteResult[]> {
   }
 
   // Print summary
-  printTestSummary(suiteResults);
+  printTestSummary(
+    suiteResults,
+    suiteNumber !== undefined ? `SUITE ${suiteNumber}` : undefined
+  );
 
   return suiteResults;
 }

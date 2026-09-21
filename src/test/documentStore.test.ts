@@ -808,7 +808,9 @@ async function testCRUDe2e(): Promise<TestSuiteResult> {
  *
  * Run this in browser console: testDocumentStore()
  */
-export async function testDocumentStore(): Promise<TestSuiteResult[]> {
+export async function testDocumentStore(
+  suiteNumber?: number
+): Promise<TestSuiteResult[]> {
   console.log('🚀 Starting Document Store Tests\n');
   console.log('='.repeat(60));
 
@@ -834,7 +836,10 @@ export async function testDocumentStore(): Promise<TestSuiteResult[]> {
   //  console.log('\n' + '='.repeat(60) + '\n');
 
   // Print summary
-  printTestSummary(suiteResults);
+  printTestSummary(
+    suiteResults,
+    suiteNumber !== undefined ? `SUITE ${suiteNumber}` : undefined
+  );
 
   await cleanupTestUser();
 
