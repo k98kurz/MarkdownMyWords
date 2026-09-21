@@ -971,6 +971,58 @@ class GunService {
   }
 
   /**
+   * Write arbitrary (unencrypted) data to a user-scoped chain path.
+   *
+   * Always builds a FRESH chain: a chain that has delivered a read callback
+   * has had its context deleted by Holster, so a later `.put()` on the same
+   * chain silently no-ops and its ack never fires (see docs/memory.md). The
+   * ack wait is bounded by withDeadline so a wedged storage layer fails
+   * loudly instead of hanging forever.
+   *
+   * @param path - user-scoped path parts, e.g. ['docs', docId]
+   * @param data - value to put (any Holster-convertible data, or null)
+   * @param description - label for put/deadline errors, e.g. 'Failed to update document'
+   * @returns Promise resolving to void
+   */
+  async writeUserPath(
+    path: string[],
+    data: unknown,
+    description: string
+  ): Promise<Result<void, GunError>> {
+    return tryCatch<void, GunError>(async () => {
+      const holster = this.getGun();
+      const userNode = holster.user();
+      const [first, ...rest] = path;
+      if (first === undefined) {
+        throw createGunError(
+          GunErrorCode.MISC_ERROR,
+          'writeUserPath requires a non-empty path'
+        );
+      }
+
+      let node: GunNodeRef = userNode.get(first);
+      for (const part of rest) {
+        node = node.next(part);
+      }
+
+      await withDeadline<void>(
+        (resolve, reject) => {
+          node.put(data, err => {
+            if (err) {
+              reject(new Error(`${description}: ${err}`));
+            } else {
+              resolve();
+            }
+          });
+        },
+        description,
+        OPERATION_DEADLINE_MS,
+        () => this.relayStatusSummary()
+      );
+    }, transformGunError);
+  }
+
+  /**
    * Read and decrypt private data from user storage
    * Reference: code_references/holster.md
    * @param plainPath - Array of plain text path parts

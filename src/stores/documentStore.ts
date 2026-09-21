@@ -15,7 +15,7 @@ import type {
   SharedDocNotification,
 } from '@/types/document';
 import { gunService } from '@/services/gunService';
-import { GunNodeRef } from '@/types/gun';
+import { GunUserNode } from '@/types/gun';
 import { encryptionService } from '@/services/encryptionService';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -127,6 +127,59 @@ function validateTagsNoCommas(tags: string[] | undefined): void {
         throw new Error('Tags cannot contain commas');
       }
     }
+  }
+}
+
+type StoredDocument = Partial<Document> & { id: string };
+
+/**
+ * Read a document node from the current user's `docs` collection.
+ *
+ * Builds its own fresh chain: a chain that has delivered a read callback is
+ * single-use — Holster deletes the chain context afterwards, so a later
+ * `.put()` on the same chain silently no-ops and its ack never fires (see
+ * docs/memory.md).
+ */
+function readOwnDocument(
+  userNode: GunUserNode,
+  docId: string
+): Promise<StoredDocument> {
+  return new Promise<StoredDocument>((resolve, reject) => {
+    userNode
+      .get('docs')
+      .next(docId)
+      .next(null, (data: unknown) => {
+        if (!data || typeof data !== 'object') {
+          reject(new Error('Document not found'));
+          return;
+        }
+        const doc = data as Partial<Document>;
+        if (!doc.id) {
+          reject(new Error('Document not found'));
+          return;
+        }
+        resolve({ ...doc, id: doc.id });
+      });
+  });
+}
+
+/**
+ * Write a document node to the current user's `docs` collection through
+ * gunService, which builds a fresh chain and bounds the ack wait with a
+ * deadline (see gunService.writeUserPath).
+ */
+async function writeOwnDocument(
+  docId: string,
+  data: unknown,
+  failurePrefix: string
+): Promise<void> {
+  const result = await gunService.writeUserPath(
+    ['docs', docId],
+    data,
+    failurePrefix
+  );
+  if (!result.success) {
+    throw new Error(result.error.message);
   }
 }
 
@@ -611,26 +664,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
         const gun = gunService.getGun();
         const userNode = gun.user();
-        const docNode = userNode.get('docs').next(docId);
-
-        const docData = await new Promise<unknown>((resolve, reject) => {
-          docNode.next(null, (data: unknown) => {
-            if (data === null || data === undefined) {
-              reject(new Error('Document not found'));
-            } else {
-              resolve(data);
-            }
-          });
-        });
-
-        if (!docData || typeof docData !== 'object') {
-          throw new Error('Document not found');
-        }
-
-        const doc = docData as Partial<Document>;
-        if (!doc.id) {
-          throw new Error('Document not found');
-        }
+        const doc = await readOwnDocument(userNode, docId);
 
         let docKey: string | undefined;
         if (!doc.isPublic) {
@@ -727,17 +761,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           updatedDoc = { ...updatedDoc, original: doc.original };
         }
 
-        await new Promise<void>((resolve, reject) => {
-          docNode.put(updatedDoc, err => {
-            if (err) {
-              reject(
-                new Error(`Failed to update document: ${err}`)
-              );
-            } else {
-              resolve();
-            }
-          });
-        });
+        await writeOwnDocument(docId, updatedDoc, 'Failed to update document');
 
         if (isCurrentDoc) {
           let decryptedTitle = updatedDoc.title ?? '';
@@ -824,61 +848,18 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       const result = (await tryCatch(async () => {
         const gun = gunService.getGun();
         const userNode = gun.user();
-        const docNode = userNode.get('docs').next(docId);
+        const doc = await readOwnDocument(userNode, docId);
 
-        const docData = await new Promise<unknown>((resolve, reject) => {
-          docNode.next(null, (data: unknown) => {
-            if (data === null || data === undefined) {
-              reject(new Error('Document not found'));
-            } else {
-              resolve(data);
-            }
-          });
-        });
-
-        if (!docData || typeof docData !== 'object') {
-          throw new Error('Document not found');
-        }
-
-        const doc = docData as Partial<Document>;
-
-        await new Promise<void>((resolve, reject) => {
-          docNode.put(null, err => {
-            if (err) {
-              reject(
-                new Error(`Failed to delete document: ${err}`)
-              );
-            } else {
-              resolve();
-            }
-          });
-        });
+        await writeOwnDocument(docId, null, 'Failed to delete document');
 
         if (!doc.isPublic) {
-          const privatePathResult = await gunService.getPrivatePath([
+          const keyDeleteResult = await gunService.deletePrivateData([
             'docKeys',
             docId,
           ]);
-          if (!privatePathResult.success) {
-            throw privatePathResult.error;
+          if (!keyDeleteResult.success) {
+            throw new Error(keyDeleteResult.error.message);
           }
-          const [first, ...rest] = privatePathResult.data;
-          let node: GunNodeRef = userNode.get(first);
-          for (const part of rest) {
-            node = node.next(part);
-          }
-
-          await new Promise<void>((resolve, reject) => {
-            node.put(null, err => {
-              if (err) {
-                reject(
-                  new Error(`Failed to delete document key: ${err}`)
-                );
-              } else {
-                resolve();
-              }
-            });
-          });
         }
 
         return undefined;
@@ -1071,26 +1052,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       const result = (await tryCatch(async () => {
         const gun = gunService.getGun();
         const userNode = gun.user();
-        const docNode = userNode.get('docs').next(docId);
-
-        const docData = await new Promise<unknown>((resolve, reject) => {
-          docNode.next(null, (data: unknown) => {
-            if (data === null || data === undefined) {
-              reject(new Error('Document not found'));
-            } else {
-              resolve(data);
-            }
-          });
-        });
-
-        if (!docData || typeof docData !== 'object') {
-          throw new Error('Document not found');
-        }
-
-        const doc = docData as Partial<Document>;
-        if (!doc.id) {
-          throw new Error('Document not found');
-        }
+        const doc = await readOwnDocument(userNode, docId);
 
         const currentAccess = doc.access ?? [];
         const existingAccess = currentAccess.find(a => a.userId === userId);
@@ -1163,15 +1125,11 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           JSON.stringify(notification)
         );
 
-        await new Promise<void>((resolve, reject) => {
-          docNode.put({ access: updatedAccess }, err => {
-            if (err) {
-              reject(new Error(`Failed to share document: ${err}`));
-            } else {
-              resolve();
-            }
-          });
-        });
+        await writeOwnDocument(
+          docId,
+          { access: updatedAccess },
+          'Failed to share document'
+        );
 
         return undefined;
       }, transformError)) as Result<void, DocumentError>;
@@ -1202,41 +1160,16 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       const result = (await tryCatch(async () => {
         const gun = gunService.getGun();
         const userNode = gun.user();
-        const docNode = userNode.get('docs').next(docId);
-
-        const docData = await new Promise<unknown>((resolve, reject) => {
-          docNode.next(null, (data: unknown) => {
-            if (data === null || data === undefined) {
-              reject(new Error('Document not found'));
-            } else {
-              resolve(data);
-            }
-          });
-        });
-
-        if (!docData || typeof docData !== 'object') {
-          throw new Error('Document not found');
-        }
-
-        const doc = docData as Partial<Document>;
-        if (!doc.id) {
-          throw new Error('Document not found');
-        }
+        const doc = await readOwnDocument(userNode, docId);
 
         const currentAccess = doc.access ?? [];
         const updatedAccess = currentAccess.filter(a => a.userId !== userId);
 
-        await new Promise<void>((resolve, reject) => {
-          docNode.put({ access: updatedAccess }, err => {
-            if (err) {
-              reject(
-                new Error(`Failed to unshare document: ${err}`)
-              );
-            } else {
-              resolve();
-            }
-          });
-        });
+        await writeOwnDocument(
+          docId,
+          { access: updatedAccess },
+          'Failed to unshare document'
+        );
 
         return undefined;
       }, transformError)) as Result<void, DocumentError>;
@@ -1327,26 +1260,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
         const gun = gunService.getGun();
         const userNode = gun.user();
-        const docNode = userNode.get('docs').next(docId);
-
-        const docData = await new Promise<unknown>((resolve, reject) => {
-          docNode.next(null, (data: unknown) => {
-            if (data === null || data === undefined) {
-              reject(new Error('Document not found'));
-            } else {
-              resolve(data);
-            }
-          });
-        });
-
-        if (!docData || typeof docData !== 'object') {
-          throw new Error('Document not found');
-        }
-
-        const doc = docData as Partial<Document>;
-        if (!doc.id) {
-          throw new Error('Document not found');
-        }
+        const doc = await readOwnDocument(userNode, docId);
 
         if (doc.isPublic) {
           const title = doc.title ?? '';
@@ -1429,17 +1343,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
             Object.assign(updatedDoc, { original: doc.original });
           }
 
-          await new Promise<void>((resolve, reject) => {
-            docNode.put(updatedDoc, err => {
-              if (err) {
-                reject(
-                  new Error(`Failed to update document: ${err}`)
-                );
-              } else {
-                resolve();
-              }
-            });
-          });
+          await writeOwnDocument(docId, updatedDoc, 'Failed to update document');
         } else {
           throw new Error('Document is already private');
         }
@@ -1477,26 +1381,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
         const gun = gunService.getGun();
         const userNode = gun.user();
-        const docNode = userNode.get('docs').next(docId);
-
-        const docData = await new Promise<unknown>((resolve, reject) => {
-          docNode.next(null, (data: unknown) => {
-            if (data === null || data === undefined) {
-              reject(new Error('Document not found'));
-            } else {
-              resolve(data);
-            }
-          });
-        });
-
-        if (!docData || typeof docData !== 'object') {
-          throw new Error('Document not found');
-        }
-
-        const doc = docData as Partial<Document>;
-        if (!doc.id) {
-          throw new Error('Document not found');
-        }
+        const doc = await readOwnDocument(userNode, docId);
 
         if (!doc.isPublic) {
           const keyResult = await gunService.readPrivateData([
@@ -1579,17 +1464,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
             Object.assign(updatedDoc, { original: doc.original });
           }
 
-          await new Promise<void>((resolve, reject) => {
-            docNode.put(updatedDoc, err => {
-              if (err) {
-                reject(
-                  new Error(`Failed to update document: ${err}`)
-                );
-              } else {
-                resolve();
-              }
-            });
-          });
+          await writeOwnDocument(docId, updatedDoc, 'Failed to update document');
         } else {
           throw new Error('Document is already public');
         }
@@ -1632,26 +1507,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
         const gun = gunService.getGun();
         const userNode = gun.user();
-        const docNode = userNode.get('docs').next(docId);
-
-        const docData = await new Promise<unknown>((resolve, reject) => {
-          docNode.next(null, (data: unknown) => {
-            if (data === null || data === undefined) {
-              reject(new Error('Document not found'));
-            } else {
-              resolve(data);
-            }
-          });
-        });
-
-        if (!docData || typeof docData !== 'object') {
-          throw new Error('Document not found');
-        }
-
-        const doc = docData as Partial<Document>;
-        if (!doc.id) {
-          throw new Error('Document not found');
-        }
+        const doc = await readOwnDocument(userNode, docId);
 
         if (doc.isPublic) {
           throw new Error('Cannot change key for public documents');
@@ -1774,17 +1630,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           Object.assign(updatedDoc, { original: doc.original });
         }
 
-        await new Promise<void>((resolve, reject) => {
-          docNode.put(updatedDoc, err => {
-            if (err) {
-              reject(
-                new Error(`Failed to update document: ${err}`)
-              );
-            } else {
-              resolve();
-            }
-          });
-        });
+        await writeOwnDocument(docId, updatedDoc, 'Failed to update document');
 
         return undefined;
       }, transformError)) as Result<void, DocumentError>;

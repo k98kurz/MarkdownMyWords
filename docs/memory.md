@@ -82,9 +82,8 @@ object ack anywhere (verified in
 
 Holster write acks (`wire.put` → `api.put` → radisk batch/thrash →
 IndexedDB) have NO watchdog or timeout anywhere in the library — only
-radisk READS have the 30s "radisk read hang detected" recovery, and the
-write-path watchdogs are still unfixed upstream in every 2.x, so the
-failure mode remains possible. If IndexedDB wedges (corrupt storage DB,
+radisk READS recover, after 30s — so this failure mode is still possible
+in every 2.x. If IndexedDB wedges (corrupt storage DB,
 `dbReady` bootstrap dying silently inside `onsuccess`, blocked
 `indexedDB.open`, pending `deleteDatabase`), every read costs 30s and
 every write's ack NEVER arrives: `user().create()` never calls back,
@@ -125,6 +124,26 @@ is this signature.
   discards the pending flag rather than retrying forever. A failed or
   blocked clear means NOT deleted; don't "fix" either path to claim
   success.
+
+# Holster Chains Are Single-Use After a Read (2026-09-21)
+
+A one-shot chain read (`.next(null, cb)` / `.get(key, cb)`) deletes the
+chain's context once it delivers data (`holster.js` `done()` calls
+`allctx.delete(ctxid)`), and `put()` returns early without one. Reusing
+the same chain object for a read and then a put therefore makes the put
+silently no-op — its ack never fires and any awaited promise around it
+hangs forever. This froze `documentStore` at "4. update the document"
+(`docNode` was read, then `.put()`ed); read-only and write-only paths
+were unaffected, which is the signature.
+
+- Rule: build a FRESH chain for every read AND every write. Never
+  `.put()` on a chain after `.next(null, cb)`/`.get(key, cb)`, and never
+  call `.next(key)` twice on the same chain (it accumulates the path).
+- User-scoped plaintext writes go through
+  `gunService.writeUserPath(path, data, description)` — it builds a fresh
+  chain and bounds the ack wait with `withDeadline` (live relay state in
+  `details`). `readOwnDocument`/`writeOwnDocument` in
+  `src/stores/documentStore.ts` wrap this for the `docs` collection.
 
 # SEA Encryption & ECDH for Document Sharing (2026-09-18)
 
@@ -273,7 +292,7 @@ fire-and-forget `await chain.put(x)`) and poll reads with
 `retryWithBackoff` (`src/lib/retry`) on a real condition — see the
 listItems and user-operations tests in `src/test/gunService.test.ts`.
 
-Clearing local storage is deferred, not immediate: `clearHolsterStorage()`
-flags a pending clear that `completePendingStorageClear()` performs on the
-next page load (before Holster initializes). Don't call it expecting an
-in-run wipe — clear + reload is a separate step before `runAllTests()`.
+Clearing storage is deferred (see Wedged Local Storage above):
+`clearHolsterStorage()` flags a pending clear that
+`completePendingStorageClear()` runs on the next page load, so clear +
+reload is a separate step before `runAllTests()`.
