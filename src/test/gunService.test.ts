@@ -236,6 +236,14 @@ async function testListItems(): Promise<TestSuiteResult> {
 
   await runner.run('Test listUserItems on user namespace', async () => {
     const gun = gunService.getGun();
+
+    // Holster's user().get() returns undefined when logged out, so the
+    // chain below would crash with a cryptic "reading 'next'". Fail with
+    // the actual reason instead (usually a failed setup task above).
+    if (!gun.user().is?.pub) {
+      throw new Error('Not authenticated — user setup task failed earlier');
+    }
+
     const userItem1 = gunService.newId();
     const userItem2 = gunService.newId();
 
@@ -306,19 +314,38 @@ async function testListItems(): Promise<TestSuiteResult> {
   await runner.task('Cleanup test data', async () => {
     const gun = gunService.getGun();
 
-    // Remove public test items
-    await gun.get('test').next('item1').put(null);
-    await gun.get('test').next('item2').put(null);
-    await gun.get('test').next('item3').put(null);
-    // Verify the data is gone
-    const itemsResult = await gunService.listItems(['test']);
-    if (!itemsResult.success) {
-      throw itemsResult.error;
+    // Remove public test items, waiting for each put ack (fire-and-forget
+    // puts race the verification read below).
+    for (const index of [1, 2, 3]) {
+      await new Promise<void>((resolve, reject) => {
+        gun
+          .get('test')
+          .next(`item${index}`)
+          .put(null, err => {
+            if (err) {
+              reject(new Error(`Failed to delete item${index}: ${err}`));
+            } else {
+              resolve();
+            }
+          });
+      });
     }
-    const items = itemsResult.data;
-    if (items.length !== 0) {
-      throw new Error(`items not deleted: ${items}`);
-    }
+
+    // Poll until the deletions are readable (condition-based, no blind delay)
+    await retryWithBackoff(
+      async () => {
+        const itemsResult = await gunService.listItems(['test']);
+        if (!itemsResult.success) {
+          throw itemsResult.error;
+        }
+        if (itemsResult.data.length !== 0) {
+          throw new Error(
+            `items not deleted: ${JSON.stringify(itemsResult.data)}`
+          );
+        }
+      },
+      { maxAttempts: 6, baseDelay: 150, backoffMultiplier: 1.5 }
+    );
   });
 
   console.log('\n✅ ListItems tests complete!');

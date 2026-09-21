@@ -258,7 +258,17 @@ export interface GunUserSession {
  */
 export interface GunUserNode {
   is?: GunUserSession;
-  get: ((key: string) => GunNodeRef) &
+  /**
+   * `[pub, key]` roots the chain at the standalone `~pub` soul (works
+   * without being logged in as that user); a bare string key roots at the
+   * logged-in user's own `~pub` soul.
+   */
+  get: ((keys: [pub: string, key: string]) => GunNodeRef) &
+    ((
+      keys: [pub: string, key: string],
+      callback: (data: unknown) => void
+    ) => void) &
+    ((key: string) => GunNodeRef) &
     ((key: string, callback: (data: unknown) => void) => void);
   put: (data: unknown, callback?: AckCallback) => void;
   auth: (alias: string, password: string, callback?: AckCallback) => void;
