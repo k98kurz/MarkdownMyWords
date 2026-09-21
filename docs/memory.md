@@ -84,8 +84,8 @@ Holster write acks (`wire.put` → `api.put` → radisk batch/thrash →
 IndexedDB) have NO watchdog or timeout anywhere in the library — only
 radisk READS have the 30s "radisk read hang detected" recovery, and the
 write-path watchdogs are still unfixed upstream in every 2.x, so the
-failure mode remains possible. If IndexedDB wedges (corrupt `radata`
-DB, `dbReady` bootstrap dying silently inside `onsuccess`, blocked
+failure mode remains possible. If IndexedDB wedges (corrupt storage DB,
+`dbReady` bootstrap dying silently inside `onsuccess`, blocked
 `indexedDB.open`, pending `deleteDatabase`), every read costs 30s and
 every write's ack NEVER arrives: `user().create()` never calls back,
 and the `creating` flag stays `true`, so later create attempts fail
@@ -93,10 +93,11 @@ fast with "User is already being created" — a test run frozen in
 "beginning test Create user" with one watchdog message for `~@alias␅`
 is this signature.
 
-- Recovery: wipe BOTH stores — browser IndexedDB `radata` (DevTools →
-  Application) after closing other tabs + hard reload, AND the relay's
-  `./radata` directory (Node fs store, written by the same radisk).
-  Test users are disposable; never try to salvage these stores.
+- Recovery: wipe BOTH stores — browser IndexedDB (the configured
+  `STORAGE_DB_NAME`, DevTools → Application) after closing other tabs +
+  hard reload, AND the relay's `./radata` directory (Node fs store,
+  written by the same radisk). Test users are disposable; never try to
+  salvage these stores.
 - `gunService.withDeadline` (45s, above the 30s+10s library timeouts)
   bounds `createUser`/`authenticateUser`/`writeProfile`/private-data
   put waits, and `initialize()` runs a 10s storage health probe — a
@@ -108,8 +109,22 @@ is this signature.
   create/auth begin with relay reads, so a down relay trips the same
   deadline. Check the error `details` (live relay states) before
   blaming storage or wiping data.
-- `clearHolsterStorage()` resolves honestly: `onblocked` AND `onerror`
-  mean the DB was NOT deleted — don't "fix" either to claim success.
+- Dev builds store to their OWN IndexedDB (`gunService.storageDbName`
+  → Holster `opt.file`, default `radata_dev`; prod `radata`), so tests
+  never touch production storage. `initialize(config)` records the
+  resolved name on the service, so `clearHolsterStorage()` always targets
+  the DB that was actually opened (including a `config.file` override).
+  Recovery/clearing below target that DB.
+- `clearHolsterStorage()` CANNOT delete the active DB in-page: Holster
+  never closes its connection, so `deleteDatabase` is always `onblocked`
+  while the app runs. It now defers — logout + localStorage
+  `holster.storageClearPending` — and `completePendingStorageClear()`
+  (main.tsx, BEFORE `gunService.initialize()`) deletes it on the next
+  load. It returns `StorageClearOutcome` (`deleted`/`deferred`/`error`/
+  `unavailable`) instead of resolving void, and a no-IndexedDB env
+  discards the pending flag rather than retrying forever. A failed or
+  blocked clear means NOT deleted; don't "fix" either path to claim
+  success.
 
 # SEA Encryption & ECDH for Document Sharing (2026-09-18)
 
@@ -257,3 +272,8 @@ For write/read races in tests: wait for `put` acks (never
 fire-and-forget `await chain.put(x)`) and poll reads with
 `retryWithBackoff` (`src/lib/retry`) on a real condition — see the
 listItems and user-operations tests in `src/test/gunService.test.ts`.
+
+Clearing local storage is deferred, not immediate: `clearHolsterStorage()`
+flags a pending clear that `completePendingStorageClear()` performs on the
+next page load (before Holster initializes). Don't call it expecting an
+in-run wipe — clear + reload is a separate step before `runAllTests()`.

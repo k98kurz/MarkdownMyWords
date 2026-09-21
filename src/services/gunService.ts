@@ -50,6 +50,16 @@ export interface DiscoveredUser {
   data: DiscoveredUserData;
 }
 
+/**
+ * IndexedDB database/object-store name Holster uses for local graph storage
+ * (its `opt.file`). Dev builds use a separate database so tests never touch
+ * "real" storage and it can be wiped via clearHolsterStorage(). Override
+ * with VITE_APP_STORAGE_DB.
+ */
+export const STORAGE_DB_NAME =
+  import.meta.env.VITE_APP_STORAGE_DB ||
+  (import.meta.env.VITE_APP_DEV_MODE === 'true' ? 'radata_dev' : 'radata');
+
 function createGunError(
   code: GunErrorCode,
   message: string,
@@ -75,7 +85,7 @@ const OPERATION_DEADLINE_MS = 45_000;
 const WEDGE_GUIDANCE =
   'The Holster storage layer or relay connection appears unresponsive. ' +
   'Reload the page, and if the problem persists close other tabs of ' +
-  "this app and clear IndexedDB database 'radata' (DevTools > " +
+  `this app and clear IndexedDB database '${STORAGE_DB_NAME}' (DevTools > ` +
   'Application > IndexedDB).';
 
 /**
@@ -166,6 +176,7 @@ class GunService {
   holster: GunInstance | null = null;
   isInitialized = false;
   appNamespace: string = 'markdownmywords';
+  storageDbName: string = STORAGE_DB_NAME;
   relays: Map<string, 'init' | 'connecting' | 'connected' | 'disconnected'> =
     new Map();
   peerConnectionTimes: Map<string, number> = new Map();
@@ -208,6 +219,11 @@ class GunService {
       // Set app namespace for collision avoidance
       this.appNamespace = config?.appNamespace ?? 'markdownmywords';
 
+      // Record the actual IndexedDB database Holster opens, so dev tools
+      // (clearHolsterStorage) can target it even when config.file overrides
+      // the STORAGE_DB_NAME default.
+      this.storageDbName = config?.file ?? STORAGE_DB_NAME;
+
       // Read relay settings from localStorage
       const relaySettings = localStorage.getItem('relaySettings');
       const rawRelayUrls: string[] = relaySettings
@@ -229,9 +245,11 @@ class GunService {
       const holsterConfig: {
         peers: string[];
         indexedDB?: boolean;
+        file?: string;
       } = {
         peers: relayUrls,
         indexedDB: true,
+        file: this.storageDbName,
       };
 
       this.holster = Gun(holsterConfig) as GunInstance;
@@ -246,6 +264,7 @@ class GunService {
       console.log('Holster initialized successfully', {
         relayUrls,
         appNamespace: this.appNamespace,
+        storageDb: holsterConfig.file,
       });
 
       this.probeLocalStorage();
