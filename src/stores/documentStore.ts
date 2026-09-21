@@ -437,7 +437,11 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       const result = (await tryCatch(async () => {
         const gun = gunService.getGun();
 
-        const docNode = gun.get(`~${userPub}`).next('docs').next(docId);
+        // Documents live at the standalone soul `~pub/docs`, not as a root
+        // property: root-level `gun.get('~pub')` reads `root['~pub']` and
+        // always yields null (see docs/memory.md, standalone souls). The
+        // `[pub, key]` form roots the chain at `~pub`, no login required.
+        const docNode = gun.user().get([userPub, 'docs']).next(docId);
 
         const docData = await new Promise<unknown>((resolve, reject) => {
           docNode.next(null, (data: unknown) => {

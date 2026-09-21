@@ -62,6 +62,73 @@ function createGunError(
   };
 }
 
+/**
+ * Upper bound for waits on Holster callbacks (user().create()/auth() and
+ * chain .put() acks). Above the library's 30s radisk read watchdog plus its
+ * 10s wire null-ack timeout, so genuine slow paths still complete — only a
+ * genuinely wedged storage layer (reads hang, write acks never arrive) trips
+ * this. Holster has no write-ack watchdog of its own, so without this a
+ * wedged IndexedDB turns every write into a promise that never settles.
+ */
+const OPERATION_DEADLINE_MS = 45_000;
+
+const WEDGE_GUIDANCE =
+  'The Holster storage layer or relay connection appears unresponsive. ' +
+  'Reload the page, and if the problem persists close other tabs of ' +
+  "this app and clear IndexedDB database 'radata' (DevTools > " +
+  'Application > IndexedDB).';
+
+/**
+ * Run an operation that reports completion via (resolve, reject) callbacks,
+ * failing with a diagnostic error if neither fires within `deadlineMs`.
+ * The timer enforces a deadline only — it never delays the happy path,
+ * which still resolves at callback speed.
+ *
+ * The timeout rejects with a GunError (STORAGE_ERROR). The deadline can
+ * fire for a wedged local storage layer OR an unresponsive relay
+ * (create/auth begin with reads that wait on the relay), so `getDetails` —
+ * evaluated at timeout time, not call time — carries live relay state so
+ * the caller can tell the two apart.
+ */
+function withDeadline<T>(
+  operation: (
+    resolve: (value: T) => void,
+    reject: (error: unknown) => void
+  ) => void,
+  description: string,
+  deadlineMs: number = OPERATION_DEADLINE_MS,
+  getDetails?: () => unknown
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(
+        createGunError(
+          GunErrorCode.STORAGE_ERROR,
+          `${description} timed out after ${deadlineMs}ms. ${WEDGE_GUIDANCE}`,
+          getDetails?.()
+        )
+      );
+    }, deadlineMs);
+    try {
+      operation(
+        value => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        error => {
+          clearTimeout(timer);
+          reject(error);
+        }
+      );
+    } catch (error) {
+      // Operation threw synchronously instead of using its callbacks:
+      // surface the error now and release the timer.
+      clearTimeout(timer);
+      reject(error);
+    }
+  });
+}
+
 function transformGunError(error: unknown): GunError {
   if (
     typeof error === 'object' &&
@@ -180,6 +247,8 @@ class GunService {
         relayUrls,
         appNamespace: this.appNamespace,
       });
+
+      this.probeLocalStorage();
     } catch (error) {
       const gunError: GunError = {
         code: GunErrorCode.INIT_FAILED,
@@ -188,6 +257,38 @@ class GunService {
       };
       throw gunError;
     }
+  }
+
+  /**
+   * Snapshot of relay connection states, attached to deadline timeout
+   * errors as details: a wedged local storage layer (relays connected)
+   * can then be told apart from an unresponsive relay (the actual culprit
+   * for read-gated paths like create/auth).
+   */
+  private relayStatusSummary(): Record<string, string> {
+    return Object.fromEntries(this.relays);
+  }
+
+  /**
+   * Fire-and-forget storage health check: exercise one full-node wire read
+   * (which traverses radisk + IndexedDB, the layer that wedges silently)
+   * and warn loudly if it does not respond within 10s. Never blocks or
+   * fails initialization — reads are bounded by the library's own watchdog,
+   * but the warning surfaces a wedged storage layer up front instead of as
+   * an unexplained 30s-per-read crawl later.
+   */
+  private probeLocalStorage(): void {
+    if (!this.holster) return;
+    const holster = this.holster;
+    withDeadline<void>(
+      (resolve, _reject) => {
+        holster.wire.get({'#': 'root'}, () => resolve());
+      },
+      'Storage health check',
+      10_000
+    ).catch(() => {
+      console.warn(`[gunService] ${WEDGE_GUIDANCE}`);
+    });
   }
 
   /**
@@ -471,7 +572,7 @@ class GunService {
         profileData.username = userState.username;
       }
 
-      await new Promise<void>((resolve, reject) => {
+      await withDeadline<void>((resolve, reject) => {
         userNode.get('profile').put(profileData, err => {
           if (err) {
             reject(new Error(`Profile storage failed: ${err}`));
@@ -479,7 +580,9 @@ class GunService {
             resolve();
           }
         });
-      });
+      }, 'Profile storage', OPERATION_DEADLINE_MS, () =>
+        this.relayStatusSummary()
+      );
     }, transformGunError);
   }
 
@@ -563,7 +666,7 @@ class GunService {
         throw createGunError(GunErrorCode.INIT_FAILED, 'Holster not initialized');
       }
 
-      await new Promise<void>((resolve, reject) => {
+      await withDeadline<void>((resolve, reject) => {
         const holster = this.holster!;
         holster.user().create(username, password, err => {
           // Holster callbacks are Node-style: err is a string or null.
@@ -573,7 +676,9 @@ class GunService {
             resolve();
           }
         });
-      });
+      }, 'User creation', OPERATION_DEADLINE_MS, () =>
+        this.relayStatusSummary()
+      );
     }, transformGunError);
   }
 
@@ -593,7 +698,7 @@ class GunService {
         throw createGunError(GunErrorCode.INIT_FAILED, 'Holster not initialized');
       }
 
-      await new Promise<void>((resolve, reject) => {
+      await withDeadline<void>((resolve, reject) => {
         const holster = this.holster!;
         holster.user().auth(username, password, err => {
           // Holster callbacks are Node-style: err is a string or null.
@@ -603,7 +708,9 @@ class GunService {
             resolve();
           }
         });
-      });
+      }, 'Authentication', OPERATION_DEADLINE_MS, () =>
+        this.relayStatusSummary()
+      );
     }, transformGunError);
   }
 
@@ -808,7 +915,7 @@ class GunService {
         node = node.next(part);
       }
 
-      await new Promise<void>((resolve, reject) => {
+      await withDeadline<void>((resolve, reject) => {
         const SEA = holster.SEA;
         const sea = getUserSEA(holster.user());
         if (!sea) {
@@ -838,7 +945,9 @@ class GunService {
             });
           })
           .catch(reject);
-      });
+      }, 'Private data write', OPERATION_DEADLINE_MS, () =>
+        this.relayStatusSummary()
+      );
     }, transformGunError);
   }
 
@@ -993,7 +1102,7 @@ class GunService {
         node = node.next(part);
       }
 
-      await new Promise<void>((resolve, reject) => {
+      await withDeadline<void>((resolve, reject) => {
         node.put(null, err => {
           if (err) {
             reject(new Error(`Failed to delete private data: ${err}`));
@@ -1001,7 +1110,9 @@ class GunService {
             resolve();
           }
         });
-      });
+      }, 'Private data delete', OPERATION_DEADLINE_MS, () =>
+        this.relayStatusSummary()
+      );
     }, transformGunError);
   }
 

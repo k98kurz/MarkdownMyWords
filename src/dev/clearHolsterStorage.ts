@@ -44,26 +44,44 @@ export async function clearHolsterStorage(
       // Holster uses only "radata" as its IndexedDB database
       const dbName = 'radata';
 
-      await new Promise<void>((resolve) => {
+      await new Promise<void>((resolve, reject) => {
         const deleteRequest = indexedDB.deleteDatabase(dbName);
         deleteRequest.onsuccess = () => {
           console.log(`✅ Deleted IndexedDB database: ${dbName}`);
           resolve();
         };
         deleteRequest.onerror = () => {
-          // Database might not exist, which is fine
-          resolve();
+          // deleteDatabase on a non-existent database fires onsuccess, so
+          // onerror is a genuine failure: the database was NOT deleted.
+          const reason = deleteRequest.error?.message ?? 'unknown error';
+          console.warn(
+            `⚠️ Failed to delete IndexedDB database ${dbName} ` +
+              `(${reason}) — it was NOT deleted. Resolve the underlying ` +
+              `error and retry.`
+          );
+          reject(new Error(`deleteDatabase('${dbName}') failed: ${reason}`));
         };
         deleteRequest.onblocked = () => {
-          // Database is in use, try to close connections
+          // Blocked means the database was NOT deleted: an open connection
+          // (this page's Holster instance or another tab) is holding it.
+          // Resolving here would falsely report success.
           console.warn(
-            `⚠️ IndexedDB database ${dbName} is blocked, may need page reload`
+            `⚠️ IndexedDB database ${dbName} is BLOCKED by an open ` +
+              `connection — it was NOT deleted. This app's own Holster ` +
+              `instance blocks deletion while it runs; close other tabs ` +
+              `of this app and clear 'radata' via DevTools > Application ` +
+              `> IndexedDB instead.`
           );
-          resolve();
+          reject(new Error(`deleteDatabase('${dbName}') blocked`));
         };
       });
     } catch (error) {
-      console.warn('⚠️ Error clearing IndexedDB:', error);
+      console.warn('⚠️ IndexedDB clear FAILED:', error);
+      console.log(
+        '❌ Local Holster storage was NOT cleared — resolve the block ' +
+          'above and retry.'
+      );
+      return;
     }
   }
 

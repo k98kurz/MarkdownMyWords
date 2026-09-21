@@ -1,3 +1,9 @@
+## 2026-xx-xx (WIP)
+
+- Migrated application from GunDB to 
+  [@mblaney/Holster](https://www.npmjs.com/package/@mblaney/holster) following
+  app-breaking issues with GunDB
+
 ## 2026-06-27
 
 - Fixed bug where failure to load metadata for a doc caused it to flash forever
