@@ -209,6 +209,13 @@ export interface GunConfig {
   peers?: string[];
   indexedDB?: boolean;
   /**
+   * IndexedDB database (and object store) name — Holster's `opt.file`.
+   * Defaults to STORAGE_DB_NAME from gunService: 'radata_dev' in dev mode,
+   * 'radata' in production. Dev builds use a separate database so tests
+   * never touch "real" storage and it can be wiped via clearHolsterStorage.
+   */
+  file?: string;
+  /**
    * Application namespace for collision avoidance.
    * All Holster paths will be prefixed with this namespace.
    * Default: 'markdownmywords'

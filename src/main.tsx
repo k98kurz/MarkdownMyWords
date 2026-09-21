@@ -14,13 +14,16 @@ import { testEncryptionService } from './test/encryptionService.test';
 import { testFunctionalResult } from './test/functionalResult.test';
 import { printTestSummary, type TestSuiteResult } from './dev/testRunner';
 import { testDocumentStore } from './test/documentStore.test';
-import { clearHolsterStorage } from './dev/clearHolsterStorage';
+import { clearHolsterStorage, completePendingStorageClear } from './dev/clearHolsterStorage';
 import { listUsers } from './dev/consoleTools';
 import { useConnectionStore } from './stores/connectionStore';
 
 // Initialize services
 async function initializeServices() {
   try {
+    // Must run before gunService.initialize() opens the IndexedDB
+    // connection, otherwise a pending clear cannot delete the database.
+    await completePendingStorageClear();
     gunService.initialize();
     console.log('✅ Holster initialized');
 
@@ -156,7 +159,7 @@ if (
     '   - window.testDocumentStore() - Test document store operations (full test suite)'
   );
   console.log('   - window.runAllTests() - Run all test suites');
-    console.log('   - window.clearHolsterStorage(options) - Clear local Holster storage');
+    console.log('   - window.clearHolsterStorage(options) - Clear local Holster storage (reload to complete)');
   console.log(
     '   - window.listUsers(usernames) - List users by usernames array'
   );

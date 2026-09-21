@@ -13,7 +13,6 @@ import {
   sleep,
 } from '@/dev/testRunner';
 import { isFailure, isSuccess } from '@/lib/functionalResult';
-import { clearHolsterStorage } from '@/dev/clearHolsterStorage';
 import type { DocumentError, MinimalDocListItem } from '@/types/document';
 
 const TEST_USERNAME = 'testuser_doc_tests';
@@ -156,11 +155,6 @@ async function cleanupDocumentStore(): Promise<void> {
 async function setupTestUser(): Promise<void> {
   console.log('🔐 Setting up test user...');
 
-  await clearHolsterStorage({
-    logout: true,
-  });
-  await sleep(500);
-
   const gun = gunService.getGun();
 
   if (gun && gun.user()) {
@@ -193,10 +187,9 @@ async function cleanupTestUser(): Promise<void> {
     await sleep(500);
     console.log('  Logged out test user');
   }
-  await clearHolsterStorage({
-    logout: true,
-  });
-  console.log('  GunDB cleared');
+  console.log(
+    '  Local storage not cleared (call clearHolsterStorage() then reload to wipe)'
+  );
 }
 
 // ============================================================================
