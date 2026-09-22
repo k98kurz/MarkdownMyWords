@@ -61,10 +61,10 @@ export interface SEAInstance {
 }
 
 /**
- * GunDB/Holster Constructor type
+ * Holster Constructor type
  */
-export interface GunConstructor {
-  (options?: Record<string, unknown>): GunInstance;
+export interface HolsterConstructor {
+  (options?: Record<string, unknown>): HolsterInstance;
   SEA: SEAInstance;
 }
 
@@ -93,7 +93,7 @@ export interface WireMessage {
  * Wire spec access (mirrors holster.js `api.wire`), used by Holster's own
  * `user().auth()` for direct soul reads.
  */
-export interface GunWire {
+export interface HolsterWire {
   get: (lex: WireLex, callback: (msg: WireMessage) => void) => void;
 }
 
@@ -114,12 +114,12 @@ export interface ISEAPair {
 /**
  * Holster instance type (root API)
  */
-export interface GunInstance {
-  get: ((key: string) => GunNodeRef) &
+export interface HolsterInstance {
+  get: ((key: string) => HolsterNodeRef) &
     ((key: string, callback: (data: unknown) => void) => void);
-  user: () => GunUserNode;
+  user: () => HolsterUserNode;
   SEA: SEAInstance;
-  wire: GunWire;
+  wire: HolsterWire;
 }
 
 /**
@@ -171,11 +171,11 @@ export interface User {
 /**
  * Holster Node Reference (chain API)
  *
- * Chains are started with `.get(key)` on a GunInstance or GunUserNode and
+ * Chains are started with `.get(key)` on a HolsterInstance or HolsterUserNode and
  * extended with `.next(key)`. Reads happen via the `next` callback overloads.
  */
-export interface GunNodeRef {
-  next: ((key: string) => GunNodeRef) &
+export interface HolsterNodeRef {
+  next: ((key: string) => HolsterNodeRef) &
     ((key: string, callback: (data: unknown) => void) => void) &
     ((key: null, callback: (data: unknown) => void) => void);
   put: (data: unknown, callback?: AckCallback) => void;
@@ -184,9 +184,9 @@ export interface GunNodeRef {
 }
 
 /**
- * GunDB Error Types
+ * Holster Error Types
  */
-export enum GunErrorCode {
+export enum HolsterErrorCode {
   INIT_FAILED = 'INIT_FAILED',
   MISC_ERROR = 'MISC_ERROR',
   OFFLINE = 'OFFLINE',
@@ -197,10 +197,10 @@ export enum GunErrorCode {
 }
 
 /**
- * GunDB Error
+ * Holster Error
  */
-export interface GunError {
-  code: GunErrorCode;
+export interface HolsterError {
+  code: HolsterErrorCode;
   message: string;
   details?: unknown;
 }
@@ -208,12 +208,12 @@ export interface GunError {
 /**
  * Holster Configuration
  */
-export interface GunConfig {
+export interface HolsterConfig {
   peers?: string[];
   indexedDB?: boolean;
   /**
    * IndexedDB database (and object store) name — Holster's `opt.file`.
-   * Defaults to STORAGE_DB_NAME from gunService: 'radata_dev' in dev mode,
+   * Defaults to STORAGE_DB_NAME from holsterService: 'radata_dev' in dev mode,
    * 'radata' in production. Dev builds use a separate database so tests
    * never touch "real" storage and it can be wiped via clearHolsterStorage.
    */
@@ -252,7 +252,7 @@ export type AckCallback = (err: string | null | undefined) => void;
  * user._.sea like GunDB): auth() sets
  * {username, pub, epub, priv, epriv}.
  */
-export interface GunUserSession {
+export interface HolsterUserSession {
   username?: string;
   pub?: string;
   epub?: string;
@@ -266,19 +266,19 @@ export interface GunUserSession {
  * `user()` merges the user API with the chain API. Its `get` override
  * behaves like the root `get` (chain start, or read with callback).
  */
-export interface GunUserNode {
-  is?: GunUserSession;
+export interface HolsterUserNode {
+  is?: HolsterUserSession;
   /**
    * `[pub, key]` roots the chain at the standalone `~pub` soul (works
    * without being logged in as that user); a bare string key roots at the
    * logged-in user's own `~pub` soul.
    */
-  get: ((keys: [pub: string, key: string]) => GunNodeRef) &
+  get: ((keys: [pub: string, key: string]) => HolsterNodeRef) &
     ((
       keys: [pub: string, key: string],
       callback: (data: unknown) => void
     ) => void) &
-    ((key: string) => GunNodeRef) &
+    ((key: string) => HolsterNodeRef) &
     ((key: string, callback: (data: unknown) => void) => void);
   put: (data: unknown, callback?: AckCallback) => void;
   auth: (alias: string, password: string, callback?: AckCallback) => void;

@@ -1,4 +1,4 @@
-import { gunService, type DiscoveredUser } from '@/services/gunService';
+import { holsterService, type DiscoveredUser } from '@/services/holsterService';
 
 export interface GroupedUserResults {
   [username: string]: DiscoveredUser[];
@@ -10,7 +10,7 @@ export async function listUsers(
   const results: GroupedUserResults = {};
 
   for (const username of usernames) {
-    const result = await gunService.discoverUsers(username);
+    const result = await holsterService.discoverUsers(username);
     if (result.success) {
       results[username] = result.data;
     } else {

@@ -4,5 +4,5 @@
  * Central export point for all type definitions
  */
 
-export * from './gun';
+export * from './holster';
 export * from './document';

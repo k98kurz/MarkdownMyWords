@@ -17,7 +17,7 @@
  * otherwise retries forever at ~1s.
  */
 
-import type { RelayStatus } from '@/types/gun';
+import type { RelayStatus } from '@/types/holster';
 
 /** Base delay for reconnect backoff; doubles per consecutive failure. */
 const BASE_RECONNECT_DELAY = 1000;
@@ -40,7 +40,7 @@ class RelaySocketMonitor {
 
   /**
    * Start observing the relay sockets Holster creates. MUST be called before
-   * `Gun()` constructs its peers, otherwise the initial sockets are missed.
+   * `Holster()` constructs its peers, otherwise the initial sockets are missed.
    */
   install(relayUrls: string[]): void {
     if (this.nativeWebSocket) return;

@@ -47,7 +47,7 @@ export interface SharedDocNotification {
 /**
  * Document
  * Full document model with all fields
- * Storage path: gun.user().get('docs').get(docId)
+ * Storage path: holster.user().get('docs').get(docId)
  */
 export interface Document {
   id: string;

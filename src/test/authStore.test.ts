@@ -18,7 +18,7 @@
  */
 
 import { useAuthStore } from '@/stores/authStore';
-import { gunService } from '@/services/gunService';
+import { holsterService } from '@/services/holsterService';
 import {
   TestRunner,
   printTestSummary,
@@ -36,7 +36,7 @@ async function cleanupAuthStore(): Promise<void> {
   logout();
   clearError();
 
-  // Wait a bit for GunDB operations to complete
+  // Wait a bit for Holster operations to complete
   await sleep(500);
 }
 
@@ -187,14 +187,14 @@ async function testBasicOperations(runner: TestRunner): Promise<void> {
     assert(isAuthenticated, 'Should be authenticated');
     assert(user !== null, 'Should have user object');
 
-    const gun = gunService.getGun();
-    assert(gun !== null, 'GunDB should be initialized');
-    const gunUser = gun.user();
-    assert(gunUser.is !== undefined, 'Gun user should be set');
-    assert(gunUser.is?.pub !== undefined, 'User should have pub key');
+    const holster = holsterService.getHolster();
+    assert(holster !== null, 'Holster should be initialized');
+    const holsterUser = holster.user();
+    assert(holsterUser.is !== undefined, 'Holster user should be set');
+    assert(holsterUser.is?.pub !== undefined, 'User should have pub key');
 
     console.log(
-      `  Authenticated successfully: ${gunUser.is.pub.substring(0, 20)}...`
+      `  Authenticated successfully: ${holsterUser.is.pub.substring(0, 20)}...`
     );
   });
 
@@ -345,7 +345,7 @@ async function testErrorHandling(runner: TestRunner): Promise<void> {
     if (originalError instanceof Error) {
       assert(
         originalError.message.includes('User creation failed'),
-        'Original error should contain gunService message'
+        'Original error should contain holsterService message'
       );
     } else if (
       typeof originalError === 'object' &&
@@ -355,7 +355,7 @@ async function testErrorHandling(runner: TestRunner): Promise<void> {
     ) {
       assert(
         originalError.details.message.includes('User creation failed'),
-        'Original error should contain gunService message in details'
+        'Original error should contain holsterService message in details'
       );
     }
 
@@ -428,31 +428,34 @@ async function testSessionManagement(runner: TestRunner): Promise<void> {
  * Test error transformation from various error types
  */
 async function testErrorTransformation(runner: TestRunner): Promise<void> {
-  await runner.run('Transform USER_EXISTS error from gunService', async () => {
-    const username = generateTestUsername('_transform_user_exists');
-    await useAuthStore.getState().register(username, 'password123');
-    await useAuthStore.getState().logout();
+  await runner.run(
+    'Transform USER_EXISTS error from holsterService',
+    async () => {
+      const username = generateTestUsername('_transform_user_exists');
+      await useAuthStore.getState().register(username, 'password123');
+      await useAuthStore.getState().logout();
 
-    const result = await tryAuth<void>(() =>
-      useAuthStore.getState().register(username, 'password123')
-    );
+      const result = await tryAuth<void>(() =>
+        useAuthStore.getState().register(username, 'password123')
+      );
 
-    assert(isFailure(result), 'Should fail when registering existing user');
-    assert(isAuthError(result.error), 'Error should be AuthError type');
-    assert(
-      result.error?.type === 'USER_EXISTS',
-      'Should transform to USER_EXISTS'
-    );
-    assert(
-      result.error?.message ===
-        'Could not create account. Username may already be taken.',
-      'Should show user-friendly message'
-    );
-    assert(
-      result.error?.originalError !== undefined,
-      'Original error should be preserved'
-    );
-  });
+      assert(isFailure(result), 'Should fail when registering existing user');
+      assert(isAuthError(result.error), 'Error should be AuthError type');
+      assert(
+        result.error?.type === 'USER_EXISTS',
+        'Should transform to USER_EXISTS'
+      );
+      assert(
+        result.error?.message ===
+          'Could not create account. Username may already be taken.',
+        'Should show user-friendly message'
+      );
+      assert(
+        result.error?.originalError !== undefined,
+        'Original error should be preserved'
+      );
+    }
+  );
 
   await runner.run('Transform AUTH_FAILED error', async () => {
     const result = await tryAuth<void>(() =>
@@ -506,7 +509,7 @@ async function testErrorTransformation(runner: TestRunner): Promise<void> {
     if (result.error?.originalError instanceof Error) {
       assert(
         result.error.originalError.message.includes('User creation failed'),
-        'Original error should contain gunService message'
+        'Original error should contain holsterService message'
       );
     }
   });

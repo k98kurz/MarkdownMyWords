@@ -5,10 +5,10 @@ import './index.css';
 import App from './App.tsx';
 import { PreferenceProvider } from './providers/PreferenceProvider';
 import { PwaInstallProvider } from './contexts/PwaInstallContext';
-import { gunService } from './services/gunService';
+import { holsterService } from './services/holsterService';
 import { encryptionService } from './services/encryptionService';
 import { testVariousDocumentSizes } from './test/testDocumentSizes';
-import { testGunService } from './test/gunService.test';
+import { testHolsterService } from './test/holsterService.test';
 import { testAuthStore } from './test/authStore.test';
 import { testEncryptionService } from './test/encryptionService.test';
 import { printTestSummary, type TestSuiteResult } from './dev/testRunner';
@@ -23,10 +23,10 @@ import { useConnectionStore } from './stores/connectionStore';
 // Initialize services
 async function initializeServices() {
   try {
-    // Must run before gunService.initialize() opens the IndexedDB
+    // Must run before holsterService.initialize() opens the IndexedDB
     // connection, otherwise a pending clear cannot delete the database.
     await completePendingStorageClear();
-    gunService.initialize();
+    holsterService.initialize();
     console.log('✅ Holster initialized');
 
     const seaResult = await encryptionService.initializeSEA();
@@ -94,8 +94,8 @@ async function runAllTests(): Promise<void> {
     console.log('\n' + '='.repeat(60));
 
     console.log('\n📦 Test Suite 2: Holster Service\n');
-    const gunResults = await testGunService(2);
-    allSuiteResults.push(...gunResults);
+    const holsterResults = await testHolsterService(2);
+    allSuiteResults.push(...holsterResults);
 
     console.log('\n' + '='.repeat(60));
 
@@ -132,19 +132,21 @@ if (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const win = window as any;
   win.testDocumentSizes = testVariousDocumentSizes;
-  win.testGunService = testGunService;
+  win.testHolsterService = testHolsterService;
   win.testAuthStore = testAuthStore;
   win.testEncryptionService = testEncryptionService;
   win.testDocumentStore = testDocumentStore;
   win.runAllTests = runAllTests;
   win.clearHolsterStorage = clearHolsterStorage;
-  win.gunService = gunService;
+  win.holsterService = holsterService;
   win.listUsers = listUsers;
   console.log('🧪 Dev console functions available:');
   console.log(
     '   - window.testDocumentSizes() - Test encryption with various document sizes'
   );
-  console.log('   - window.testGunService() - Test Holster service operations');
+  console.log(
+    '   - window.testHolsterService() - Test Holster service operations'
+  );
   console.log('   - window.testAuthStore() - Test authentication store');
   console.log(
     '   - window.testEncryptionService() - Test encryption service (full test suite)'

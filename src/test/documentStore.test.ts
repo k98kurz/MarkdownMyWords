@@ -5,7 +5,7 @@
  */
 
 import { useDocumentStore } from '@/stores/documentStore';
-import { gunService } from '@/services/gunService';
+import { holsterService } from '@/services/holsterService';
 import {
   TestRunner,
   printTestSummary,
@@ -131,8 +131,8 @@ function compareTwoThings(
  * Get current user's public key
  */
 function getCurrentUserPubKey(): string {
-  const gun = gunService.getGun();
-  const user = gun.user();
+  const holster = holsterService.getHolster();
+  const user = holster.user();
   if (!user.is || !user.is.pub) {
     throw new Error('User not authenticated');
   }
@@ -155,25 +155,25 @@ async function cleanupDocumentStore(): Promise<void> {
 async function setupTestUser(): Promise<void> {
   console.log('🔐 Setting up test user...');
 
-  const gun = gunService.getGun();
+  const holster = holsterService.getHolster();
 
-  if (gun && gun.user()) {
-    gun.user().leave();
+  if (holster && holster.user()) {
+    holster.user().leave();
     await sleep(500);
   }
 
   try {
-    await gunService.createUser(TEST_USERNAME, TEST_PASSWORD);
+    await holsterService.createUser(TEST_USERNAME, TEST_PASSWORD);
     console.log(`  ✅ Created user: ${TEST_USERNAME}`);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
   } catch (error) {
     console.log(`  ℹ️  User already exists: ${TEST_USERNAME}`);
   }
 
-  await gunService.authenticateUser(TEST_USERNAME, TEST_PASSWORD);
+  await holsterService.authenticateUser(TEST_USERNAME, TEST_PASSWORD);
   console.log(`  ✅ Authenticated user: ${TEST_USERNAME}`);
 
-  await gunService.writeProfile();
+  await holsterService.writeProfile();
   await sleep(500);
 
   console.log('  ✅ Test user setup complete\n');
@@ -181,9 +181,9 @@ async function setupTestUser(): Promise<void> {
 
 async function cleanupTestUser(): Promise<void> {
   console.log('🔐 Cleaning up test user...');
-  const gun = gunService.getGun();
-  if (gun && gun.user()) {
-    gun.user().leave();
+  const holster = holsterService.getHolster();
+  if (holster && holster.user()) {
+    holster.user().leave();
     await sleep(500);
     console.log('  Logged out test user');
   }
@@ -432,7 +432,7 @@ async function testCRUDe2e(): Promise<TestSuiteResult> {
   await runner.run('CRUD e2e: edge cases', async () => {
     // 1. delete a non-existent doc
     console.log('1. delete a non-existent doc');
-    const fakeDocId1 = gunService.newId();
+    const fakeDocId1 = holsterService.newId();
     const deleteResult = await useDocumentStore
       .getState()
       .deleteDocument(fakeDocId1);
@@ -456,7 +456,7 @@ async function testCRUDe2e(): Promise<TestSuiteResult> {
 
     // 2. update a non-existent doc
     console.log('2. update a non-existent doc');
-    const fakeDocId2 = gunService.newId();
+    const fakeDocId2 = holsterService.newId();
     const updateResult = await useDocumentStore
       .getState()
       .updateDocument(fakeDocId2, { content: 'test' });
@@ -490,7 +490,7 @@ async function testCRUDe2e(): Promise<TestSuiteResult> {
 //async function testShareDocument(): Promise<TestSuiteResult> {
 //  console.log('🧪 Testing documentStore.shareDocument()...\n');
 //  console.log(
-//    '⚠️  NOTE: These tests require a recipient user to exist in GunDB.\n'
+//    '⚠️  NOTE: These tests require a recipient user to exist in Holster.\n'
 //  );
 //
 //  const runner = new TestRunner('shareDocument Operations');
@@ -637,7 +637,7 @@ async function testCRUDe2e(): Promise<TestSuiteResult> {
 //async function testUnshareDocument(): Promise<TestSuiteResult> {
 //  console.log('🧪 Testing documentStore.unshareDocument()...\n');
 //  console.log(
-//    '⚠️  NOTE: These tests require a recipient user to exist in GunDB.\n'
+//    '⚠️  NOTE: These tests require a recipient user to exist in Holster.\n'
 //  );
 //
 //  const runner = new TestRunner('unshareDocument Operations');

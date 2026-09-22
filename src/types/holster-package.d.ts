@@ -2,8 +2,8 @@
  * TypeScript declarations for @mblaney/holster.
  *
  * Holster doesn't publish type definitions, so we declare only its default
- * export, loosely. The real API types are defined in src/types/gun.ts;
- * gunService casts the constructor result to GunInstance.
+ * export, loosely. The real API types are defined in src/types/holster.ts;
+ * holsterService casts the constructor result to HolsterInstance.
  *
  * NOTE: this file must stay a script-scope .d.ts (no top-level imports or
  * exports). An ambient `declare module` for an untyped package is only

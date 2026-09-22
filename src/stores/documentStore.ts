@@ -1,7 +1,7 @@
 /**
  * Document Store
  *
- * Zustand store for document state management using GunDB and SEA encryption.
+ * Zustand store for document state management using Holster and SEA encryption.
  * Handles document CRUD, branching, and sharing operations with type-safe error handling.
  */
 
@@ -14,8 +14,8 @@ import type {
   MinimalDocListItem,
   SharedDocNotification,
 } from '@/types/document';
-import { gunService } from '@/services/gunService';
-import { GunUserNode } from '@/types/gun';
+import { holsterService } from '@/services/holsterService';
+import { HolsterUserNode } from '@/types/holster';
 import { encryptionService } from '@/services/encryptionService';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -141,7 +141,7 @@ type StoredDocument = Partial<Document> & { id: string };
  * docs/memory.md).
  */
 function readOwnDocument(
-  userNode: GunUserNode,
+  userNode: HolsterUserNode,
   docId: string
 ): Promise<StoredDocument> {
   return new Promise<StoredDocument>((resolve, reject) => {
@@ -165,15 +165,15 @@ function readOwnDocument(
 
 /**
  * Write a document node to the current user's `docs` collection through
- * gunService, which builds a fresh chain and bounds the ack wait with a
- * deadline (see gunService.writeUserPath).
+ * holsterService, which builds a fresh chain and bounds the ack wait with a
+ * deadline (see holsterService.writeUserPath).
  */
 async function writeOwnDocument(
   docId: string,
   data: unknown,
   failurePrefix: string
 ): Promise<void> {
-  const result = await gunService.writeUserPath(
+  const result = await holsterService.writeUserPath(
     ['docs', docId],
     data,
     failurePrefix
@@ -284,7 +284,7 @@ interface DocumentActions {
 /**
  * Document Store
  *
- * Manages document state using GunDB and SEA encryption.
+ * Manages document state using Holster and SEA encryption.
  * Handles document CRUD, branching, and sharing operations.
  */
 export const useDocumentStore = create<DocumentState & DocumentActions>(
@@ -375,7 +375,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
         validateTagsNoCommas(tags);
 
-        const docId = gunService.newId();
+        const docId = holsterService.newId();
 
         let docKey: string | undefined;
         let encryptedTitle = title.trim();
@@ -418,7 +418,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
             tagsCSV = tagsResult.data;
           }
 
-          const writeResult = await gunService.writePrivateData(
+          const writeResult = await holsterService.writePrivateData(
             ['docKeys', docId],
             docKey
           );
@@ -481,13 +481,13 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       set({ status: 'LOADING', error: null, loadingDocId: docId });
 
       const result = (await tryCatch(async () => {
-        const gun = gunService.getGun();
+        const holster = holsterService.getHolster();
 
         // Documents live at the standalone soul `~pub/docs`, not as a root
-        // property: root-level `gun.get('~pub')` reads `root['~pub']` and
+        // property: root-level `holster.get('~pub')` reads `root['~pub']` and
         // always yields null (see docs/memory.md, standalone souls). The
         // `[pub, key]` form roots the chain at `~pub`, no login required.
-        const docNode = gun.user().get([userPub, 'docs']).next(docId);
+        const docNode = holster.user().get([userPub, 'docs']).next(docId);
 
         const docData = await new Promise<unknown>((resolve, reject) => {
           docNode.next(null, (data: unknown) => {
@@ -528,7 +528,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
               throw new Error('must be logged in to view this document');
             }
 
-            const readKeyResult = await gunService.readPrivateData([
+            const readKeyResult = await holsterService.readPrivateData([
               'docKeys',
               docId,
             ]);
@@ -655,13 +655,13 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           throw new Error('No updates provided');
         }
 
-        const gun = gunService.getGun();
-        const userNode = gun.user();
+        const holster = holsterService.getHolster();
+        const userNode = holster.user();
         const doc = await readOwnDocument(userNode, docId);
 
         let docKey: string | undefined;
         if (!doc.isPublic) {
-          const readKeyResult = await gunService.readPrivateData([
+          const readKeyResult = await holsterService.readPrivateData([
             'docKeys',
             docId,
           ]);
@@ -839,14 +839,14 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       set({ status: 'LOADING', error: null });
 
       const result = (await tryCatch(async () => {
-        const gun = gunService.getGun();
-        const userNode = gun.user();
+        const holster = holsterService.getHolster();
+        const userNode = holster.user();
         const doc = await readOwnDocument(userNode, docId);
 
         await writeOwnDocument(docId, null, 'Failed to delete document');
 
         if (!doc.isPublic) {
-          const keyDeleteResult = await gunService.deletePrivateData([
+          const keyDeleteResult = await holsterService.deletePrivateData([
             'docKeys',
             docId,
           ]);
@@ -893,7 +893,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       set({ status: 'LOADING', error: null });
 
       const result = (await tryCatch(async () => {
-        const itemsResult = await gunService.listUserItems(['docs']);
+        const itemsResult = await holsterService.listUserItems(['docs']);
         if (!itemsResult.success) {
           throw itemsResult.error;
         }
@@ -946,12 +946,12 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       set({ status: 'LOADING', error: null });
 
       const result = (await tryCatch(async () => {
-        const userNode = gunService.getGun().user();
+        const userNode = holsterService.getHolster().user();
         const doc = await readOwnDocument(userNode, docId);
 
         let docKey: string | undefined;
         if (!doc.isPublic) {
-          const readKeyResult = await gunService.readPrivateData([
+          const readKeyResult = await holsterService.readPrivateData([
             'docKeys',
             docId,
           ]);
@@ -1023,8 +1023,8 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       set({ status: 'SAVING', error: null });
 
       const result = (await tryCatch(async () => {
-        const gun = gunService.getGun();
-        const userNode = gun.user();
+        const holster = holsterService.getHolster();
+        const userNode = holster.user();
         const doc = await readOwnDocument(userNode, docId);
 
         const currentAccess = doc.access ?? [];
@@ -1038,7 +1038,8 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           throw new Error('User not authenticated');
         }
 
-        const discoveredUsersResult = await gunService.discoverUsers(userId);
+        const discoveredUsersResult =
+          await holsterService.discoverUsers(userId);
         if (!discoveredUsersResult.success) {
           throw new Error('User not found');
         }
@@ -1057,7 +1058,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         let encryptedDocKey = '';
 
         if (!doc.isPublic) {
-          const docKeyResult = await gunService.readPrivateData([
+          const docKeyResult = await holsterService.readPrivateData([
             'docKeys',
             docId,
           ]);
@@ -1093,10 +1094,13 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           encryptedDocKey: !doc.isPublic ? encryptedDocKey : undefined,
         } as SharedDocNotification;
 
-        await gunService.writePrivateData(
+        const notifyResult = await holsterService.writePrivateData(
           ['sharedDocs', userId, docId],
           JSON.stringify(notification)
         );
+        if (!notifyResult.success) {
+          throw new Error('Failed to notify recipient of shared document');
+        }
 
         await writeOwnDocument(
           docId,
@@ -1131,8 +1135,8 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       set({ status: 'SAVING', error: null });
 
       const result = (await tryCatch(async () => {
-        const gun = gunService.getGun();
-        const userNode = gun.user();
+        const holster = holsterService.getHolster();
+        const userNode = holster.user();
         const doc = await readOwnDocument(userNode, docId);
 
         const currentAccess = doc.access ?? [];
@@ -1174,14 +1178,14 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           throw new Error('must be logged in to change document privacy');
         }
 
-        const userNode = gunService.getGun().user();
+        const userNode = holsterService.getHolster().user();
         const doc = await readOwnDocument(userNode, docId);
 
         if (doc.isPublic) {
           throw new Error('Public documents do not have a key');
         }
 
-        const docKeyResult = await gunService.readPrivateData([
+        const docKeyResult = await holsterService.readPrivateData([
           'docKeys',
           docId,
         ]);
@@ -1211,8 +1215,8 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           throw new Error('Encryption key must be at least 8 characters');
         }
 
-        const gun = gunService.getGun();
-        const userNode = gun.user();
+        const holster = holsterService.getHolster();
+        const userNode = holster.user();
         const doc = await readOwnDocument(userNode, docId);
 
         if (doc.isPublic) {
@@ -1255,7 +1259,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
             encryptedTags = tagsResult.data;
           }
 
-          const writeKeyResult = await gunService.writePrivateData(
+          const writeKeyResult = await holsterService.writePrivateData(
             ['docKeys', docId],
             docKey
           );
@@ -1336,12 +1340,12 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           throw new Error('must be logged in to change document privacy');
         }
 
-        const gun = gunService.getGun();
-        const userNode = gun.user();
+        const holster = holsterService.getHolster();
+        const userNode = holster.user();
         const doc = await readOwnDocument(userNode, docId);
 
         if (!doc.isPublic) {
-          const keyResult = await gunService.readPrivateData([
+          const keyResult = await holsterService.readPrivateData([
             'docKeys',
             docId,
           ]);
@@ -1380,7 +1384,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
             decryptedTags = tagsResult.data;
           }
 
-          const deleteKeyResult = await gunService.deletePrivateData([
+          const deleteKeyResult = await holsterService.deletePrivateData([
             'docKeys',
             docId,
           ]);
@@ -1466,15 +1470,15 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           throw new Error('must be logged in to change document key');
         }
 
-        const gun = gunService.getGun();
-        const userNode = gun.user();
+        const holster = holsterService.getHolster();
+        const userNode = holster.user();
         const doc = await readOwnDocument(userNode, docId);
 
         if (doc.isPublic) {
           throw new Error('Cannot change key for public documents');
         }
 
-        const oldKeyResult = await gunService.readPrivateData([
+        const oldKeyResult = await holsterService.readPrivateData([
           'docKeys',
           docId,
         ]);
@@ -1550,7 +1554,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           encryptedTags = encryptTagsResult.data;
         }
 
-        const writeKeyResult = await gunService.writePrivateData(
+        const writeKeyResult = await holsterService.writePrivateData(
           ['docKeys', docId],
           newKey
         );

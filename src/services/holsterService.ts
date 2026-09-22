@@ -5,7 +5,7 @@
  * user management, and some read/write methods.
  */
 
-import Gun from '@mblaney/holster/src/holster.js';
+import Holster from '@mblaney/holster/src/holster.js';
 import { retryWithBackoff } from '@/lib/retry';
 import { getUserSEA, isSEACipher } from '@/misc/seaHelpers';
 import {
@@ -17,13 +17,13 @@ import {
   success,
 } from '@k98kurz/functional-result';
 import type {
-  GunInstance,
-  GunConfig,
-  GunError,
-  GunUserNode,
+  HolsterInstance,
+  HolsterConfig,
+  HolsterError,
+  HolsterUserNode,
   RelayStatus,
-} from '@/types/gun';
-import { GunErrorCode, GunNodeRef } from '@/types/gun';
+} from '@/types/holster';
+import { HolsterErrorCode, HolsterNodeRef } from '@/types/holster';
 import { relayMonitor } from '@/services/relayMonitor';
 
 export interface SEAUser {
@@ -62,11 +62,11 @@ export const STORAGE_DB_NAME =
   import.meta.env.VITE_APP_STORAGE_DB ||
   (import.meta.env.VITE_APP_DEV_MODE === 'true' ? 'radata_dev' : 'radata');
 
-function createGunError(
-  code: GunErrorCode,
+function createHolsterError(
+  code: HolsterErrorCode,
   message: string,
   details?: unknown
-): GunError {
+): HolsterError {
   return {
     code,
     message,
@@ -96,7 +96,7 @@ const WEDGE_GUIDANCE =
  * The timer enforces a deadline only — it never delays the happy path,
  * which still resolves at callback speed.
  *
- * The timeout rejects with a GunError (STORAGE_ERROR). The deadline can
+ * The timeout rejects with a HolsterError (STORAGE_ERROR). The deadline can
  * fire for a wedged local storage layer OR an unresponsive relay
  * (create/auth begin with reads that wait on the relay), so `getDetails` —
  * evaluated at timeout time, not call time — carries live relay state so
@@ -114,8 +114,8 @@ function withDeadline<T>(
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
       reject(
-        createGunError(
-          GunErrorCode.STORAGE_ERROR,
+        createHolsterError(
+          HolsterErrorCode.STORAGE_ERROR,
           `${description} timed out after ${deadlineMs}ms. ${WEDGE_GUIDANCE}`,
           getDetails?.()
         )
@@ -141,19 +141,27 @@ function withDeadline<T>(
   });
 }
 
-function transformGunError(error: unknown): GunError {
+function transformHolsterError(error: unknown): HolsterError {
   if (
     typeof error === 'object' &&
     error !== null &&
     'code' in error &&
     'message' in error
   ) {
-    return error as GunError;
+    return error as HolsterError;
   }
   if (error instanceof Error) {
-    return createGunError(GunErrorCode.MISC_ERROR, error.message, error);
+    return createHolsterError(
+      HolsterErrorCode.MISC_ERROR,
+      error.message,
+      error
+    );
   }
-  return createGunError(GunErrorCode.MISC_ERROR, 'An error occurred', error);
+  return createHolsterError(
+    HolsterErrorCode.MISC_ERROR,
+    'An error occurred',
+    error
+  );
 }
 
 /**
@@ -176,8 +184,8 @@ function isListEntryData(
  * when multiple applications share the same Holster relay server.
  * Default namespace: 'markdownmywords'
  */
-class GunService {
-  holster: GunInstance | null = null;
+class HolsterService {
+  holster: HolsterInstance | null = null;
   isInitialized = false;
   appNamespace: string = 'markdownmywords';
   storageDbName: string = STORAGE_DB_NAME;
@@ -200,7 +208,7 @@ class GunService {
    */
   private getDefaultRelay(): string {
     return (
-      import.meta.env.VITE_GUN_RELAY_URL ||
+      import.meta.env.VITE_HOLSTER_RELAY_URL ||
       'https://relay.markdownmywords.com/gun'
     );
   }
@@ -239,7 +247,7 @@ class GunService {
    * Initialize Holster client
    * @param config - Additional Holster configuration
    */
-  initialize(config?: GunConfig): void {
+  initialize(config?: HolsterConfig): void {
     if (this.isInitialized) {
       console.warn('Holster already initialized');
       return;
@@ -276,11 +284,11 @@ class GunService {
       };
 
       // Track the REAL peer sockets Holster creates. Must be installed before
-      // Gun() constructs them: Holster exposes no connection events, so this
+      // Holster() constructs them: Holster exposes no connection events, so this
       // wrapper is the only way to report actual relay connectivity.
       relayMonitor.install(relayUrls);
 
-      this.holster = Gun(holsterConfig) as GunInstance;
+      this.holster = Holster(holsterConfig) as HolsterInstance;
 
       this.isInitialized = true;
       console.log('Holster initialized successfully', {
@@ -291,12 +299,12 @@ class GunService {
 
       this.probeLocalStorage();
     } catch (error) {
-      const gunError: GunError = {
-        code: GunErrorCode.INIT_FAILED,
+      const holsterError: HolsterError = {
+        code: HolsterErrorCode.INIT_FAILED,
         message: 'Failed to initialize Holster',
         details: error,
       };
-      throw gunError;
+      throw holsterError;
     }
   }
 
@@ -328,20 +336,20 @@ class GunService {
       'Storage health check',
       10_000
     ).catch(() => {
-      console.warn(`[gunService] ${WEDGE_GUIDANCE}`);
+      console.warn(`[holsterService] ${WEDGE_GUIDANCE}`);
     });
   }
 
   /**
    * Get Holster instance
-   * @throws {GunError} If Holster is not initialized
+   * @throws {HolsterError} If Holster is not initialized
    */
-  getGun(): GunInstance {
+  getHolster(): HolsterInstance {
     if (!this.holster || !this.isInitialized) {
       throw {
-        code: GunErrorCode.INIT_FAILED,
+        code: HolsterErrorCode.INIT_FAILED,
         message: 'Holster not initialized. Call initialize() first.',
-      } as GunError;
+      } as HolsterError;
     }
     return this.holster;
   }
@@ -409,15 +417,15 @@ class GunService {
    * Stores the user's epub and username at their user node's profile sub-path
    * Reference: code_references/holster.md
    */
-  async writeProfile(): Promise<Result<void, GunError>> {
-    return tryCatch<void, GunError>(async () => {
-      const holster = this.getGun();
+  async writeProfile(): Promise<Result<void, HolsterError>> {
+    return tryCatch<void, HolsterError>(async () => {
+      const holster = this.getHolster();
       const userNode = holster.user();
       const userState = userNode.is;
 
       if (!userState || !('epub' in userState) || !userState.epub) {
-        throw createGunError(
-          GunErrorCode.MISC_ERROR,
+        throw createHolsterError(
+          HolsterErrorCode.MISC_ERROR,
           'User session not available or ECDH key missing'
         );
       }
@@ -440,7 +448,7 @@ class GunService {
       if (!result.success) {
         throw result.error;
       }
-    }, transformGunError);
+    }, transformHolsterError);
   }
 
   /**
@@ -457,7 +465,7 @@ class GunService {
    */
   private readSoul(soul: string): Promise<Record<string, unknown> | null> {
     return new Promise(resolve => {
-      this.getGun().wire.get({ '#': soul }, msg => {
+      this.getHolster().wire.get({ '#': soul }, msg => {
         const node = msg.put?.[soul];
         resolve(
           node && typeof node === 'object'
@@ -472,14 +480,14 @@ class GunService {
    * Read username from user profile for session restoration
    * @returns Promise resolving to username string
    */
-  async readUsername(): Promise<Result<string, GunError>> {
-    return tryCatch<string, GunError>(async () => {
-      const userNode = this.getGun().user();
+  async readUsername(): Promise<Result<string, HolsterError>> {
+    return tryCatch<string, HolsterError>(async () => {
+      const userNode = this.getHolster().user();
       const userState = userNode.is;
 
       if (!userState || !userState.pub) {
-        throw createGunError(
-          GunErrorCode.MISC_ERROR,
+        throw createHolsterError(
+          HolsterErrorCode.MISC_ERROR,
           'User session not available'
         );
       }
@@ -500,11 +508,11 @@ class GunService {
       ) {
         return profile.username;
       }
-      throw createGunError(
-        GunErrorCode.MISC_ERROR,
+      throw createHolsterError(
+        HolsterErrorCode.MISC_ERROR,
         'Username not found in user profile'
       );
-    }, transformGunError);
+    }, transformHolsterError);
   }
 
   /**
@@ -517,11 +525,11 @@ class GunService {
   async createUser(
     username: string,
     password: string
-  ): Promise<Result<void, GunError>> {
-    return tryCatch<void, GunError>(async () => {
+  ): Promise<Result<void, HolsterError>> {
+    return tryCatch<void, HolsterError>(async () => {
       if (!this.holster) {
-        throw createGunError(
-          GunErrorCode.INIT_FAILED,
+        throw createHolsterError(
+          HolsterErrorCode.INIT_FAILED,
           'Holster not initialized'
         );
       }
@@ -542,7 +550,7 @@ class GunService {
         OPERATION_DEADLINE_MS,
         () => this.relayStatusSummary()
       );
-    }, transformGunError);
+    }, transformHolsterError);
   }
 
   /**
@@ -555,11 +563,11 @@ class GunService {
   async authenticateUser(
     username: string,
     password: string
-  ): Promise<Result<void, GunError>> {
-    return tryCatch<void, GunError>(async () => {
+  ): Promise<Result<void, HolsterError>> {
+    return tryCatch<void, HolsterError>(async () => {
       if (!this.holster) {
-        throw createGunError(
-          GunErrorCode.INIT_FAILED,
+        throw createHolsterError(
+          HolsterErrorCode.INIT_FAILED,
           'Holster not initialized'
         );
       }
@@ -590,7 +598,7 @@ class GunService {
         OPERATION_DEADLINE_MS,
         () => this.relayStatusSummary()
       );
-    }, transformGunError);
+    }, transformHolsterError);
   }
 
   /**
@@ -606,8 +614,8 @@ class GunService {
    */
   async discoverUsers(
     username: string
-  ): Promise<Result<DiscoveredUser[], GunError>> {
-    return tryCatch<DiscoveredUser[], GunError>(async () => {
+  ): Promise<Result<DiscoveredUser[], HolsterError>> {
+    return tryCatch<DiscoveredUser[], HolsterError>(async () => {
       const aliasNode = await this.readSoul(`~@${username}`);
       if (!aliasNode) {
         return [];
@@ -657,7 +665,7 @@ class GunService {
       return profiles.filter(
         (profile): profile is DiscoveredUser => profile !== null
       );
-    }, transformGunError);
+    }, transformHolsterError);
   }
 
   /**
@@ -667,16 +675,16 @@ class GunService {
    */
   async listItems(
     nodePath: string[],
-    startNode?: GunUserNode | GunInstance
-  ): Promise<Result<ListItemResult[], GunError>> {
-    return tryCatch<ListItemResult[], GunError>(async () => {
-      const holster = this.getGun();
+    startNode?: HolsterUserNode | HolsterInstance
+  ): Promise<Result<ListItemResult[], HolsterError>> {
+    return tryCatch<ListItemResult[], HolsterError>(async () => {
+      const holster = this.getHolster();
       if (nodePath.length === 0) {
         return [];
       }
       const items = await new Promise<ListItemResult[]>(resolve => {
         const [first, ...rest] = nodePath;
-        let node: GunNodeRef = (startNode ?? holster).get(first);
+        let node: HolsterNodeRef = (startNode ?? holster).get(first);
         for (const part of rest) {
           node = node.next(part);
         }
@@ -700,7 +708,7 @@ class GunService {
         });
       });
       return items;
-    }, transformGunError);
+    }, transformHolsterError);
   }
 
   /**
@@ -710,8 +718,8 @@ class GunService {
    */
   async listUserItems(
     nodePath: string[]
-  ): Promise<Result<ListItemResult[], GunError>> {
-    return await this.listItems(nodePath, this.getGun().user());
+  ): Promise<Result<ListItemResult[], HolsterError>> {
+    return await this.listItems(nodePath, this.getHolster().user());
   }
 
   /**
@@ -722,19 +730,22 @@ class GunService {
    */
   async getPrivatePathPart(
     plainPath: string
-  ): Promise<Result<string, GunError>> {
-    return tryCatch<string, GunError>(async () => {
-      const SEA = this.getGun().SEA;
+  ): Promise<Result<string, HolsterError>> {
+    return tryCatch<string, HolsterError>(async () => {
+      const SEA = this.getHolster().SEA;
       if (!SEA) {
-        throw createGunError(GunErrorCode.MISC_ERROR, 'SEA not available');
+        throw createHolsterError(
+          HolsterErrorCode.MISC_ERROR,
+          'SEA not available'
+        );
       }
-      const holster = this.getGun();
+      const holster = this.getHolster();
       const user = holster.user();
 
       const sea = getUserSEA(user);
       if (!sea) {
-        throw createGunError(
-          GunErrorCode.MISC_ERROR,
+        throw createHolsterError(
+          HolsterErrorCode.MISC_ERROR,
           'User cryptographic keypair not available'
         );
       }
@@ -745,8 +756,8 @@ class GunService {
       // for a given path — destroying node-name privacy (see docs/memory.md).
       const result = await SEA.work(plainPath, sea.epriv);
       if (!result || !result.epriv) {
-        throw createGunError(
-          GunErrorCode.MISC_ERROR,
+        throw createHolsterError(
+          HolsterErrorCode.MISC_ERROR,
           'Failed to hash path part'
         );
       }
@@ -755,7 +766,7 @@ class GunService {
       // path via String(key) to '[object Object]', colliding every private
       // path into one node (see docs/memory.md).
       return result.epriv;
-    }, transformGunError);
+    }, transformHolsterError);
   }
 
   /**
@@ -766,8 +777,8 @@ class GunService {
    */
   async getPrivatePath(
     plainPath: string[]
-  ): Promise<Result<string[], GunError>> {
-    const pathResults: Result<string, GunError>[] = await Promise.all(
+  ): Promise<Result<string[], HolsterError>> {
+    const pathResults: Result<string, HolsterError>[] = await Promise.all(
       plainPath.map(p => this.getPrivatePathPart(p))
     );
     return sequence(pathResults);
@@ -789,13 +800,13 @@ class GunService {
   private buildUserChain(
     path: string[],
     emptyPathMessage = 'Path must contain at least one part'
-  ): GunNodeRef {
+  ): HolsterNodeRef {
     const [first, ...rest] = path;
     if (first === undefined) {
-      throw createGunError(GunErrorCode.MISC_ERROR, emptyPathMessage);
+      throw createHolsterError(HolsterErrorCode.MISC_ERROR, emptyPathMessage);
     }
 
-    let node: GunNodeRef = this.getGun().user().get(first);
+    let node: HolsterNodeRef = this.getHolster().user().get(first);
     for (const part of rest) {
       node = node.next(part);
     }
@@ -846,9 +857,9 @@ class GunService {
   async writePrivateData(
     plainPath: string[],
     plaintext: string
-  ): Promise<Result<void, GunError>> {
-    return tryCatch<void, GunError>(async () => {
-      const holster = this.getGun();
+  ): Promise<Result<void, HolsterError>> {
+    return tryCatch<void, HolsterError>(async () => {
+      const holster = this.getHolster();
       const privatePathResult = await this.getPrivatePath(plainPath);
       if (!privatePathResult.success) {
         throw privatePathResult.error;
@@ -870,7 +881,7 @@ class GunService {
         ciphertext,
         'Failed to write private data'
       );
-    }, transformGunError);
+    }, transformHolsterError);
   }
 
   /**
@@ -891,15 +902,15 @@ class GunService {
     path: string[],
     data: unknown,
     description: string
-  ): Promise<Result<void, GunError>> {
-    return tryCatch<void, GunError>(async () => {
+  ): Promise<Result<void, HolsterError>> {
+    return tryCatch<void, HolsterError>(async () => {
       await this.putUserPath(
         path,
         data,
         description,
         'writeUserPath requires a non-empty path'
       );
-    }, transformGunError);
+    }, transformHolsterError);
   }
 
   /**
@@ -912,9 +923,9 @@ class GunService {
   async readPrivateData(
     plainPath: string[],
     hashedPath?: string[]
-  ): Promise<Result<string, GunError>> {
-    return tryCatch<string, GunError>(async () => {
-      const holster = this.getGun();
+  ): Promise<Result<string, HolsterError>> {
+    return tryCatch<string, HolsterError>(async () => {
+      const holster = this.getHolster();
       const pathResult = await this.getPrivatePath(plainPath);
       if (!pathResult.success) {
         throw pathResult.error;
@@ -950,7 +961,7 @@ class GunService {
         });
       });
       return plaintext;
-    }, transformGunError);
+    }, transformHolsterError);
   }
 
   /**
@@ -963,8 +974,8 @@ class GunService {
   async readPrivateMap(
     plainPath: string[],
     fields: string[]
-  ): Promise<Result<Record<string, string>[], GunError>> {
-    return tryCatch<Record<string, string>[], GunError>(async () => {
+  ): Promise<Result<Record<string, string>[], HolsterError>> {
+    return tryCatch<Record<string, string>[], HolsterError>(async () => {
       const privatePathResult = await this.getPrivatePath(plainPath);
       if (!privatePathResult.success) {
         throw privatePathResult.error;
@@ -1019,7 +1030,7 @@ class GunService {
       );
 
       return successes.filter(record => Object.keys(record).length > 0);
-    }, transformGunError);
+    }, transformHolsterError);
   }
 
   /**
@@ -1029,8 +1040,8 @@ class GunService {
    */
   async deletePrivateData(
     plainPath: string[]
-  ): Promise<Result<void, GunError>> {
-    return tryCatch<void, GunError>(async () => {
+  ): Promise<Result<void, HolsterError>> {
+    return tryCatch<void, HolsterError>(async () => {
       const privatePathResult = await this.getPrivatePath(plainPath);
       if (!privatePathResult.success) {
         throw privatePathResult.error;
@@ -1040,16 +1051,16 @@ class GunService {
         null,
         'Failed to delete private data'
       );
-    }, transformGunError);
+    }, transformHolsterError);
   }
 
-  async logoutAndWait(): Promise<Result<void, GunError>> {
-    return tryCatch<void, GunError>(async () => {
-      const gun = this.getGun();
-      gun.user().leave();
+  async logoutAndWait(): Promise<Result<void, HolsterError>> {
+    return tryCatch<void, HolsterError>(async () => {
+      const holster = this.getHolster();
+      holster.user().leave();
       await retryWithBackoff(
         async _ => {
-          if (gun.user().is) {
+          if (holster.user().is) {
             throw new Error('user is not logging out');
           }
         },
@@ -1059,19 +1070,19 @@ class GunService {
           backoffMultiplier: 1.5,
         }
       );
-    }, transformGunError);
+    }, transformHolsterError);
   }
 
   /**
    * Wait for user state to be set (for authentication)
    * @returns Promise resolving to user pub key
    */
-  public async waitForUserState(): Promise<Result<string, GunError>> {
-    return tryCatch<string, GunError>(async () => {
-      const gun = this.getGun();
+  public async waitForUserState(): Promise<Result<string, HolsterError>> {
+    return tryCatch<string, HolsterError>(async () => {
+      const holster = this.getHolster();
       await retryWithBackoff(
         async _ => {
-          const user = gun.user();
+          const user = holster.user();
           if (!user.is || !user.is.pub) {
             throw new Error('user is not authenticated');
           }
@@ -1082,14 +1093,14 @@ class GunService {
           backoffMultiplier: 1.5,
         }
       );
-      const user = gun.user();
+      const user = holster.user();
       return user.is!.pub as string;
-    }, transformGunError);
+    }, transformHolsterError);
   }
 }
 
 // Export singleton instance
-export const gunService = new GunService();
+export const holsterService = new HolsterService();
 
 // Export class for testing
-export { GunService };
+export { HolsterService };

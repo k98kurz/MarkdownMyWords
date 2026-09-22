@@ -1,11 +1,11 @@
 /**
  * Auth Store
  *
- * Zustand store for authentication state management using GunDB's SEA.
+ * Zustand store for authentication state management using Holster's SEA.
  */
 
 import { create } from 'zustand';
-import { gunService } from '@/services/gunService';
+import { holsterService } from '@/services/holsterService';
 import {
   success,
   failure,
@@ -16,7 +16,7 @@ import {
   isFailure,
   type Result,
 } from '@k98kurz/functional-result';
-import type { GunUserNode } from '@/types/gun';
+import type { HolsterUserNode } from '@/types/holster';
 import { mermaidCache } from '@/lib/cache';
 
 // Replace all 'any' types with discriminated union
@@ -30,7 +30,7 @@ type AuthError =
 
 // Type-safe user object (replace 'any')
 interface AuthenticatedUser {
-  user: GunUserNode;
+  user: HolsterUserNode;
   pub: string;
 }
 
@@ -42,7 +42,7 @@ export type { AuthError, AuthenticatedUser };
 interface AuthState {
   // State - Replace 'any' with proper types
   username: string | null;
-  user: GunUserNode | null;
+  user: HolsterUserNode | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
@@ -100,10 +100,10 @@ const transformAuthError = (error: unknown): AuthError => {
         originalError: error,
       };
     }
-    if (error.message.includes('GunDB not initialized')) {
+    if (error.message.includes('Holster not initialized')) {
       return {
         type: 'INIT_FAILED',
-        message: 'GunDB not initialized',
+        message: 'Holster not initialized',
         originalError: error,
       };
     }
@@ -123,19 +123,19 @@ const transformAuthError = (error: unknown): AuthError => {
   };
 };
 
-// Get authenticated user from GunDB (extracted for reuse)
+// Get authenticated user from Holster (extracted for reuse)
 const getAuthenticatedUser = (): Result<AuthenticatedUser, AuthError> => {
   try {
-    const gun = gunService.getGun();
-    if (!gun) {
+    const holster = holsterService.getHolster();
+    if (!holster) {
       return failure({
         type: 'INIT_FAILED',
-        message: 'GunDB not initialized',
+        message: 'Holster not initialized',
       });
     }
 
-    const gunUser = gun.user();
-    if (!gunUser.is?.pub) {
+    const holsterUser = holster.user();
+    if (!holsterUser.is?.pub) {
       return failure({
         type: 'AUTH_FAILED',
         message: 'User not authenticated',
@@ -143,8 +143,8 @@ const getAuthenticatedUser = (): Result<AuthenticatedUser, AuthError> => {
     }
 
     return success({
-      user: gunUser,
-      pub: gunUser.is.pub,
+      user: holsterUser,
+      pub: holsterUser.is.pub,
     });
   } catch (error) {
     return failure(transformAuthError(error));
@@ -196,7 +196,7 @@ const handleAuthResult = <T>(
 /**
  * Auth Store
  *
- * Manages authentication state using GunDB's SEA.
+ * Manages authentication state using Holster's SEA.
  * Handles user registration, login, logout, and session persistence.
  */
 export const useAuthStore = create<AuthState>(set => ({
@@ -221,21 +221,21 @@ export const useAuthStore = create<AuthState>(set => ({
       // short-circuits on failure before the next runs
       async validationResult => {
         if (isFailure(validationResult)) return validationResult;
-        const createResult = await gunService.createUser(
+        const createResult = await holsterService.createUser(
           username.trim(),
           password
         );
         if (isFailure(createResult)) {
           return failure(transformAuthError(createResult.error));
         }
-        const authResult = await gunService.authenticateUser(
+        const authResult = await holsterService.authenticateUser(
           username.trim(),
           password
         );
         if (isFailure(authResult)) {
           return failure(transformAuthError(authResult.error));
         }
-        const profileResult = await gunService.writeProfile();
+        const profileResult = await holsterService.writeProfile();
         if (isFailure(profileResult)) {
           return failure(transformAuthError(profileResult.error));
         }
@@ -250,7 +250,7 @@ export const useAuthStore = create<AuthState>(set => ({
 
     // Read username from profile after successful registration
     if (!isFailure(result)) {
-      const usernameResult = await gunService.readUsername();
+      const usernameResult = await holsterService.readUsername();
       if (usernameResult.success) {
         set({ username: usernameResult.data });
       } else {
@@ -274,7 +274,7 @@ export const useAuthStore = create<AuthState>(set => ({
       // Step 2: Authenticate user (async operation)
       async validationResult => {
         if (isFailure(validationResult)) return validationResult;
-        const authResult = await gunService.authenticateUser(
+        const authResult = await holsterService.authenticateUser(
           username.trim(),
           password
         );
@@ -291,7 +291,7 @@ export const useAuthStore = create<AuthState>(set => ({
 
     // Read username from profile after successful login
     if (!isFailure(result)) {
-      const usernameResult = await gunService.readUsername();
+      const usernameResult = await holsterService.readUsername();
       if (usernameResult.success) {
         set({ username: usernameResult.data });
       } else {
@@ -307,11 +307,11 @@ export const useAuthStore = create<AuthState>(set => ({
    */
   logout: () => {
     try {
-      // Get GunDB instance
-      const gun = gunService.getGun();
-      if (gun) {
+      // Get Holster instance
+      const holster = holsterService.getHolster();
+      if (holster) {
         // Leave the current user session
-        gun.user().leave();
+        holster.user().leave();
       }
     } catch (error) {
       console.error('Error during logout:', error);
@@ -344,17 +344,17 @@ export const useAuthStore = create<AuthState>(set => ({
     set({ isLoading: true });
 
     const recallResult = await tryCatch(async () => {
-      const gun = gunService.getGun();
-      if (!gun) {
-        throw new Error('GunDB not initialized');
+      const holster = holsterService.getHolster();
+      if (!holster) {
+        throw new Error('Holster not initialized');
       }
 
       // Holster's recall() is synchronous: it restores user.is from
       // localStorage/sessionStorage if a session was persisted
-      gun.user().recall();
+      holster.user().recall();
 
-      const gunUser = gun.user();
-      if (gunUser.is?.pub) {
+      const holsterUser = holster.user();
+      if (holsterUser.is?.pub) {
         return;
       }
       throw new Error('No authenticated session');
@@ -364,7 +364,7 @@ export const useAuthStore = create<AuthState>(set => ({
       async () => {
         handleAuthResult(getAuthenticatedUser(), set);
 
-        const usernameResult = await gunService.readUsername();
+        const usernameResult = await holsterService.readUsername();
         if (usernameResult.success) {
           set({ username: usernameResult.data });
         } else {

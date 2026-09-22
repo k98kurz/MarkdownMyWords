@@ -1,15 +1,15 @@
 /**
- * GunDB Service Browser Tests
+ * Holster Service Browser Tests
  *
- * Tests for GunDB service operations that can be run from the browser console.
+ * Tests for Holster service operations that can be run from the browser console.
  */
 
 import {
-  gunService,
-  GunService,
+  holsterService,
+  HolsterService,
   type ListItemResult,
-} from '@/services/gunService';
-import { GunErrorCode } from '@/types/gun';
+} from '@/services/holsterService';
+import { HolsterErrorCode } from '@/types/holster';
 import {
   TestRunner,
   printTestSummary,
@@ -19,34 +19,34 @@ import { isFailure } from '@k98kurz/functional-result';
 import { retryWithBackoff } from '@/lib/retry';
 
 /**
- * Test GunDB Service initialization
+ * Test Holster Service initialization
  */
 
 /**
- * Test GunDB Service initialization
+ * Test Holster Service initialization
  */
 async function testInitialization(): Promise<TestSuiteResult> {
-  console.log('🧪 Testing GunDB Service Initialization...\n');
+  console.log('🧪 Testing Holster Service Initialization...\n');
 
   const runner = new TestRunner('Initialization');
 
   await runner.run('Initialize service', async () => {
-    gunService.initialize();
-    const isReady = gunService.isReady();
+    holsterService.initialize();
+    const isReady = holsterService.isReady();
     if (!isReady) {
       throw new Error('Service not ready');
     }
   });
 
-  await runner.run('Get GunDB instance', async () => {
-    const instance = gunService.getGun();
+  await runner.run('Get Holster instance', async () => {
+    const instance = holsterService.getHolster();
     if (!instance) {
       throw new Error('Instance is null');
     }
   });
 
   await runner.run('Re-initialization warning', async () => {
-    gunService.initialize();
+    holsterService.initialize();
   });
 
   console.log('\n✅ Initialization tests complete!');
@@ -68,21 +68,21 @@ async function testUserOperations(): Promise<TestSuiteResult> {
   let testUserPub: string | null = null;
 
   await runner.run('Create user', async () => {
-    const createUserResult = await gunService.createUser(
+    const createUserResult = await holsterService.createUser(
       testUsername,
       testPassword
     );
     if (!createUserResult.success) {
       throw createUserResult.error;
     }
-    const authResult = await gunService.authenticateUser(
+    const authResult = await holsterService.authenticateUser(
       testUsername,
       testPassword
     );
     if (!authResult.success) {
       throw authResult.error;
     }
-    const writeProfileResult = await gunService.writeProfile();
+    const writeProfileResult = await holsterService.writeProfile();
     if (!writeProfileResult.success) {
       throw writeProfileResult.error;
     }
@@ -92,7 +92,7 @@ async function testUserOperations(): Promise<TestSuiteResult> {
     try {
       await retryWithBackoff(
         async () => {
-          const usersResult = await gunService.discoverUsers(testUsername);
+          const usersResult = await holsterService.discoverUsers(testUsername);
           if (!usersResult.success) {
             throw usersResult.error;
           }
@@ -115,7 +115,7 @@ async function testUserOperations(): Promise<TestSuiteResult> {
         `  Encryption pubkey retrieval failed (discovery did not propagate): ${error instanceof Error ? error.message : String(error)}`
       );
     }
-    const userState = gunService.getGun()?.user().is;
+    const userState = holsterService.getHolster()?.user().is;
     if (userState && 'pub' in userState && userState.pub) {
       testUserPub = userState.pub;
     } else {
@@ -128,11 +128,11 @@ async function testUserOperations(): Promise<TestSuiteResult> {
 
   await runner.run('Authenticate user', async () => {
     // Poll until logged out instead of a blind sleep (see docs/memory.md).
-    const logoutResult = await gunService.logoutAndWait();
+    const logoutResult = await holsterService.logoutAndWait();
     if (!logoutResult.success) {
       throw logoutResult.error;
     }
-    const authResult = await gunService.authenticateUser(
+    const authResult = await holsterService.authenticateUser(
       testUsername,
       testPassword
     );
@@ -160,15 +160,21 @@ async function testListItems(): Promise<TestSuiteResult> {
   const testPass = 'testpass123';
 
   await runner.task('Create test user and authenticate', async () => {
-    const createUserResult = await gunService.createUser(testUser, testPass);
+    const createUserResult = await holsterService.createUser(
+      testUser,
+      testPass
+    );
     if (!createUserResult.success) {
       throw createUserResult.error;
     }
-    const authResult = await gunService.authenticateUser(testUser, testPass);
+    const authResult = await holsterService.authenticateUser(
+      testUser,
+      testPass
+    );
     if (!authResult.success) {
       throw authResult.error;
     }
-    const writeProfileResult = await gunService.writeProfile();
+    const writeProfileResult = await holsterService.writeProfile();
     if (!writeProfileResult.success) {
       throw writeProfileResult.error;
     }
@@ -176,17 +182,17 @@ async function testListItems(): Promise<TestSuiteResult> {
   });
 
   await runner.run('Test listItems on public namespace', async () => {
-    const gun = gunService.getGun();
-    const item1 = gunService.newId();
-    const item2 = gunService.newId();
-    const item3 = gunService.newId();
+    const holster = holsterService.getHolster();
+    const item1 = holsterService.newId();
+    const item2 = holsterService.newId();
+    const item3 = holsterService.newId();
     const itemIds = [item1, item2, item3];
 
     // Write test objects to public test namespace, waiting for each put ack
     // (fire-and-forget puts race the read below and yield empty results).
     for (const [index, item] of itemIds.entries()) {
       await new Promise<void>((resolve, reject) => {
-        gun
+        holster
           .get('test')
           .next(`item${index + 1}`)
           .put(item, err => {
@@ -203,7 +209,7 @@ async function testListItems(): Promise<TestSuiteResult> {
     let items: ListItemResult[] = [];
     await retryWithBackoff(
       async () => {
-        const itemsResult = await gunService.listItems(['test']);
+        const itemsResult = await holsterService.listItems(['test']);
         if (!itemsResult.success) {
           throw itemsResult.error;
         }
@@ -236,27 +242,27 @@ async function testListItems(): Promise<TestSuiteResult> {
   });
 
   await runner.run('Test listUserItems on user namespace', async () => {
-    const gun = gunService.getGun();
+    const holster = holsterService.getHolster();
 
     // Holster's user().get() returns undefined when logged out, so the
     // chain below would crash with a cryptic "reading 'next'". Fail with
     // the actual reason instead (usually a failed setup task above).
-    if (!gun.user().is?.pub) {
+    if (!holster.user().is?.pub) {
       throw new Error('Not authenticated — user setup task failed earlier');
     }
 
-    const userItem1 = gunService.newId();
-    const userItem2 = gunService.newId();
+    const userItem1 = holsterService.newId();
+    const userItem2 = holsterService.newId();
 
     // Write test objects to user private namespace
     await new Promise<void>(resolve => {
-      gun
+      holster
         .user()
         .get('private')
         .next('item1')
         .put({ content: userItem1 }, () => {
           // Success - continue
-          gun
+          holster
             .user()
             .get('private')
             .next('item2')
@@ -269,7 +275,7 @@ async function testListItems(): Promise<TestSuiteResult> {
 
     // Read
     await new Promise(resolve => setTimeout(resolve, 500));
-    const itemsResult = await gunService.listUserItems(['private']);
+    const itemsResult = await holsterService.listUserItems(['private']);
     if (!itemsResult.success) {
       throw itemsResult.error;
     }
@@ -302,7 +308,7 @@ async function testListItems(): Promise<TestSuiteResult> {
   });
 
   await runner.run('Test listItems on non-existent path', async () => {
-    const itemsResult = await gunService.listItems(['nonexistent']);
+    const itemsResult = await holsterService.listItems(['nonexistent']);
     if (!itemsResult.success) {
       throw itemsResult.error;
     }
@@ -313,13 +319,13 @@ async function testListItems(): Promise<TestSuiteResult> {
   });
 
   await runner.task('Cleanup test data', async () => {
-    const gun = gunService.getGun();
+    const holster = holsterService.getHolster();
 
     // Remove public test items, waiting for each put ack (fire-and-forget
     // puts race the verification read below).
     for (const index of [1, 2, 3]) {
       await new Promise<void>((resolve, reject) => {
-        gun
+        holster
           .get('test')
           .next(`item${index}`)
           .put(null, err => {
@@ -335,7 +341,7 @@ async function testListItems(): Promise<TestSuiteResult> {
     // Poll until the deletions are readable (condition-based, no blind delay)
     await retryWithBackoff(
       async () => {
-        const itemsResult = await gunService.listItems(['test']);
+        const itemsResult = await holsterService.listItems(['test']);
         if (!itemsResult.success) {
           throw itemsResult.error;
         }
@@ -362,10 +368,10 @@ async function testErrorHandling(): Promise<TestSuiteResult> {
 
   const runner = new TestRunner('Error Handling');
   await runner.run('Operations without initialization', async () => {
-    const uninitializedService = new GunService();
+    const uninitializedService = new HolsterService();
     const result = await uninitializedService.discoverUsers('test-id');
     if (isFailure(result)) {
-      if (result.error.code !== GunErrorCode.INIT_FAILED) {
+      if (result.error.code !== HolsterErrorCode.INIT_FAILED) {
         throw new Error(
           `Expected INIT_FAILED error, got: ${result.error.message}`
         );
@@ -387,11 +393,11 @@ async function testPrivateDataOperations(): Promise<TestSuiteResult> {
   console.log('🧪 Testing Private Data Operations...\n');
 
   const runner = new TestRunner('Private Data Operations');
-  const gun = gunService.getGun();
+  const holster = holsterService.getHolster();
 
-  if (!gun) {
+  if (!holster) {
     throw new Error(
-      'GunDB not initialized - cannot test private data operations'
+      'Holster not initialized - cannot test private data operations'
     );
   }
 
@@ -402,23 +408,32 @@ async function testPrivateDataOperations(): Promise<TestSuiteResult> {
   const testData = 'confidential_secret_data_123';
 
   await runner.task('Private data e2e', async () => {
-    const createUserResult = await gunService.createUser(testUser, testPass);
+    const createUserResult = await holsterService.createUser(
+      testUser,
+      testPass
+    );
     if (!createUserResult.success) {
       throw createUserResult.error;
     }
-    const authResult = await gunService.authenticateUser(testUser, testPass);
+    const authResult = await holsterService.authenticateUser(
+      testUser,
+      testPass
+    );
     if (!authResult.success) {
       throw authResult.error;
     }
-    const writeProfileResult = await gunService.writeProfile();
+    const writeProfileResult = await holsterService.writeProfile();
     if (!writeProfileResult.success) {
       throw writeProfileResult.error;
     }
-    const writeResult = await gunService.writePrivateData(plainPath, testData);
+    const writeResult = await holsterService.writePrivateData(
+      plainPath,
+      testData
+    );
     if (!writeResult.success) {
       throw writeResult.error;
     }
-    const decryptedResult = await gunService.readPrivateData(plainPath);
+    const decryptedResult = await holsterService.readPrivateData(plainPath);
     if (!decryptedResult.success) {
       throw decryptedResult.error;
     }
@@ -434,14 +449,14 @@ async function testPrivateDataOperations(): Promise<TestSuiteResult> {
   await runner.run('Write with nested paths', async () => {
     const nestedPath = ['contacts', 'alice', 'username'];
     const nestedData = 'alice_username_test';
-    const writeResult = await gunService.writePrivateData(
+    const writeResult = await holsterService.writePrivateData(
       nestedPath,
       nestedData
     );
     if (!writeResult.success) {
       throw writeResult.error;
     }
-    const decryptedResult = await gunService.readPrivateData(nestedPath);
+    const decryptedResult = await holsterService.readPrivateData(nestedPath);
     if (!decryptedResult.success) {
       throw decryptedResult.error;
     }
@@ -457,11 +472,14 @@ async function testPrivateDataOperations(): Promise<TestSuiteResult> {
   await runner.run('Write empty string', async () => {
     const emptyPath = ['empty', 'test'];
     const emptyData = '';
-    const writeResult = await gunService.writePrivateData(emptyPath, emptyData);
+    const writeResult = await holsterService.writePrivateData(
+      emptyPath,
+      emptyData
+    );
     if (!writeResult.success) {
       throw writeResult.error;
     }
-    const decryptedResult = await gunService.readPrivateData(emptyPath);
+    const decryptedResult = await holsterService.readPrivateData(emptyPath);
     if (!decryptedResult.success) {
       throw decryptedResult.error;
     }
@@ -477,14 +495,14 @@ async function testPrivateDataOperations(): Promise<TestSuiteResult> {
   await runner.run('Write string with special characters', async () => {
     const specialPath = ['special', 'chars'];
     const specialData = 'Hello 世界! 🎉 Special: @#$%^&*()';
-    const writeResult = await gunService.writePrivateData(
+    const writeResult = await holsterService.writePrivateData(
       specialPath,
       specialData
     );
     if (!writeResult.success) {
       throw writeResult.error;
     }
-    const decryptedResult = await gunService.readPrivateData(specialPath);
+    const decryptedResult = await holsterService.readPrivateData(specialPath);
     if (!decryptedResult.success) {
       throw decryptedResult.error;
     }
@@ -502,14 +520,14 @@ async function testPrivateDataOperations(): Promise<TestSuiteResult> {
     const originalData = 'original_data';
     const newData = 'new_data';
 
-    const firstWriteResult = await gunService.writePrivateData(
+    const firstWriteResult = await holsterService.writePrivateData(
       overwritePath,
       originalData
     );
     if (!firstWriteResult.success) {
       throw firstWriteResult.error;
     }
-    const firstReadResult = await gunService.readPrivateData(overwritePath);
+    const firstReadResult = await holsterService.readPrivateData(overwritePath);
     if (!firstReadResult.success) {
       throw firstReadResult.error;
     }
@@ -518,14 +536,15 @@ async function testPrivateDataOperations(): Promise<TestSuiteResult> {
       throw new Error(`Initial write failed`);
     }
 
-    const secondWriteResult = await gunService.writePrivateData(
+    const secondWriteResult = await holsterService.writePrivateData(
       overwritePath,
       newData
     );
     if (!secondWriteResult.success) {
       throw secondWriteResult.error;
     }
-    const secondReadResult = await gunService.readPrivateData(overwritePath);
+    const secondReadResult =
+      await holsterService.readPrivateData(overwritePath);
     if (!secondReadResult.success) {
       throw secondReadResult.error;
     }
@@ -539,11 +558,13 @@ async function testPrivateDataOperations(): Promise<TestSuiteResult> {
   });
 
   await runner.run('Path hashing consistency', async () => {
-    const pathPart1Result = await gunService.getPrivatePathPart('consistent');
+    const pathPart1Result =
+      await holsterService.getPrivatePathPart('consistent');
     if (!pathPart1Result.success) {
       throw pathPart1Result.error;
     }
-    const pathPart2Result = await gunService.getPrivatePathPart('consistent');
+    const pathPart2Result =
+      await holsterService.getPrivatePathPart('consistent');
     if (!pathPart2Result.success) {
       throw pathPart2Result.error;
     }
@@ -557,7 +578,7 @@ async function testPrivateDataOperations(): Promise<TestSuiteResult> {
 
   await runner.run('Error when reading non-existent data', async () => {
     const nonExistentPath = ['nonexistent', 'path', '12345'];
-    const result = await gunService.readPrivateData(nonExistentPath);
+    const result = await holsterService.readPrivateData(nonExistentPath);
     if (isFailure(result)) {
       const errorMsg = result.error.message;
       if (errorMsg.includes('not found') || errorMsg.includes('decrypted')) {
@@ -571,14 +592,14 @@ async function testPrivateDataOperations(): Promise<TestSuiteResult> {
   });
 
   await runner.task('Cleanup test user', async () => {
-    gun.user().leave();
+    holster.user().leave();
     await new Promise(resolve => setTimeout(resolve, 500));
   });
 
   await runner.run('Error when writing without authentication', async () => {
     const testPath = ['noauth', 'test'];
     const testData = 'should_fail';
-    const result = await gunService.writePrivateData(testPath, testData);
+    const result = await holsterService.writePrivateData(testPath, testData);
     if (isFailure(result)) {
       const errorMsg = result.error.message;
       if (errorMsg.includes('keypair not available')) {
@@ -605,7 +626,7 @@ async function testConnectionState(): Promise<TestSuiteResult> {
   const runner = new TestRunner('Connection State');
 
   await runner.run('Get connection state', async () => {
-    const state = gunService.getConnectionState();
+    const state = holsterService.getConnectionState();
     console.log(`  Connection state: ${state}`);
   });
 
@@ -615,23 +636,23 @@ async function testConnectionState(): Promise<TestSuiteResult> {
 }
 
 /**
- * Run all GunDB Service tests
+ * Run all Holster Service tests
  */
-export async function testGunService(
+export async function testHolsterService(
   suiteNumber?: number
 ): Promise<TestSuiteResult[]> {
-  console.log('🚀 Starting GunDB Service Tests\n');
+  console.log('🚀 Starting Holster Service Tests\n');
   console.log('='.repeat(60));
 
   // Check if a user is already logged in and log them out
-  const gun = gunService.getGun();
-  if (gun) {
-    const currentUser = gun.user();
+  const holster = holsterService.getHolster();
+  if (holster) {
+    const currentUser = holster.user();
     if (currentUser.is && currentUser.is.pub) {
       console.log(
         `\n📝 Pre-test: User already logged in (${currentUser.is.pub.substring(0, 20)}...), logging out...`
       );
-      gun.user().leave();
+      holster.user().leave();
       await new Promise(resolve => setTimeout(resolve, 500));
       console.log('   ✅ Logged out and waited 500ms\n');
     }
@@ -664,11 +685,11 @@ export async function testGunService(
   console.log('\n' + '='.repeat(60));
 
   // Final cleanup: Log out any test user
-  if (gun) {
-    const finalUser = gun.user();
+  if (holster) {
+    const finalUser = holster.user();
     if (finalUser.is && finalUser.is.pub) {
       console.log('\n📝 Cleanup: Logging out test user');
-      gun.user().leave();
+      holster.user().leave();
       console.log('   ✅ Logged out');
     }
   }

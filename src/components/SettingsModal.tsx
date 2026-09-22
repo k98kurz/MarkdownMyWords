@@ -3,7 +3,7 @@ import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { usePreferences } from '@/providers/PreferenceProvider';
-import { gunService } from '@/services/gunService';
+import { holsterService } from '@/services/holsterService';
 import { useKeyboardShortcutsStore } from '@/stores/keyboardShortcutsStore';
 import {
   success,
@@ -77,7 +77,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   useEffect(() => {
     if (isOpen) {
-      const storedRelays = gunService.getStoredRelays();
+      const storedRelays = holsterService.getStoredRelays();
       setTempRelays(
         storedRelays.map(url => ({ url, isEditing: false, isNew: false }))
       );
@@ -182,7 +182,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
     match(
       (validUrls: string[]) => {
-        gunService.saveRelaySettings(validUrls);
+        holsterService.saveRelaySettings(validUrls);
         setShowReloadMessage(true);
         setTimeout(() => {
           setShowReloadMessage(false);

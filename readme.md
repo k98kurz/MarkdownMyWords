@@ -11,7 +11,7 @@ features.
 - [x] Correct SEA encryption implementation (Holster + SEA)
 - [x] Basic document editing and rendering functionality
 - [x] Basic privacy/encryption/sharing functionality
-- [ ] Migration from GunDB to Holster
+- [x] Migration from GunDB to Holster
 - [ ] Contact and notification system
 - [ ] Advanced sharing with branches and merging
 - [ ] Bring-your-own-key AI review/revise features

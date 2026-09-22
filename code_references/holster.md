@@ -18,25 +18,25 @@ All patterns and examples have been validated through implementation.
 - To maintain privacy of node names, they must be hashed first, with a
   per-user scalar salt, but this makes reading them impossible (see section 6)
 - Holster is initialized with
-  `import Gun from '@mblaney/holster/src/holster.js'` and
-  `Gun({peers, indexedDB: true})` — the package publishes no root `index.js`,
+  `import Holster from '@mblaney/holster/src/holster.js'` and
+  `Holster({peers, indexedDB: true})` — the package publishes no root `index.js`,
   so the deep `src/holster.js` path is the only import that resolves
 - Sessions are NOT persisted automatically: `user().auth()` only sets the
   in-memory `user.is`. Call `user().store(true)` to persist it to
   localStorage (or `user().store()` for sessionStorage), `user().recall()`
   (synchronous) to restore it on startup, and `user().leave()` to clear both
   `user.is` and the persisted copy
-- Examples below use the repo's Holster types from `src/types/gun.ts`
-  (`GunInstance`, `GunUserNode`, `SEAInstance`, `SEAPair`, `WireMessage`,
+- Examples below use the repo's Holster types from `src/types/holster.ts`
+  (`HolsterInstance`, `HolsterUserNode`, `SEAInstance`, `SEAPair`, `WireMessage`,
   `AckCallback`) instead of `any`, per AGENTS.md
 
 ## 1. Setup & Initialization
 
 ```typescript
-import Gun from '@mblaney/holster/src/holster.js';
+import Holster from '@mblaney/holster/src/holster.js';
 
 // Initialize Holster with peers and IndexedDB
-const holster = Gun({
+const holster = Holster({
   peers: [
     'ws://localhost:8765',
     'wss://relay.markdownmywords.com/gun'
@@ -50,10 +50,10 @@ const SEA = holster.SEA;
 // Connection monitoring: Holster exposes NO peer connection events and no
 // public reconnect API — its browser client creates peer WebSockets inside a
 // closure in wire.js. The only way to report the REAL relay state is to
-// observe those sockets directly. gunService installs relayMonitor
+// observe those sockets directly. holsterService installs relayMonitor
 // (src/services/relayMonitor.ts) BEFORE constructing Holster; the monitor
 // wraps window.WebSocket, passively tracks open/close per configured relay,
-// and backs gunService.getConnectionState()/getRelayStatuses()/
+// and backs holsterService.getConnectionState()/getRelayStatuses()/
 // getPeerConnectionTime().
 //
 // Do NOT "probe" reachability with throwaway sockets: opening a new WebSocket
@@ -125,7 +125,7 @@ Verified empirically:
 `holster.get('x', cb)` fires, `holster.get('x').get(cb)` never fires, and
 `holster.get('p').get('c', cb)` reads the wrong node (root-level `c`). Calling
 `.once(cb)` throws `TypeError: node.once is not a function` at runtime. The
-types in `src/types/gun.ts` mirror the real API so TypeScript catches misuse.
+types in `src/types/holster.ts` mirror the real API so TypeScript catches misuse.
 
 **CRITICAL — standalone souls**: root-level `.get(key, cb)` reads only
 PROPERTIES of the `root` soul (following rels). Souls written directly by
@@ -156,13 +156,13 @@ awaited promise around it hangs forever. Never `.put()` on a chain after
 same chain (it accumulates the path).
 
 Every user-scoped plaintext write goes through
-`gunService.writeUserPath(path, data, description)`, which builds a fresh
+`holsterService.writeUserPath(path, data, description)`, which builds a fresh
 chain and bounds the ack wait with `withDeadline` (a wedged storage layer
 fails loudly with live relay state in `details` instead of hanging):
 
 ```typescript
 // Fresh chain + deadline. Write-only — never put after a read.
-const result = await gunService.writeUserPath(
+const result = await holsterService.writeUserPath(
   ['docs', docId],
   documentForStorage,
   'Failed to save document'
@@ -209,7 +209,7 @@ holster.get('collection-name', (data) => {
 
 ```typescript
 async function createUser(
-  holster: GunInstance,
+  holster: HolsterInstance,
   username: string,
   password: string
 ): Promise<void> {
@@ -225,7 +225,7 @@ async function createUser(
 }
 
 async function authenticateUser(
-  holster: GunInstance,
+  holster: HolsterInstance,
   username: string,
   password: string
 ): Promise<void> {
@@ -242,7 +242,7 @@ async function authenticateUser(
   });
 }
 
-async function writeProfile(holster: GunInstance): Promise<void> {
+async function writeProfile(holster: HolsterInstance): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     const userNode = holster.user();
     const userState = userNode.is;
@@ -271,7 +271,7 @@ async function writeProfile(holster: GunInstance): Promise<void> {
 }
 
 async function register(
-  holster: GunInstance,
+  holster: HolsterInstance,
   username: string,
   password: string
 ) {
@@ -311,7 +311,7 @@ holster.user().leave();
 **CRITICAL**: `auth()` does not call `store()`. A startup `recall()` that is
 never preceded by `store()` silently restores nothing.
 
-In this app, `gunService.authenticateUser()` calls `store()` (sessionStorage)
+In this app, `holsterService.authenticateUser()` calls `store()` (sessionStorage)
 on auth success, so a page refresh restores the session but closing the
 tab/window does not. `store(true)` (localStorage) would persist across
 browser restarts instead.
@@ -336,7 +336,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 // Reads a standalone soul via the wire spec; returns null if absent.
 async function readSoul(
-  holster: GunInstance,
+  holster: HolsterInstance,
   soul: string
 ): Promise<Record<string, unknown> | null> {
   return new Promise(resolve => {
@@ -347,7 +347,7 @@ async function readSoul(
   });
 }
 
-async function discoverUsers(holster: GunInstance, username: string) {
+async function discoverUsers(holster: HolsterInstance, username: string) {
   const aliasNode = await readSoul(holster, `~@${username}`);
   if (!aliasNode) return [];
 
@@ -377,7 +377,7 @@ async function discoverUsers(holster: GunInstance, username: string) {
 }
 ```
 
-The typed service implementation lives in `gunService.discoverUsers()`
+The typed service implementation lives in `holsterService.discoverUsers()`
 (`DiscoveredUser.data` is the resolved user node). For the logged-in
 user's own profile, use the chain read
 `holster.user().get('profile', cb)`, which follows the profile rel.
@@ -402,7 +402,7 @@ the data encrypted using SEA's encrypt/decrypt methods:
 
 ```typescript
 async function getPrivatePathPart(
-  holster: GunInstance,
+  holster: HolsterInstance,
   plainPath: string
 ): Promise<string> {
   // Holster stores the SEA pair on user.is, not user._.sea
@@ -422,7 +422,7 @@ async function getPrivatePathPart(
 }
 
 async function getPrivatePath(
-  holster: GunInstance,
+  holster: HolsterInstance,
   plainPath: string[]
 ): Promise<string[]> {
   return await Promise.all(
@@ -431,7 +431,7 @@ async function getPrivatePath(
 }
 
 async function writePrivateData(
-  holster: GunInstance,
+  holster: HolsterInstance,
   plainPath: string[],
   plaintext: string
 ): Promise<void> {
@@ -465,7 +465,7 @@ async function writePrivateData(
 
 // Delete by putting null at the hashed path.
 async function deletePrivateData(
-  holster: GunInstance,
+  holster: HolsterInstance,
   plainPath: string[]
 ): Promise<void> {
   const privatePath = await getPrivatePath(holster, plainPath);
@@ -487,7 +487,7 @@ async function deletePrivateData(
 }
 
 async function readPrivateData(
-  holster: GunInstance,
+  holster: HolsterInstance,
   plainPath: string[],
   hashedPath?: string[]
 ): Promise<string> {
@@ -528,7 +528,7 @@ async function readPrivateData(
  * 2. Then access each field at privatePath + [key] + [hashedFieldName]
  */
 async function readPrivateMap(
-  holster: GunInstance,
+  holster: HolsterInstance,
   plainPath: string[],
   fields: string[]
 ): Promise<Record<string, string>[]> {
@@ -629,7 +629,7 @@ are objects with `put`/`err` fields. See docs/memory.md.
 
 ## 9. Service Context Notes
 
-In production services (gunService, encryptionService), SEA is available
+In production services (holsterService, encryptionService), SEA is available
 via `holster.SEA`. It is NOT GunDB's string-based SEA: keys must be
 objects with `epriv`, `SEA.encrypt` returns a `{ct, iv, s}` cipher
 object, and failures return `null`, never `undefined`. See docs/memory.md

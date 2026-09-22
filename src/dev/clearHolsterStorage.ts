@@ -2,13 +2,13 @@
  * Utility functions to clear local Holster storage
  *
  * Holster stores graph data in IndexedDB under the database name configured
- * via its `opt.file` (gunService.storageDbName: 'radata_dev' in dev mode,
+ * via its `opt.file` (holsterService.storageDbName: 'radata_dev' in dev mode,
  * 'radata' in production, or a `config.file` override). It does NOT use
  * localStorage or sessionStorage for graph data.
  *
  * Deleting the database is IMPOSSIBLE while Holster's connection is open —
  * the library never closes it and registers no `versionchange` handler — and
- * it is open for the whole life of the app once gunService.initialize() runs.
+ * it is open for the whole life of the app once holsterService.initialize() runs.
  * clearHolsterStorage() therefore records a pending clear in localStorage and
  * asks for a reload; completePendingStorageClear() performs the deletion
  * before Holster initializes on the next load, when nothing holds a
@@ -16,7 +16,7 @@
  */
 
 import { useAuthStore } from '@/stores/authStore';
-import { gunService } from '@/services/gunService';
+import { holsterService } from '@/services/holsterService';
 
 /** localStorage key holding the DB name to delete on the next startup. */
 const PENDING_CLEAR_KEY = 'holster.storageClearPending';
@@ -100,7 +100,7 @@ export async function clearHolsterStorage(
     return 'unavailable';
   }
 
-  const dbName = gunService.storageDbName;
+  const dbName = holsterService.storageDbName;
   const outcome = await deleteStorageDatabase(dbName);
 
   if (outcome === 'deleted') {
@@ -128,7 +128,7 @@ export async function clearHolsterStorage(
 /**
  * Run any clear requested by clearHolsterStorage() on a previous load.
  *
- * MUST be called before gunService.initialize() opens a connection,
+ * MUST be called before holsterService.initialize() opens a connection,
  * otherwise the deletion is blocked again.
  */
 export async function completePendingStorageClear(): Promise<void> {
