@@ -81,6 +81,10 @@ export default [
         { argsIgnorePattern: '^_' },
       ],
       '@typescript-eslint/no-explicit-any': 'warn', // Changed from error to warn
+      'max-len': [
+        'error',
+        { code: 85, ignoreUrls: true, ignorePattern: '^\\s*// ' },
+      ],
     },
   },
 ];
