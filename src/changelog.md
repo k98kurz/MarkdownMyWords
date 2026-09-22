@@ -3,6 +3,9 @@
 - Migrated application from GunDB to 
   [@mblaney/Holster](https://www.npmjs.com/package/@mblaney/holster) following
   app-breaking issues with GunDB
+- Migrated from internal functionalResult library to updated
+  [@k98kurz/functional-result](https://www.npmjs.com/package/@k98kurz/functional-result)
+- Updated dependencies (including `npm audit fix`)
 
 ## 2026-06-27
 
