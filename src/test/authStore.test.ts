@@ -25,7 +25,11 @@ import {
   type TestSuiteResult,
   sleep,
 } from '@/dev/testRunner';
-import { tryCatch, isFailure } from '@/lib/functionalResult';
+import {
+  tryCatch,
+  isFailure,
+  type Result,
+} from '@k98kurz/functional-result';
 import type { AuthError } from '@/stores/authStore';
 
 /**
@@ -68,6 +72,25 @@ function isAuthError(error: unknown): error is AuthError {
     'type' in error &&
     typeof error.type === 'string'
   );
+}
+
+/**
+ * Error transformer that preserves AuthError typing for tryCatch
+ */
+function transformAuthError(error: unknown): AuthError {
+  if (isAuthError(error)) return error;
+  return {
+    type: 'UNKNOWN_ERROR',
+    message: error instanceof Error ? error.message : String(error),
+    originalError: error,
+  };
+}
+
+/**
+ * tryCatch for auth store operations, preserving the AuthError error type
+ */
+async function tryAuth<T>(fn: () => Promise<T>): Promise<Result<T, AuthError>> {
+  return tryCatch(fn, transformAuthError);
 }
 
 /**
@@ -147,7 +170,7 @@ async function testBasicOperations(runner: TestRunner): Promise<void> {
     const username = generateTestUsername('_auth_regression');
     const password = 'testpass123';
 
-    const registerResult = await tryCatch<void, AuthError>(() =>
+    const registerResult = await tryAuth<void>(() =>
       useAuthStore.getState().register(username, password)
     );
     if (isFailure(registerResult)) {
@@ -156,7 +179,7 @@ async function testBasicOperations(runner: TestRunner): Promise<void> {
 
     useAuthStore.getState().logout();
 
-    const loginResult = await tryCatch<void, AuthError>(() =>
+    const loginResult = await tryAuth<void>(() =>
       useAuthStore.getState().login(username, password)
     );
     assert(
@@ -183,7 +206,7 @@ async function testBasicOperations(runner: TestRunner): Promise<void> {
     const username = generateTestUsername('_creation_regression');
     const password = 'testpass123';
 
-    const registerResult = await tryCatch<void, AuthError>(() =>
+    const registerResult = await tryAuth<void>(() =>
       useAuthStore.getState().register(username, password)
     );
     assert(registerResult.success, JSON.stringify(registerResult));
@@ -192,7 +215,7 @@ async function testBasicOperations(runner: TestRunner): Promise<void> {
     assert(isAuthenticated, 'Should be authenticated');
     assert(user !== null, 'Should have user object');
 
-    const result = await tryCatch<void, AuthError>(() =>
+    const result = await tryAuth<void>(() =>
       useAuthStore.getState().register(username, password)
     );
 
@@ -241,7 +264,7 @@ async function testBasicOperations(runner: TestRunner): Promise<void> {
   });
 
   await runner.run('Clear error works correctly', async () => {
-    await tryCatch<void, AuthError>(() =>
+    await tryAuth<void>(() =>
       useAuthStore.getState().register('', '')
     );
     let state = useAuthStore.getState();
@@ -281,7 +304,7 @@ async function testStateTransitions(runner: TestRunner): Promise<void> {
     await useAuthStore.getState().register(username, 'password123');
     await useAuthStore.getState().logout();
 
-    const result = await tryCatch<void, AuthError>(() =>
+    const result = await tryAuth<void>(() =>
       useAuthStore.getState().register(username, 'password123')
     );
     const finalState = useAuthStore.getState();
@@ -305,7 +328,7 @@ async function testErrorHandling(runner: TestRunner): Promise<void> {
     await useAuthStore.getState().register(username, 'password123');
     await useAuthStore.getState().logout();
 
-    const result = await tryCatch<void, AuthError>(() =>
+    const result = await tryAuth<void>(() =>
       useAuthStore.getState().register(username, 'password123')
     );
     const state = useAuthStore.getState();
@@ -354,7 +377,7 @@ async function testErrorHandling(runner: TestRunner): Promise<void> {
     async () => {
       const username = generateTestUsername('_unexpected');
 
-      const result = await tryCatch<void, AuthError>(() =>
+      const result = await tryAuth<void>(() =>
         useAuthStore.getState().register(username, '')
       );
       assert(isFailure(result), 'Should fail with validation error');
@@ -416,7 +439,7 @@ async function testErrorTransformation(runner: TestRunner): Promise<void> {
     await useAuthStore.getState().register(username, 'password123');
     await useAuthStore.getState().logout();
 
-    const result = await tryCatch<void, AuthError>(() =>
+    const result = await tryAuth<void>(() =>
       useAuthStore.getState().register(username, 'password123')
     );
 
@@ -438,7 +461,7 @@ async function testErrorTransformation(runner: TestRunner): Promise<void> {
   });
 
   await runner.run('Transform AUTH_FAILED error', async () => {
-    const result = await tryCatch<void, AuthError>(() =>
+    const result = await tryAuth<void>(() =>
       useAuthStore
         .getState()
         .login(generateTestUsername('_nonexistent'), 'wrongpass')
@@ -454,7 +477,7 @@ async function testErrorTransformation(runner: TestRunner): Promise<void> {
   });
 
   await runner.run('Transform VALIDATION_ERROR', async () => {
-    const result = await tryCatch<void, AuthError>(() =>
+    const result = await tryAuth<void>(() =>
       useAuthStore.getState().register('', 'password123')
     );
 
@@ -475,7 +498,7 @@ async function testErrorTransformation(runner: TestRunner): Promise<void> {
     await useAuthStore.getState().register(username, 'password123');
     await useAuthStore.getState().logout();
 
-    const result = await tryCatch<void, AuthError>(() =>
+    const result = await tryAuth<void>(() =>
       useAuthStore.getState().register(username, 'password123')
     );
 

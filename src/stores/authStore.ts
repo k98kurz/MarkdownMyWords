@@ -15,7 +15,7 @@ import {
   tryCatch,
   isFailure,
   type Result,
-} from '@/lib/functionalResult';
+} from '@k98kurz/functional-result';
 import type { GunUserNode } from '@/types/gun';
 import { mermaidCache } from '@/lib/cache';
 

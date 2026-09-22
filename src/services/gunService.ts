@@ -15,7 +15,7 @@ import {
   partitionResults,
   failure,
   success,
-} from '@/lib/functionalResult';
+} from '@k98kurz/functional-result';
 import type {
   GunInstance,
   GunConfig,
@@ -998,7 +998,7 @@ class GunService {
       );
 
       const { successes, failures } = partitionResults(recordResults);
-      failures.forEach(({ error }) =>
+      failures.forEach(error =>
         console.error('Failed to read contact:', error)
       );
 

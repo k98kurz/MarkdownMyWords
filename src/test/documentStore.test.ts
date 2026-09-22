@@ -12,7 +12,7 @@ import {
   type TestSuiteResult,
   sleep,
 } from '@/dev/testRunner';
-import { isFailure, isSuccess } from '@/lib/functionalResult';
+import { isFailure, isSuccess } from '@k98kurz/functional-result';
 import type { DocumentError, MinimalDocListItem } from '@/types/document';
 
 const TEST_USERNAME = 'testuser_doc_tests';

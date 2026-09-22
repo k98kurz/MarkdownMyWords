@@ -12,7 +12,7 @@ import {
   sequence,
   isFailure,
   type Result,
-} from '@/lib/functionalResult';
+} from '@k98kurz/functional-result';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -100,7 +100,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
     const result = validateRelayUrl(relay.url, allUrls, index);
 
-    match<string, RelayValidationError, void>(
+    match(
       () => {
         setValidationErrors(prev => {
           const next = new Map(prev);
@@ -134,7 +134,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     const allUrls = tempRelays.map(r => r.url);
     const result = validateRelayUrl(tempRelays[index].url, allUrls, index);
 
-    match<string, RelayValidationError, void>(
+    match(
       () => {
         setTempRelays(prev => {
           const next = [...prev];
@@ -177,7 +177,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const handleSaveAll = useCallback(() => {
     const result = validateAllRelays();
 
-    match<string[], RelayValidationError, void>(
+    match(
       (validUrls: string[]) => {
         gunService.saveRelaySettings(validUrls);
         setShowReloadMessage(true);

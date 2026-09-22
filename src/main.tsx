@@ -11,7 +11,6 @@ import { testVariousDocumentSizes } from './test/testDocumentSizes';
 import { testGunService } from './test/gunService.test';
 import { testAuthStore } from './test/authStore.test';
 import { testEncryptionService } from './test/encryptionService.test';
-import { testFunctionalResult } from './test/functionalResult.test';
 import { printTestSummary, type TestSuiteResult } from './dev/testRunner';
 import { testDocumentStore } from './test/documentStore.test';
 import { clearHolsterStorage, completePendingStorageClear } from './dev/clearHolsterStorage';
@@ -107,14 +106,8 @@ async function runAllTests(): Promise<void> {
 
     console.log('\n' + '='.repeat(60));
 
-    console.log('\n📦 Test Suite 5: Functional Result\n');
-    const funcResults = await testFunctionalResult(5);
-    allSuiteResults.push(...funcResults);
-
-    console.log('\n' + '='.repeat(60));
-
-    console.log('\n📦 Test Suite 6: Document Store\n');
-    const docStoreResults = await testDocumentStore(6);
+    console.log('\n📦 Test Suite 5: Document Store\n');
+    const docStoreResults = await testDocumentStore(5);
     allSuiteResults.push(...docStoreResults);
 
     console.log('\n' + '='.repeat(60));
@@ -137,7 +130,6 @@ if (
   win.testGunService = testGunService;
   win.testAuthStore = testAuthStore;
   win.testEncryptionService = testEncryptionService;
-  win.testFunctionalResult = testFunctionalResult;
   win.testDocumentStore = testDocumentStore;
   win.runAllTests = runAllTests;
   win.clearHolsterStorage = clearHolsterStorage;
@@ -151,9 +143,6 @@ if (
   console.log('   - window.testAuthStore() - Test authentication store');
   console.log(
     '   - window.testEncryptionService() - Test encryption service (full test suite)'
-  );
-  console.log(
-    '   - window.testFunctionalResult() - Test functional result utility (comprehensive suite)'
   );
   console.log(
     '   - window.testDocumentStore() - Test document store operations (full test suite)'
