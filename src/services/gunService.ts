@@ -21,8 +21,10 @@ import type {
   GunConfig,
   GunError,
   GunUserNode,
+  RelayStatus,
 } from '@/types/gun';
 import { GunErrorCode, GunNodeRef } from '@/types/gun';
+import { relayMonitor } from '@/services/relayMonitor';
 
 export interface SEAUser {
   alias: string;
@@ -177,10 +179,6 @@ class GunService {
   isInitialized = false;
   appNamespace: string = 'markdownmywords';
   storageDbName: string = STORAGE_DB_NAME;
-  relays: Map<string, 'init' | 'connecting' | 'connected' | 'disconnected'> =
-    new Map();
-  peerConnectionTimes: Map<string, number> = new Map();
-  private connectionProbeInterval: number | null = null;
 
   /**
    * Convert HTTP/HTTPS URLs to WebSocket protocol for Holster
@@ -206,6 +204,36 @@ class GunService {
   }
 
   /**
+   * Read configured relay URLs from localStorage, falling back to the default
+   * relay when settings are absent, unparseable, or not a string array.
+   */
+  private readRelaySettings(): string[] {
+    const relaySettings = localStorage.getItem('relaySettings');
+    if (!relaySettings) {
+      return [this.getDefaultRelay()];
+    }
+
+    try {
+      const parsed: unknown = JSON.parse(relaySettings);
+      if (Array.isArray(parsed)) {
+        const urls = parsed.filter(
+          (url): url is string => typeof url === 'string'
+        );
+        if (urls.length > 0) {
+          return urls;
+        }
+      }
+      console.warn(
+        'Invalid relaySettings in localStorage; using default relay'
+      );
+    } catch {
+      console.warn('Failed to parse relaySettings; using default relay');
+    }
+
+    return [this.getDefaultRelay()];
+  }
+
+  /**
    * Initialize Holster client
    * @param config - Additional Holster configuration
    */
@@ -224,21 +252,14 @@ class GunService {
       // the STORAGE_DB_NAME default.
       this.storageDbName = config?.file ?? STORAGE_DB_NAME;
 
-      // Read relay settings from localStorage
-      const relaySettings = localStorage.getItem('relaySettings');
-      const rawRelayUrls: string[] = relaySettings
-        ? JSON.parse(relaySettings)
-        : [this.getDefaultRelay()];
+      // Read relay settings from localStorage. Corrupt or malformed settings
+      // must not break initialization — fall back to the default relay.
+      const rawRelayUrls = this.readRelaySettings();
 
       // Convert all relay URLs to WebSocket protocol
       const relayUrls = rawRelayUrls.map(url =>
         this.convertToWebSocketUrl(url)
       );
-
-      // Initialize all relays as connecting
-      relayUrls.forEach(url => {
-        this.relays.set(url, 'init');
-      });
 
       console.log('[DEBUG] Initializing Holster with relays:', relayUrls);
 
@@ -252,13 +273,12 @@ class GunService {
         file: this.storageDbName,
       };
 
-      this.holster = Gun(holsterConfig) as GunInstance;
+      // Track the REAL peer sockets Holster creates. Must be installed before
+      // Gun() constructs them: Holster exposes no connection events, so this
+      // wrapper is the only way to report actual relay connectivity.
+      relayMonitor.install(relayUrls);
 
-      // Set up connection state monitoring
-      console.log(
-        '[DEBUG] Initializing Holster - calling setupConnectionMonitoring()'
-      );
-      this.setupConnectionMonitoring();
+      this.holster = Gun(holsterConfig) as GunInstance;
 
       this.isInitialized = true;
       console.log('Holster initialized successfully', {
@@ -285,7 +305,7 @@ class GunService {
    * for read-gated paths like create/auth).
    */
   private relayStatusSummary(): Record<string, string> {
-    return Object.fromEntries(this.relays);
+    return Object.fromEntries(relayMonitor.getRelayStatuses());
   }
 
   /**
@@ -311,106 +331,6 @@ class GunService {
   }
 
   /**
-   * Probe a single relay with a throwaway WebSocket connection.
-   * Holster does not expose peer connection events, so relay connectivity is
-   * determined by whether the relay's WebSocket endpoint is reachable.
-   */
-  private probeRelay(url: string): void {
-    if (!this.relays.has(url)) return;
-    if (this.relays.get(url) === 'init') {
-      this.relays.set(url, 'connecting');
-    }
-
-    let opened = false;
-    const socket = new WebSocket(url);
-
-    const finish = (status: 'connected' | 'disconnected') => {
-      window.clearTimeout(timeout);
-      if (socket.readyState !== WebSocket.CLOSED) {
-        socket.close();
-      }
-      if (!this.relays.has(url)) return;
-      if (status === 'connected') {
-        this.relays.set(url, 'connected');
-        this.peerConnectionTimes.set(url, Date.now());
-      } else {
-        this.relays.set(url, 'disconnected');
-        this.peerConnectionTimes.delete(url);
-      }
-    };
-
-    const timeout = window.setTimeout(() => {
-      if (!opened) finish('disconnected');
-    }, 5000);
-
-    socket.onopen = () => {
-      opened = true;
-      finish('connected');
-      console.log(`Holster relay reachable: ${url}`);
-    };
-    socket.onclose = () => {
-      if (!opened) finish('disconnected');
-    };
-    socket.onerror = () => {
-      if (!opened) finish('disconnected');
-    };
-  }
-
-  /**
-   * Probe all configured relays
-   */
-  private probeAllRelays(): void {
-    this.relays.forEach((_, url) => this.probeRelay(url));
-  }
-
-  /**
-   * Set up connection state monitoring
-   *
-   * Holster does not expose peer connection events (GunDB's 'hi'/'bye' do not
-   * exist in Holster), so relay connectivity is tracked with periodic
-   * WebSocket probes. Returns true when new relays were registered, allowing
-   * callers to skip redundant peer updates otherwise.
-   */
-  setupConnectionMonitoring(): boolean {
-    if (!this.holster) {
-      console.log(
-        '[DEBUG] setupConnectionMonitoring() - no holster instance, returning'
-      );
-      return false;
-    }
-
-    if (this.relays.size === 0) {
-      console.log(
-        '[DEBUG] No relay configured - running in local-only mode, returning early'
-      );
-      return false;
-    }
-
-    const hasNewRelays = [...this.relays.values()].some(v => v === 'init');
-    if (!hasNewRelays && this.connectionProbeInterval !== null) {
-      console.log('[DEBUG] No new relays to monitor; monitoring already active');
-      return false;
-    }
-
-    if (this.connectionProbeInterval === null) {
-      console.log(
-        `Monitoring ${this.relays.size} relay(s) via WebSocket probes:`,
-        Array.from(this.relays.keys())
-      );
-      this.probeAllRelays();
-      this.connectionProbeInterval = window.setInterval(() => {
-        this.probeAllRelays();
-      }, 10000);
-    } else {
-      this.relays.forEach((status, url) => {
-        if (status === 'init') this.probeRelay(url);
-      });
-    }
-
-    return true;
-  }
-
-  /**
    * Get Holster instance
    * @throws {GunError} If Holster is not initialized
    */
@@ -428,88 +348,15 @@ class GunService {
    * Get connection state
    */
   getConnectionState(): 'connected' | 'disconnected' | 'connecting' {
-    const statuses = Array.from(this.relays.values());
-
-    // Return 'connected' if ANY peer is connected
-    if (statuses.some(s => s === 'connected')) {
-      return 'connected';
-    }
-    // Return 'connecting' if ANY peer is connecting
-    if (statuses.some(s => s === 'connecting')) {
-      return 'connecting';
-    }
-    // Otherwise disconnected
-    return 'disconnected';
-  }
-
-  /**
-   * Get configured relay URL (deprecated, kept for backward compatibility)
-   * @returns First relay URL or null if not configured
-   */
-  getRelayUrl(): string | null {
-    const urls = Array.from(this.relays.keys());
-    return urls.length > 0 ? urls[0] : null;
-  }
-
-  /**
-   * Update Holster configuration with new relay list
-   * @param relayUrls - Array of relay URLs to connect to
-   */
-  updateRelays(relayUrls: string[]): void {
-    console.log('[DEBUG] updateRelays() called with:', relayUrls);
-    if (!this.holster) {
-      console.log('[DEBUG] updateRelays() - no holster instance, returning');
-      return;
-    }
-
-    // Initialize status for each new relay
-    relayUrls.forEach(url => {
-      if (!this.relays.has(url)) {
-        console.log('[DEBUG] Adding new relay to map:', url);
-        this.relays.set(url, 'init');
-      }
-    });
-
-    // Remove relays that are no longer configured
-    for (const url of this.relays.keys()) {
-      if (!relayUrls.includes(url)) {
-        this.relays.delete(url);
-        this.peerConnectionTimes.delete(url);
-      }
-    }
-
-    // Save to localStorage (already in ws:// format)
-    this.saveRelaySettings(relayUrls);
-
-    // Register new relays for probing before updating Holster's peers; a
-    // false return means nothing new to monitor, so skip the redundant opt()
-    if (!this.setupConnectionMonitoring()) {
-      console.log('[DEBUG] Skipping redundant call to holster.opt()');
-      return;
-    }
-
-    // Use Holster's opt() method to update peers dynamically
-    console.log('[DEBUG] Calling holster.opt() with peers:', relayUrls);
-    this.holster.opt({ peers: relayUrls });
-  }
-
-  /**
-   * Get relay URLs (Map keys)
-   * @returns Array of relay URLs
-   */
-  getRelayUrls(): string[] {
-    return Array.from(this.relays.keys());
+    return relayMonitor.getConnectionState();
   }
 
   /**
    * Get relay status map
-   * @returns Map of relay URLs to connection status
+   * @returns Fresh snapshot of relay URLs to connection status
    */
-  getRelayStatuses(): Map<
-    string,
-    'init' | 'connecting' | 'connected' | 'disconnected'
-  > {
-    return this.relays;
+  getRelayStatuses(): Map<string, RelayStatus> {
+    return relayMonitor.getRelayStatuses();
   }
 
   /**
@@ -518,7 +365,7 @@ class GunService {
    * @returns Connection timestamp or undefined
    */
   getPeerConnectionTime(url: string): number | undefined {
-    return this.peerConnectionTimes.get(url);
+    return relayMonitor.getPeerConnectionTime(url);
   }
 
   /**
@@ -537,17 +384,7 @@ class GunService {
    * @returns Array of relay URLs from localStorage or default
    */
   getStoredRelays(): string[] {
-    const relaySettings = localStorage.getItem('relaySettings');
-    return relaySettings ? JSON.parse(relaySettings) : [this.getDefaultRelay()];
-  }
-
-  /**
-   * Reset relay settings to defaults
-   * Removes relaySettings from localStorage, app will use default on next reload
-   */
-  resetRelays(): void {
-    localStorage.removeItem('relaySettings');
-    console.log('[DEBUG] Reset relay settings - removed from localStorage');
+    return this.readRelaySettings();
   }
 
   /**
@@ -591,7 +428,16 @@ class GunService {
         profileData.username = userState.username;
       }
 
-      await this.writeUserPath(['profile'], profileData, 'Profile storage');
+      // writeUserPath returns a Result (it never throws), so a failed write
+      // must be surfaced explicitly or registration would falsely succeed.
+      const result = await this.writeUserPath(
+        ['profile'],
+        profileData,
+        'Profile storage'
+      );
+      if (!result.success) {
+        throw result.error;
+      }
     }, transformGunError);
   }
 
