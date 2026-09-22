@@ -139,11 +139,21 @@ were unaffected, which is the signature.
 - Rule: build a FRESH chain for every read AND every write. Never
   `.put()` on a chain after `.next(null, cb)`/`.get(key, cb)`, and never
   call `.next(key)` twice on the same chain (it accumulates the path).
-- User-scoped plaintext writes go through
-  `gunService.writeUserPath(path, data, description)` — it builds a fresh
-  chain and bounds the ack wait with `withDeadline` (live relay state in
-  `details`). `readOwnDocument`/`writeOwnDocument` in
-  `src/stores/documentStore.ts` wrap this for the `docs` collection.
+- Every user-scoped **put** goes through
+  `gunService.buildUserChain(path)` (private) and `putUserPath`, so the
+  fresh-chain rule for writes lives in one place. Service private reads
+  (`readPrivateData`/`readPrivateMap`) also use `buildUserChain`; other
+  reads build a fresh chain per call —
+  `documentStore.readOwnDocument`, `gunService.readUsername`/
+  `listUserItems`, and `documentStore.getDocument` (reads another `~pub`)
+  — and never reuse one across a read and a write.
+  `writeUserPath(path, data, description)` is the public plaintext write
+  (never for secret data — it does not encrypt) and is deadline-bounded
+  (see Wedged Local Storage above). `readOwnDocument`/`writeOwnDocument`
+  in `src/stores/documentStore.ts` wrap this for the `docs` collection —
+  use `writeOwnDocument` for ALL document writes, including
+  `createDocument` (a raw `put` there would skip the deadline). Reference:
+  `code_references/holster.md` section 2.
 
 # SEA Encryption & ECDH for Document Sharing (2026-09-18)
 
@@ -248,9 +258,11 @@ mechanism — do not invent a "profiles directory" node.
 - NEVER treat `~@username` as resolved profiles — it is an alias index
   of pubs claiming that username. Use `gunService.discoverUsers()`.
 
-Complete current implementations (`createUser`, `authenticateUser`,
+Reference implementations for `createUser`, `authenticateUser`,
 `writeProfile`, `discoverUsers`, `writePrivateData`/`readPrivateData`/
-`readPrivateMap`, contacts): `code_references/holster.md`.
+`readPrivateMap`/`deletePrivateData`, `writeUserPath`, and contacts live in
+`code_references/holster.md`; it documents reusable Holster/SEA patterns,
+not every `gunService` method.
 
 # Functional Result Utility (2026-09-18)
 
