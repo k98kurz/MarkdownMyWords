@@ -11,7 +11,7 @@ import {
   printTestSummary,
   type TestSuiteResult,
 } from '@/dev/testRunner';
-import { isFailure } from '@/lib/functionalResult';
+import { isFailure } from '@k98kurz/functional-result';
 import { retryWithBackoff } from '@/lib/retry';
 
 /**

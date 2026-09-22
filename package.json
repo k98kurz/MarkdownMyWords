@@ -19,6 +19,7 @@
     "@codemirror/language": "^6.12.1",
     "@codemirror/state": "^6.4.0",
     "@codemirror/view": "^6.34.0",
+    "@k98kurz/functional-result": "^0.0.4",
     "@mblaney/holster": "^2.2.1",
     "mermaid": "^10.9.5",
     "react": "^18.3.1",

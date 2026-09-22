@@ -15,6 +15,7 @@ dist-ssr
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
+.opencode/package*.json
 .cursor/mcp.json
 .idea
 .DS_Store
@@ -44,6 +45,7 @@ radata*
 !src/changelog.md
 !docs/*.md
 !code_references/*.md
+!.opencode/skills/**/*.md
 .ralph/
 .research/
 .old/

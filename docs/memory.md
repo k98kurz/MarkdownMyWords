@@ -329,9 +329,10 @@ not every `gunService` method.
 
 # Functional Result Utility (2026-09-18)
 
-Type-safe error handling lives in `src/lib/functionalResult.ts`. Use it
-for operations that may fail; prefer predictable error types and
-composable operations.
+Type-safe error handling lives in the `@k98kurz/functional-result` npm
+package (agent skill: `.opencode/skills/functional-result`). Use it for
+operations that may fail; prefer predictable error types and composable
+operations.
 
 - `pipe` (and `flow`) are for composing MULTIPLE operations. Never wrap
   a single operation in `pipe`.
@@ -346,12 +347,7 @@ composable operations.
   any failure check.
 - If a `transformError` helper is needed, write it ONCE per file —
   never re-declare it at every call site.
-- Real-world usage: `src/stores/authStore.ts`; comprehensive examples:
-  `src/test/functionalResult.test.ts`.
-
-Type-system note: functionalResult is the ONLY file sanctioned to use
-`any`/`as any` (required internally by `pipe`'s implementation). The
-`any` ban in AGENTS.md is absolute everywhere else.
+- Real-world usage: `src/stores/authStore.ts`.
 
 # Testing Constraints (2026-09-18)
 

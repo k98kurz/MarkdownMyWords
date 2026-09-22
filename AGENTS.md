@@ -21,7 +21,7 @@ Major architectural decisions, best practices, and other things worth
 remembering long-term are stored in docs/memory.md. All entries in
 docs/memory.md must be actionable, not merely a historical record of churn.
 Read the relevant entry BEFORE touching Holster, SEA/encryption, document
-sharing, or functionalResult.
+sharing, or `@k98kurz/functional-result`.
 
 ## Discovery of Development Practices
 
@@ -62,9 +62,8 @@ for:
 2. **Read**: Library documentation and examples
 3. **Search**: For existing usage patterns in the codebase
 4. **Document**: Why a custom implementation was necessary (if it truly is)
-5. **For type-safe error handling**, use `functionalResult` from
-   `src/lib/functionalResult.ts` — read docs/memory.md first (e.g. `pipe` is
-   for multiple operations only).
+5. **For type-safe error handling**, use `@k98kurz/functional-result` — read
+   docs/memory.md first (e.g. `pipe` is for multiple operations only).
 
 ## Code Review Checklist
 
@@ -111,8 +110,7 @@ root-level `.get()` (see `code_references/holster.md` §5).
 ### NEVER USE "any" TYPE OR "as any" ASSERTIONS
 
 - **ABSOLUTELY FORBIDDEN**: The use of `any` type or `as any` type assertions
-is strictly prohibited, with ONE sanctioned exception: the functionalResult
-library (see docs/memory.md).
+is strictly prohibited.
 - `as any` covers up type errors and leads to runtime bugs and maintenance
 issues. If you encounter a type error, fix it properly by:
   - Adding proper type definitions

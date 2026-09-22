@@ -6,7 +6,7 @@
  */
 
 import { create } from 'zustand';
-import { type Result, tryCatch, match } from '@/lib/functionalResult';
+import { type Result, tryCatch, match } from '@k98kurz/functional-result';
 import type {
   Document,
   DocumentAccessEntry,

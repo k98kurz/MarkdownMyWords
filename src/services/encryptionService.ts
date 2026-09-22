@@ -1,7 +1,8 @@
 import type { GunInstance, SEAInstance } from '@/types/gun';
 import { gunService } from '@/services/gunService';
 import { getUserSEA, isSEACipher } from '@/misc/seaHelpers';
-import { Result, success, tryCatch } from '@/lib/functionalResult';
+import type { Result } from '@k98kurz/functional-result';
+import { success, tryCatch } from '@k98kurz/functional-result';
 
 /**
  * Encrypted Document (for manual encryption fallback)
