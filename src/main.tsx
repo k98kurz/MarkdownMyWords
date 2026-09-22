@@ -13,7 +13,10 @@ import { testAuthStore } from './test/authStore.test';
 import { testEncryptionService } from './test/encryptionService.test';
 import { printTestSummary, type TestSuiteResult } from './dev/testRunner';
 import { testDocumentStore } from './test/documentStore.test';
-import { clearHolsterStorage, completePendingStorageClear } from './dev/clearHolsterStorage';
+import {
+  clearHolsterStorage,
+  completePendingStorageClear,
+} from './dev/clearHolsterStorage';
 import { listUsers } from './dev/consoleTools';
 import { useConnectionStore } from './stores/connectionStore';
 
@@ -30,7 +33,9 @@ async function initializeServices() {
     if (seaResult.success) {
       console.log('✅ SEA initialized');
     } else {
-      throw new Error(`SEA initialization failed: ${JSON.stringify(seaResult.error)}`);
+      throw new Error(
+        `SEA initialization failed: ${JSON.stringify(seaResult.error)}`
+      );
     }
 
     const updateConnectionStatus = () => {
@@ -139,7 +144,7 @@ if (
   console.log(
     '   - window.testDocumentSizes() - Test encryption with various document sizes'
   );
-    console.log('   - window.testGunService() - Test Holster service operations');
+  console.log('   - window.testGunService() - Test Holster service operations');
   console.log('   - window.testAuthStore() - Test authentication store');
   console.log(
     '   - window.testEncryptionService() - Test encryption service (full test suite)'
@@ -148,7 +153,9 @@ if (
     '   - window.testDocumentStore() - Test document store operations (full test suite)'
   );
   console.log('   - window.runAllTests() - Run all test suites');
-    console.log('   - window.clearHolsterStorage(options) - Clear local Holster storage (reload to complete)');
+  console.log(
+    '   - window.clearHolsterStorage(options) - Clear local Holster storage (reload to complete)'
+  );
   console.log(
     '   - window.listUsers(usernames) - List users by usernames array'
   );

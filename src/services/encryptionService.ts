@@ -389,10 +389,7 @@ class EncryptionService {
           );
         }
 
-        const sharedSecret = await sea.secret(
-          { epub: senderEpub },
-          userPair
-        );
+        const sharedSecret = await sea.secret({ epub: senderEpub }, userPair);
 
         if (!sharedSecret) {
           throw createEncryptionError(

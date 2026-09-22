@@ -58,9 +58,8 @@ class RelaySocketMonitor {
     class TrackedWebSocket extends Native {
       private readonly relayUrl: string;
       private openHandler: ((this: WebSocket, ev: Event) => void) | null = null;
-      private closeHandler:
-        | ((this: WebSocket, ev: CloseEvent) => void)
-        | null = null;
+      private closeHandler: ((this: WebSocket, ev: CloseEvent) => void) | null =
+        null;
 
       constructor(url: string | URL, protocols?: string | string[]) {
         super(url, protocols);
@@ -178,9 +177,7 @@ class RelaySocketMonitor {
 
   /** Fresh snapshot of every configured relay's status. */
   getRelayStatuses(): Map<string, RelayStatus> {
-    return new Map(
-      [...this.configured].map(url => [url, this.statusFor(url)])
-    );
+    return new Map([...this.configured].map(url => [url, this.statusFor(url)]));
   }
 
   /** Time the current relay connection opened, if connected. */

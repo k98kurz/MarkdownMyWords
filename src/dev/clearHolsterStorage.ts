@@ -143,13 +143,17 @@ export async function completePendingStorageClear(): Promise<void> {
     return;
   }
 
-  console.log(`🧹 Completing pending clear of IndexedDB database "${dbName}"...`);
+  console.log(
+    `🧹 Completing pending clear of IndexedDB database "${dbName}"...`
+  );
 
   const outcome = await deleteStorageDatabase(dbName);
 
   if (outcome === 'deleted') {
     localStorage.removeItem(PENDING_CLEAR_KEY);
-    console.log('✅ Pending clear complete — storage is empty for this session');
+    console.log(
+      '✅ Pending clear complete — storage is empty for this session'
+    );
     return;
   }
 

@@ -53,10 +53,7 @@ export interface SEAInstance {
   ): Promise<SEAPair | null>;
   pair(): Promise<{ epriv: string; epub: string; priv: string; pub: string }>;
   work(data: unknown, salt?: unknown): Promise<SEAPair>;
-  sign(
-    data: unknown,
-    pair: { priv: string; pub: string }
-  ): Promise<string>;
+  sign(data: unknown, pair: { priv: string; pub: string }): Promise<string>;
   verify<T = unknown>(
     message: string,
     pair: string | { pub: string }
@@ -130,11 +127,7 @@ export interface GunInstance {
  * `init` means no socket has been observed yet. Holster exposes no connection
  * events, so these are derived by `relayMonitor` from the actual sockets.
  */
-export type RelayStatus =
-  | 'init'
-  | 'connecting'
-  | 'connected'
-  | 'disconnected';
+export type RelayStatus = 'init' | 'connecting' | 'connected' | 'disconnected';
 
 /**
  * User Profile

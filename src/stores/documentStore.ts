@@ -1296,7 +1296,11 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
             Object.assign(updatedDoc, { original: doc.original });
           }
 
-          await writeOwnDocument(docId, updatedDoc, 'Failed to update document');
+          await writeOwnDocument(
+            docId,
+            updatedDoc,
+            'Failed to update document'
+          );
         } else {
           throw new Error('Document is already private');
         }
@@ -1417,7 +1421,11 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
             Object.assign(updatedDoc, { original: doc.original });
           }
 
-          await writeOwnDocument(docId, updatedDoc, 'Failed to update document');
+          await writeOwnDocument(
+            docId,
+            updatedDoc,
+            'Failed to update document'
+          );
         } else {
           throw new Error('Document is already public');
         }
