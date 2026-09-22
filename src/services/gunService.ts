@@ -560,6 +560,16 @@ class GunService {
           if (err) {
             reject(new Error(`Authentication failed: ${err}`));
           } else {
+            // auth() only sets user.is in memory; persist it to
+            // sessionStorage so a page refresh can recall() the session.
+            // store() without an argument uses sessionStorage. Guard it so a
+            // storage failure (e.g. setItem throwing) cannot leave the auth
+            // promise unresolved until the deadline fires.
+            try {
+              holster.user().store();
+            } catch (storeErr) {
+              console.warn('Failed to persist Holster session:', storeErr);
+            }
             resolve();
           }
         });
@@ -715,7 +725,11 @@ class GunService {
         );
       }
 
-      const result = await SEA.work(plainPath, sea);
+      // The salt MUST be a scalar (the user's epriv): passing the whole
+      // user.is/pair object makes SEA.work stringify it via TextEncoder to
+      // the literal '[object Object]', so every user derives the SAME hash
+      // for a given path — destroying node-name privacy (see docs/memory.md).
+      const result = await SEA.work(plainPath, sea.epriv);
       if (!result || !result.epriv) {
         throw createGunError(
           GunErrorCode.MISC_ERROR,

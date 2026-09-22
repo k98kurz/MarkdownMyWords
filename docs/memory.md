@@ -185,6 +185,32 @@ exist (removed). Any `holster.opt(...)` call throws `TypeError`.
   monitor reports the socket's actual state. The StatusBar still offers a
   manual Reload.
 
+# Holster Sessions Are Not Auto-Persisted: `auth()` ≠ `store()` (2026-09-22)
+
+`user().auth()` only sets the in-memory `user.is`; it NEVER touches
+localStorage/sessionStorage. Persistence is a separate explicit call:
+`user().store(true)` writes `user.is` to localStorage (`store()` /
+`store(false)` uses sessionStorage). `user().recall()` is SYNCHRONOUS and
+restores `user.is` from localStorage first, then sessionStorage;
+`user().leave()` nulls `user.is` and removes both persisted copies.
+
+- Consequence: a startup `recall()` that is never preceded by a successful
+  `store()` silently restores nothing (`recall()` returns immediately with
+  `user.is` unchanged). If session restore appears broken, check for a
+  `store()` call before adding delays/retries or blaming Holster.
+- Do NOT hand-write `user.is` to storage or assume `auth()` persists it;
+  `store()` is the whole persistence API
+  (`node_modules/@mblaney/holster/src/user.js`).
+- Where persistence lives: `gunService.authenticateUser()` calls
+  `user().store()` (sessionStorage) on auth success — the single choke
+  point for both login and register (register runs `createUser` then
+  `authenticateUser`; `createUser` alone leaves `user.is` null, so it is
+  NOT a valid place to persist). `checkSession()` `recall()`s it on
+  startup and `logout()` → `leave()` clears it. sessionStorage means a
+  refresh survives but closing the tab/window logs the user out; use
+  `store(true)` (localStorage) only if cross-restart persistence is
+  wanted.
+
 # SEA Encryption & ECDH for Document Sharing (2026-09-18)
 
 Documents are encrypted with `SEA.encrypt` using per-document symmetric
@@ -241,7 +267,12 @@ loose but fails at runtime. Rules (mirrored by `SEACipher`/`SEAPair`/
   Extract `.epriv` for hashed path strings — returning the whole
   object as a path makes Holster coerce it with `String(key)` to the
   literal `'[object Object]'`, colliding every private path into one
-  node (fixed in `gunService.getPrivatePathPart`).
+  node (fixed in `gunService.getPrivatePathPart`). The `salt` argument
+  must ALSO be a scalar: pass `sea.epriv`, not the whole `user.is`/pair
+  object, or `SEA.work` stringifies it to that same literal
+  `'[object Object]'` for every user — all users then derive identical
+  hashes for a path and node-name privacy is lost (fixed in
+  `getPrivatePathPart`).
 - `SEA.secret()` takes `{epub}`, never a bare epub string (returns
   null otherwise).
 - `SEA.decrypt` runs `utils.parse` on plaintext: plaintext that is
@@ -270,7 +301,9 @@ default export.
 
 Holster maintains a `~@username` alias index natively: `user().create()`
 writes `{pub: {'#': '~pub'}}` entries under `~@username` (usernames are
-NOT unique — the alias maps to multiple pubs), and `user().auth()` reads
+NOT unique — `create()` rejects a username whose alias already exists, so
+duplicates normally need a partitioned/concurrent graph, but the alias can
+map to multiple pubs), and `user().auth()` reads
 that index to find candidate pubs. The alias index IS the directory
 mechanism — do not invent a "profiles directory" node.
 

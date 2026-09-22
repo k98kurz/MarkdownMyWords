@@ -8,7 +8,7 @@ features.
 
 ## Status
 
-- [x] Correct SEA encryption implementation (via GunDB, now Holster)
+- [x] Correct SEA encryption implementation (Holster + SEA)
 - [x] Basic document editing and rendering functionality
 - [x] Basic privacy/encryption/sharing functionality
 - [ ] Migration from GunDB to Holster
@@ -20,7 +20,7 @@ features.
 
 - Frontend Framework: React + React DOM
 - Database: Holster (peer-to-peer, decentralized)
-- Security/Encryption/Auth: SEA (bundled with Holster, from the GunDB project)
+- Security/Encryption/Auth: SEA (bundled with Holster)
 - State Management: Zustand
 - Routing: React Router DOM
 - Editor: CodeMirror (@codemirror/state, @codemirror/view, @codemirror/lang-markdown)

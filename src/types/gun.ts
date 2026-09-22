@@ -292,4 +292,5 @@ export interface GunUserNode {
   create: (alias: string, password: string, callback?: AckCallback) => void;
   leave: () => void;
   recall: () => void;
+  store: (localStorage?: boolean) => void;
 }

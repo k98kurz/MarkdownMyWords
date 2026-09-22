@@ -90,6 +90,10 @@ relevant docs/memory.md entries (read API rules, session shape, arrays, ECDH,
 profiles/discovery). Complete implementation patterns:
 `code_references/holster.md`.
 
+User discovery uses the `~@username` alias index, which Holster maintains
+natively. It is a standalone soul, so read it via the wire spec — never
+root-level `.get()` (see `code_references/holster.md` §5).
+
 ### Zustand
 
 - Follow Zustand's vanilla pattern (create, set, get)
