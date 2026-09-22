@@ -10,6 +10,13 @@
     "relay": "node railway-relay.js",
     "build": "tsc && vite build",
     "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
+    "typecheck": "npm run typecheck:src && npm run typecheck:node && npm run typecheck:test",
+    "typecheck:src": "tsc --noEmit -p tsconfig.json",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
+    "typecheck:test": "tsc --noEmit -p tsconfig.test.json",
+    "format": "prettier --write \"src/**/*.{ts,tsx}\" \"*.{js,mjs,ts}\"",
+    "check:format": "prettier --check \"src/**/*.{ts,tsx}\" \"*.{js,mjs,ts}\"",
+    "verify": "npm run lint && npm run typecheck && npm run check:format",
     "preview": "vite preview"
   },
   "dependencies": {

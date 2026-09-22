@@ -5,7 +5,8 @@
 1. Do not run `npm run dev` or `npm test`. They are not functional/safe for
 agentic code development. All testing must be done in the browser, manually,
 by a human (see docs/memory.md for why).
-2. Use `npm run build` and linting to check for syntax errors.
+2. Use `npm run verify` (lint + typecheck + format check) and `npm run build` to
+check for errors.
 3. Do not reference anything in the `.old/` directory as it contains outdated
 and deprecated information.
 4. There are currently no users or deployments of this anywhere, and thus no
