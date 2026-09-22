@@ -15,18 +15,28 @@ All patterns and examples have been validated through implementation.
   `SEA.encrypt(plaintext, getUserSEA(holster.user()))` before being stored
   (the SEA key pair lives on `user.is` — {username, pub, epub, priv, epriv} —
   there is NO `user._.sea` like GunDB)
-- To maintain privacy of node names, they must be hashed first, but this makes
-  reading them impossible
-- Holster is initialized with `import Holster from '@mblaney/holster'` and
-  `Holster({peers, indexedDB: true})`
+- To maintain privacy of node names, they must be hashed first, with a
+  per-user scalar salt, but this makes reading them impossible (see section 6)
+- Holster is initialized with
+  `import Gun from '@mblaney/holster/src/holster.js'` and
+  `Gun({peers, indexedDB: true})` — the package publishes no root `index.js`,
+  so the deep `src/holster.js` path is the only import that resolves
+- Sessions are NOT persisted automatically: `user().auth()` only sets the
+  in-memory `user.is`. Call `user().store(true)` to persist it to
+  localStorage (or `user().store()` for sessionStorage), `user().recall()`
+  (synchronous) to restore it on startup, and `user().leave()` to clear both
+  `user.is` and the persisted copy
+- Examples below use the repo's Holster types from `src/types/gun.ts`
+  (`GunInstance`, `GunUserNode`, `SEAInstance`, `SEAPair`, `WireMessage`,
+  `AckCallback`) instead of `any`, per AGENTS.md
 
 ## 1. Setup & Initialization
 
 ```typescript
-import Holster from '@mblaney/holster';
+import Gun from '@mblaney/holster/src/holster.js';
 
 // Initialize Holster with peers and IndexedDB
-const holster = Holster({
+const holster = Gun({
   peers: [
     'ws://localhost:8765',
     'wss://relay.markdownmywords.com/gun'
@@ -79,6 +89,12 @@ holster.get('node-name').put({key: 'value', count: 42}, (err) => {
 });
 ```
 
+**Arrays are NOT supported**: never `put()` an object with an array property
+— Holster silently breaks on arrays. Store each item as its own node
+(`node.get('docs').next(docId).put(doc)`) and read collections with the
+full-node + `Object.entries()` pattern in section 3. See docs/memory.md
+("Arrays").
+
 ### Read Operations
 
 ```typescript
@@ -102,8 +118,10 @@ level, `.next(key, cb)` for a chain child, `.next(null, cb)` for the current
 chain node. GunDB's `.once(cb)` does not exist in Holster.
 
 **CRITICAL**: `.once()` does not exist in Holster, and `.get(cb)` does not work
-on chains. The chain API is exactly `next`, `put`, `on`, `off`, `user`, `wire`,
-`SEA` (see `node_modules/@mblaney/holster/src/holster.js`). Verified empirically:
+on chains. The chain methods are `next`, `put`, `on`, `off` (plus `user`, `wire`,
+`SEA`; the returned object also has a `get`, but calling it re-roots the chain
+rather than reading it — see `node_modules/@mblaney/holster/src/holster.js`).
+Verified empirically:
 `holster.get('x', cb)` fires, `holster.get('x').get(cb)` never fires, and
 `holster.get('p').get('c', cb)` reads the wrong node (root-level `c`). Calling
 `.once(cb)` throws `TypeError: node.once is not a function` at runtime. The
@@ -190,9 +208,13 @@ holster.get('collection-name', (data) => {
 ## 4. User Creation, Authentication, and Profile Storage
 
 ```typescript
-async function createUser(holster: any, username: string, password: string) {
+async function createUser(
+  holster: GunInstance,
+  username: string,
+  password: string
+): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    holster.user().create(username, password, (err) => {
+    holster.user().create(username, password, err => {
       if (err) {
         reject(new Error(`User creation failed: ${err}`));
       } else {
@@ -202,22 +224,33 @@ async function createUser(holster: any, username: string, password: string) {
   });
 }
 
-async function authenticateUser(holster: any, username: string, password: string) {
-  return new Promise<void>(resolve => {
+async function authenticateUser(
+  holster: GunInstance,
+  username: string,
+  password: string
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
     holster.user().auth(username, password, err => {
       if (err) {
-        throw new Error(`Authentication failed: ${err}`);
+        // Reject via the executor — throwing inside this callback would
+        // neither reject the promise nor surface the error.
+        reject(new Error(`Authentication failed: ${err}`));
+        return;
       }
-      console.log(`Auth for ${username} succeeded.`);
       resolve();
     });
   });
 }
 
-async function writeProfile(holster: any): Promise<void> {
+async function writeProfile(holster: GunInstance): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     const userNode = holster.user();
     const userState = userNode.is;
+
+    if (!userState?.epub) {
+      reject(new Error('User session not available'));
+      return;
+    }
 
     const profileData: { epub: string; username?: string } = {
       epub: userState.epub,
@@ -227,7 +260,7 @@ async function writeProfile(holster: any): Promise<void> {
       profileData.username = userState.username;
     }
 
-    userNode.get('profile').put(profileData, (err) => {
+    userNode.get('profile').put(profileData, err => {
       if (err) {
         reject(new Error(`Profile storage failed: ${err}`));
       } else {
@@ -237,7 +270,11 @@ async function writeProfile(holster: any): Promise<void> {
   });
 }
 
-async function register(holster: any, username: string, password: string) {
+async function register(
+  holster: GunInstance,
+  username: string,
+  password: string
+) {
   // in this order on registration
   await createUser(holster, username, password);
   await authenticateUser(holster, username, password);
@@ -247,29 +284,70 @@ async function register(holster: any, username: string, password: string) {
 // for login just use authenticateUser
 ```
 
-**Note**: Profile data is stored at `user().get('profile')` instead of directly on the user node as in GunDB.
+**Note**: Profile data is stored at `user().get('profile')` (the `~pub/profile`
+property) instead of directly on the user node as in GunDB.
+
+### Authentication Session
+
+`user().auth()` sets `user.is` in memory only. Persist and restore it
+explicitly:
+
+```typescript
+// Persist the session. store(true) => localStorage, store() => sessionStorage.
+holster.user().store(true);
+
+// Restore a persisted session on app start. recall() is SYNCHRONOUS: it
+// reads localStorage, then sessionStorage, into user.is before returning.
+holster.user().recall();
+const session = holster.user().is;
+if (session?.pub) {
+  // Authenticated; user.is = {username, pub, epub, priv, epriv}
+}
+
+// Sign out: clears user.is and the persisted copy.
+holster.user().leave();
+```
+
+**CRITICAL**: `auth()` does not call `store()`. A startup `recall()` that is
+never preceded by `store()` silently restores nothing.
+
+In this app, `gunService.authenticateUser()` calls `store()` (sessionStorage)
+on auth success, so a page refresh restores the session but closing the
+tab/window does not. `store(true)` (localStorage) would persist across
+browser restarts instead.
 
 ## 5. User Profile Discovery
 
 Users who all claim a specific username can be found with the following.
-The `~@username` alias index is a standalone soul (see the standalone
-souls warning in section 2 — root-level `.get()` cannot read it), so
-discovery uses wire-spec reads. Each alias entry is a `{'#': '~pub'}`
-rel; the `~pub` user node carries `{username, pub, epub, auth}` at its
-TOP level (written by `user().create()`).
+Usernames are NOT unique: the `~@username` alias index maps one alias to
+many `~pub` souls. `create()` rejects a username whose alias already exists,
+so duplicates normally require a partitioned or concurrently-written graph —
+but discovery must still handle many pubs per alias. The alias index is a
+standalone soul (see the standalone souls warning in section 2 — root-level
+`.get()` cannot read it), so discovery uses wire-spec reads. Each alias entry
+is a `{'#': '~pub'}` rel; the `~pub`
+user node carries `{username, pub, epub, auth}` at its TOP level (written by
+`user().create()`).
 
 ```typescript
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 // Reads a standalone soul via the wire spec; returns null if absent.
-async function readSoul(holster: any, soul: string): Promise<any | null> {
+async function readSoul(
+  holster: GunInstance,
+  soul: string
+): Promise<Record<string, unknown> | null> {
   return new Promise(resolve => {
-    holster.wire.get({'#': soul}, (msg: any) => {
-      const node = msg.put && msg.put[soul];
-      resolve(node && typeof node === 'object' ? node : null);
+    holster.wire.get({'#': soul}, (msg: WireMessage) => {
+      const node = msg.put?.[soul];
+      resolve(isRecord(node) ? node : null);
     });
   });
 }
 
-async function discoverUsers(holster: any, username: string) {
+async function discoverUsers(holster: GunInstance, username: string) {
   const aliasNode = await readSoul(holster, `~@${username}`);
   if (!aliasNode) return [];
 
@@ -278,9 +356,7 @@ async function discoverUsers(holster: any, username: string) {
   const pubSouls = Object.keys(aliasNode).filter(key => {
     if (key === '_') return false;
     const value = aliasNode[key];
-    return (
-      value !== null && typeof value === 'object' && typeof value['#'] === 'string'
-    );
+    return isRecord(value) && typeof value['#'] === 'string';
   });
 
   const profiles = await Promise.all(
@@ -312,29 +388,32 @@ To write data in an absolutely private way, the node name must be hashed, and
 the data encrypted using SEA's encrypt/decrypt methods:
 
 - `SEA.work(data, salt)` returns an `{epriv}` pair object — `.epriv` is the
-  hashed path string. Never return the whole object as a path: Holster
-  coerces path keys via `String(key)`, so an object path becomes the literal
-  string `'[object Object]'` and every private path collides into one node.
+  hashed path string. `salt` MUST be a scalar (use `sea.epriv`): passing the
+  whole `user.is`/pair object makes `SEA.work` stringify it via `TextEncoder`
+  to the literal `'[object Object]'`, so every user derives the SAME hash for
+  a given path and node-name privacy is lost. Never return the whole object
+  as a path either: Holster coerces path keys via `String(key)`, so an object
+  path becomes the literal string `'[object Object]'` and every private path
+  collides into one node.
 - `SEA.encrypt(data, pair)` requires a key object with `epriv` (a bare
   string key returns null) and returns a cipher OBJECT `{ct, iv, s}` — that
   object is what you `put()`. `SEA.decrypt(cipher, pair)` returns `null` on
   a wrong key.
 
 ```typescript
-async function getPrivatePathPart(holster: any, plainPath: string): Promise<string> {
-  const SEA = holster.SEA;
-  if (!SEA) {
-    throw new Error('SEA not available');
-  }
-
-  const user = holster.user();
+async function getPrivatePathPart(
+  holster: GunInstance,
+  plainPath: string
+): Promise<string> {
   // Holster stores the SEA pair on user.is, not user._.sea
-  const sea = getUserSEA(user);
+  const sea = getUserSEA(holster.user());
   if (!sea) {
     throw new Error('User cryptographic keypair not available');
   }
 
-  const result = await SEA.work(plainPath, sea);
+  // Salt must be a scalar — the whole pair object stringifies to
+  // '[object Object]', making the hash identical for every user.
+  const result = await holster.SEA.work(plainPath, sea.epriv);
   if (!result || !result.epriv) {
     throw new Error('Failed to hash path part');
   }
@@ -342,13 +421,20 @@ async function getPrivatePathPart(holster: any, plainPath: string): Promise<stri
   return result.epriv;
 }
 
-async function getPrivatePath(holster: any, plainPath: string[]): Promise<string[]> {
+async function getPrivatePath(
+  holster: GunInstance,
+  plainPath: string[]
+): Promise<string[]> {
   return await Promise.all(
     plainPath.map(async (p: string) => await getPrivatePathPart(holster, p))
   );
 }
 
-async function writePrivateData(holster: any, plainPath: string[], plaintext: string): Promise<void> {
+async function writePrivateData(
+  holster: GunInstance,
+  plainPath: string[],
+  plaintext: string
+): Promise<void> {
   const privatePath = await getPrivatePath(holster, plainPath);
   const [firstWrite, ...restWrite] = privatePath;
   let node = holster.user().get(firstWrite);
@@ -356,21 +442,18 @@ async function writePrivateData(holster: any, plainPath: string[], plaintext: st
     node = node.next(part);
   }
 
-  return new Promise<void>(async (resolve, reject) => {
-    const sea = getUserSEA(holster.user());
-    if (!sea) {
-      reject(new Error('User cryptographic keypair not available'));
-      return;
-    }
+  const sea = getUserSEA(holster.user());
+  if (!sea) {
+    throw new Error('User cryptographic keypair not available');
+  }
 
-    const SEA = holster.SEA;
-    const ciphertext = await SEA.encrypt(plaintext, sea);
-    if (!ciphertext) {
-      reject(new Error('SEA.encrypt failed: returned null'));
-      return;
-    }
+  const ciphertext = await holster.SEA.encrypt(plaintext, sea);
+  if (!ciphertext) {
+    throw new Error('SEA.encrypt failed: returned null');
+  }
 
-    node.put(ciphertext, (err) => {
+  await new Promise<void>((resolve, reject) => {
+    node.put(ciphertext, err => {
       if (err) {
         reject(new Error(`Failed to write private data: ${err}`));
       } else {
@@ -381,7 +464,10 @@ async function writePrivateData(holster: any, plainPath: string[], plaintext: st
 }
 
 // Delete by putting null at the hashed path.
-async function deletePrivateData(holster: any, plainPath: string[]): Promise<void> {
+async function deletePrivateData(
+  holster: GunInstance,
+  plainPath: string[]
+): Promise<void> {
   const privatePath = await getPrivatePath(holster, plainPath);
   const [firstDelete, ...restDelete] = privatePath;
   let node = holster.user().get(firstDelete);
@@ -389,8 +475,8 @@ async function deletePrivateData(holster: any, plainPath: string[]): Promise<voi
     node = node.next(part);
   }
 
-  return new Promise<void>((resolve, reject) => {
-    node.put(null, (err) => {
+  await new Promise<void>((resolve, reject) => {
+    node.put(null, err => {
       if (err) {
         reject(new Error(`Failed to delete private data: ${err}`));
       } else {
@@ -401,11 +487,11 @@ async function deletePrivateData(holster: any, plainPath: string[]): Promise<voi
 }
 
 async function readPrivateData(
-  holster: any,
+  holster: GunInstance,
   plainPath: string[],
   hashedPath?: string[]
 ): Promise<string> {
-  const path = hashedPath || (await getPrivatePath(holster, plainPath));
+  const path = hashedPath ?? (await getPrivatePath(holster, plainPath));
   const [firstRead, ...restRead] = path;
   let node = holster.user().get(firstRead);
   for (const part of restRead) {
@@ -413,15 +499,19 @@ async function readPrivateData(
   }
 
   return await new Promise<string>((resolve, reject) => {
-    node.next(null, async (ciphertext) => {
+    node.next(null, async ciphertext => {
       // SEA.encrypt stored a {ct, iv, s} cipher object (plus Holster's `_`
       // graph metadata on read-back) — validate the shape, not the type.
       if (ciphertext === undefined || !isSEACipher(ciphertext)) {
         reject(new Error('Private data not found or could not be decrypted'));
         return;
       }
-      const SEA = holster.SEA;
-      const plaintext = await SEA.decrypt(ciphertext, getUserSEA(holster.user()));
+      const sea = getUserSEA(holster.user());
+      if (!sea) {
+        reject(new Error('User cryptographic keypair not available'));
+        return;
+      }
+      const plaintext = await holster.SEA.decrypt<string>(ciphertext, sea);
       if (plaintext === null || plaintext === undefined) {
         reject(new Error('Private data not found or could not be decrypted'));
         return;
@@ -438,7 +528,7 @@ async function readPrivateData(
  * 2. Then access each field at privatePath + [key] + [hashedFieldName]
  */
 async function readPrivateMap(
-  holster: any,
+  holster: GunInstance,
   plainPath: string[],
   fields: string[]
 ): Promise<Record<string, string>[]> {
@@ -451,14 +541,15 @@ async function readPrivateMap(
 
   // First, collect all keys from the collection
   const keys: string[] = await new Promise<string[]>(resolve => {
-    privateNode.next(null, (data) => {
-      if (!data || typeof data !== 'object') {
+    privateNode.next(null, data => {
+      if (!isRecord(data)) {
         resolve([]);
         return;
       }
 
-      const nodeKeys = Object.keys(data || {}).filter(k => k !== '_' && (data as Record<string, unknown>)[k] != null);
-      resolve(nodeKeys);
+      resolve(
+        Object.keys(data).filter(k => k !== '_' && data[k] != null)
+      );
     });
   });
 
@@ -488,7 +579,9 @@ async function readPrivateMap(
 ```
 
 Service note: the private read/write/delete paths here use `buildUserChain`/
-`putUserPath` (deadline-bounded) — see section 2.
+`putUserPath` (deadline-bounded) — see section 2. `getUserSEA` and
+`isSEACipher` are the helpers in `src/misc/seaHelpers.ts`; `isRecord` is
+defined in section 5.
 
 ## 7. Contact System
 
