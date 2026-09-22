@@ -1,5 +1,5 @@
-import type { GunInstance, SEAInstance } from '@/types/gun';
-import { gunService } from '@/services/gunService';
+import type { HolsterInstance, SEAInstance } from '@/types/holster';
+import { holsterService } from '@/services/holsterService';
 import { getUserSEA, isSEACipher } from '@/misc/seaHelpers';
 import type { Result } from '@k98kurz/functional-result';
 import { success, tryCatch } from '@k98kurz/functional-result';
@@ -71,16 +71,16 @@ function assertPlaintextSize(content: string): void {
  * Provides encryption/decryption using:
  * - Document encryption: Manual AES-256-GCM with per-document symmetric keys
  * - Key sharing: SEA's ECDH for encrypting/decrypting document keys between users
- * - Other: use GunDB/SEA automatic encryption for user data storage
+ * - Other: use Holster/SEA automatic encryption for user data storage
  */
 class EncryptionService {
   public sea: SEAInstance | null = null;
-  private gun: GunInstance | null = null;
+  private holster: HolsterInstance | null = null;
   private isInitialized = false;
 
   /**
-   * Initialize SEA with GunDB instance
-   * Must be called after gunService.initialize()
+   * Initialize SEA with Holster instance
+   * Must be called after holsterService.initialize()
    */
   async initializeSEA(): Promise<Result<void, EncryptionError>> {
     if (this.isInitialized) {
@@ -93,18 +93,20 @@ class EncryptionService {
       EncryptionError
     >(
       async (): Promise<void> => {
-        const gunInstance = gunService.getGun();
-        if (!gunInstance) {
+        const holsterInstance = holsterService.getHolster();
+        if (!holsterInstance) {
           throw new Error(
-            'GunDB not initialized. Call gunService.initialize() first.'
+            'Holster not initialized. Call holsterService.initialize() first.'
           );
         }
 
-        this.gun = gunInstance;
-        this.sea = gunInstance.SEA;
+        this.holster = holsterInstance;
+        this.sea = holsterInstance.SEA;
 
         if (!this.sea) {
-          throw new Error('SEA not available. Make sure gun/sea is imported.');
+          throw new Error(
+            'SEA not available. Make sure holster/sea is imported.'
+          );
         }
 
         this.isInitialized = true;
@@ -126,7 +128,7 @@ class EncryptionService {
    * inside async closures.
    */
   private requireSEA(): SEAInstance {
-    if (!this.isInitialized || !this.sea || !this.gun) {
+    if (!this.isInitialized || !this.sea || !this.holster) {
       throw createEncryptionError(
         'SEA_NOT_INITIALIZED',
         'SEA not initialized. Call initializeSEA() first.'
@@ -302,7 +304,7 @@ class EncryptionService {
     return tryCatch<string, EncryptionError>(
       async () => {
         assertPlaintextSize(data);
-        const userNode = this.gun!.user();
+        const userNode = this.holster!.user();
         const userPair = getUserSEA(userNode);
 
         if (!userPair || !userPair.epriv || !userPair.epub) {
@@ -363,7 +365,7 @@ class EncryptionService {
 
     return tryCatch<string, EncryptionError>(
       async () => {
-        const userNode = this.gun!.user();
+        const userNode = this.holster!.user();
         const userPair = getUserSEA(userNode);
 
         if (!userPair || !userPair.epriv || !userPair.epub) {

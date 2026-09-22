@@ -1,14 +1,14 @@
 /**
  * Connection Store
  *
- * Zustand store for managing GunDB connection state.
- * Polls gunService for connection status and provides reactive state for UI.
+ * Zustand store for managing Holster connection state.
+ * Polls holsterService for connection status and provides reactive state for UI.
  */
 
 import { create } from 'zustand';
-import { gunService } from '@/services/gunService';
+import { holsterService } from '@/services/holsterService';
 import { relayMonitor } from '@/services/relayMonitor';
-import type { RelayStatus } from '@/types/gun';
+import type { RelayStatus } from '@/types/holster';
 
 /**
  * Connection State Interface
@@ -35,7 +35,7 @@ let lastRevision = -1;
 /**
  * Connection Store
  *
- * Manages connection state by polling gunService, which reads the real
+ * Manages connection state by polling holsterService, which reads the real
  * relay sockets tracked by relayMonitor.
  */
 export const useConnectionStore = create<ConnectionState>(set => ({
@@ -54,12 +54,12 @@ export const useConnectionStore = create<ConnectionState>(set => ({
     }
     lastRevision = revision;
 
-    const status = gunService.getConnectionState();
-    const relays = gunService.getRelayStatuses();
+    const status = holsterService.getConnectionState();
+    const relays = holsterService.getRelayStatuses();
     const peerConnectionTimes = new Map<string, number>();
 
     relays.forEach((_, url) => {
-      const connectionTime = gunService.getPeerConnectionTime(url);
+      const connectionTime = holsterService.getPeerConnectionTime(url);
       if (connectionTime) {
         peerConnectionTimes.set(url, connectionTime);
       }

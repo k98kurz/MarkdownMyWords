@@ -2,7 +2,7 @@
  * Type-safe utilities for working with Holster SEA encryption.
  */
 
-import type { ISEAPair, SEACipher } from '@/types/gun';
+import type { ISEAPair, SEACipher } from '@/types/holster';
 
 export type { ISEAPair };
 

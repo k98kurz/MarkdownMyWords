@@ -3,7 +3,7 @@
  */
 
 import { encryptionService } from '@/services/encryptionService';
-import { gunService } from '@/services/gunService';
+import { holsterService } from '@/services/holsterService';
 import {
   TestRunner,
   printTestSummary,
@@ -110,10 +110,10 @@ async function testKeySharing(): Promise<TestSuiteResult> {
   console.log('🧪 Testing Key Sharing (SEA ECDH)...\n');
 
   const runner = new TestRunner('Key Sharing (ECDH)');
-  const gun = gunService.getGun();
+  const holster = holsterService.getHolster();
 
-  if (!gun) {
-    throw new Error('GunDB not initialized - cannot test ECDH key sharing');
+  if (!holster) {
+    throw new Error('Holster not initialized - cannot test ECDH key sharing');
   }
 
   await runner.run(
@@ -161,21 +161,22 @@ async function testKeySharing(): Promise<TestSuiteResult> {
       const alicePass = 'password123!Alice';
       const bobPass = 'password123!Bob';
 
-      // create Alice user (profile auto-stored in GunDB profiles directory)
-      await gunService.createUser(aliceUsername, alicePass);
-      await gunService.authenticateUser(aliceUsername, alicePass);
-      await gunService.writeProfile();
+      // create Alice user (profile auto-stored in Holster profiles directory)
+      await holsterService.createUser(aliceUsername, alicePass);
+      await holsterService.authenticateUser(aliceUsername, alicePass);
+      await holsterService.writeProfile();
       console.log('Alice user created');
-      await gunService.logoutAndWait();
+      await holsterService.logoutAndWait();
 
-      // create Bob user (profile auto-stored in GunDB profiles directory)
-      await gunService.createUser(bobUsername, bobPass);
-      await gunService.authenticateUser(bobUsername, bobPass);
-      await gunService.writeProfile();
+      // create Bob user (profile auto-stored in Holster profiles directory)
+      await holsterService.createUser(bobUsername, bobPass);
+      await holsterService.authenticateUser(bobUsername, bobPass);
+      await holsterService.writeProfile();
       console.log('Bob user created');
 
       // Bob gets Alice's epub from discovered users
-      const aliceUsersResult = await gunService.discoverUsers(aliceUsername);
+      const aliceUsersResult =
+        await holsterService.discoverUsers(aliceUsername);
       if (!aliceUsersResult.success) {
         throw new Error(
           `Failed to discover Alice's profile: ${aliceUsersResult.error.message}`
@@ -209,11 +210,11 @@ async function testKeySharing(): Promise<TestSuiteResult> {
       const encryptedKeyData = encryptedKey.data;
 
       // switch to Alice
-      await gunService.logoutAndWait();
-      await gunService.authenticateUser(aliceUsername, alicePass);
+      await holsterService.logoutAndWait();
+      await holsterService.authenticateUser(aliceUsername, alicePass);
 
       // Alice gets Bob's epub from discovered users
-      const bobUsersResult = await gunService.discoverUsers(bobUsername);
+      const bobUsersResult = await holsterService.discoverUsers(bobUsername);
       if (!bobUsersResult.success) {
         throw new Error(
           `Failed to discover Bob's profile: ${bobUsersResult.error.message}`
@@ -363,27 +364,27 @@ export async function testEncryptionService(
   console.log('🚀 Starting Encryption Service Tests\n');
   console.log('='.repeat(60));
 
-  const gun = gunService.getGun();
-  if (gun) {
-    const currentUser = gun.user();
+  const holster = holsterService.getHolster();
+  if (holster) {
+    const currentUser = holster.user();
     if (currentUser.is && currentUser.is.pub) {
       console.log(
         `\n📝 Pre-test: User already logged in (${currentUser.is.pub.substring(0, 20)}...), logging out...`
       );
-      gun.user().leave();
+      holster.user().leave();
       await sleep(800);
       console.log('   ✅ Logged out and waited 800ms\n');
     }
   }
 
-  // Ensure GunDB is properly initialized for tests
-  if (!gunService.isReady()) {
-    console.log('\n📝 Pre-test: GunDB not ready, initializing...\n');
-    gunService.initialize();
+  // Ensure Holster is properly initialized for tests
+  if (!holsterService.isReady()) {
+    console.log('\n📝 Pre-test: Holster not ready, initializing...\n');
+    holsterService.initialize();
     await sleep(1000);
-    console.log('   ✅ GunDB initialized and waited 1s\n');
+    console.log('   ✅ Holster initialized and waited 1s\n');
   } else {
-    console.log('\n📝 Pre-test: GunDB already ready\n');
+    console.log('\n📝 Pre-test: Holster already ready\n');
   }
 
   // Initialize SEA for encryption tests
@@ -404,11 +405,11 @@ export async function testEncryptionService(
   // suiteResults.push(errorResult)
   // console.log('\n' + '='.repeat(60))
 
-  if (gun) {
-    const finalUser = gun.user();
+  if (holster) {
+    const finalUser = holster.user();
     if (finalUser.is && finalUser.is.pub) {
       console.log('\n📝 Cleanup: Logging out test user');
-      gun.user().leave();
+      holster.user().leave();
       await sleep(800);
       console.log('   ✅ Logged out and waited 800ms');
     }

@@ -16,7 +16,7 @@ Read rules (violating these hangs or corrupts reads):
 - Collection iteration: read the full node (`.next(null, cb)` or
   `.get(key, cb)`) and iterate with `Object.entries()`, filtering out
   `_` keys
-- Reference implementations: `src/services/gunService.ts`
+- Reference implementations: `src/services/holsterService.ts`
 
 **Standalone souls vs root properties** (2026-09-19): root-level
 `.get(key, cb)` reads only PROPERTIES of the `root` soul (it resolves
@@ -28,9 +28,9 @@ succeed. Read standalone souls via the wire spec:
 `holster.wire.get({'#': soul}, msg => msg.put[soul])` — the pattern
 `user().auth()` itself uses. Raw wire reads do NOT inline rels (entries
 arrive as `{'#': soul}`; follow them with further wire reads); chain
-reads DO inline rels. Helper: `gunService.readSoul()`.
+reads DO inline rels. Helper: `holsterService.readSoul()`.
 
-The hand-written types in `src/types/gun.ts` mirror the real Holster
+The hand-written types in `src/types/holster.ts` mirror the real Holster
 API — do NOT loosen them. The GunDB → Holster migration originally
 declared `once` and a chain `get`, so `tsc` passed while the app hung
 at runtime. Never assume GunDB session/node shapes; verify against the
@@ -41,7 +41,7 @@ Holster does not support arrays as object properties and this
 fundamentally breaks. Store each item as a separate node
 (`node.get('docs').next(docId).put(doc)`); read collections with the
 full-node + `Object.entries()` pattern above. See
-`gunService.listItems()` in `src/services/gunService.ts` and
+`holsterService.listItems()` in `src/services/holsterService.ts` and
 `readPrivateMap()` in `code_references/holster.md` for private data
 maps.
 
@@ -71,14 +71,14 @@ object ack anywhere (verified in
 - Error check is TRUTHINESS: `if (ack) reject(...)` — never
   `typeof ack === 'object' && ack.err`. The `{err}`-shaped check
   silently converts EVERY error into success. (`GunAck` in
-  `src/types/gun.ts` encoded the wrong GunDB shape and was replaced by
+  `src/types/holster.ts` encoded the wrong GunDB shape and was replaced by
   `AckCallback = (err: string | null | undefined) => void`.)
 - `transformAuthError` in `src/stores/authStore.ts` matches on the message
   prefixes `User creation failed` / `Authentication failed` — keep those
-  prefixes intact when touching `gunService.createUser`/`authenticateUser`.
+  prefixes intact when touching `holsterService.createUser`/`authenticateUser`.
 - Wire-layer messages (`wire.get`/`wire.put` raw JSON) ARE objects with
   `put`/`err` fields — that convention applies only to raw wire reads
-  (`gunService.readSoul`), not API callbacks.
+  (`holsterService.readSoul`), not API callbacks.
 
 # Wedged Local Storage: Hang Signature, Recovery, and Deadlines (2026-09-20)
 
@@ -99,18 +99,18 @@ is this signature.
   hard reload, AND the relay's `./radata` directory (Node fs store,
   written by the same radisk). Test users are disposable; never try to
   salvage these stores.
-- `gunService.withDeadline` (45s, above the 30s+10s library timeouts)
+- `holsterService.withDeadline` (45s, above the 30s+10s library timeouts)
   bounds `createUser`/`authenticateUser`/`writeProfile`/private-data
   put waits, and `initialize()` runs a 10s storage health probe — a
   wedge now fails loudly with the recovery instructions instead of
   freezing a test suite. Keep those wrappers (passing
   `relayStatusSummary()` as timeout details) on any new Holster
-  write/auth path. The timeout rejects a GunError with code
+  write/auth path. The timeout rejects a HolsterError with code
   STORAGE_ERROR; the deadline does NOT prove storage is wedged —
   create/auth begin with relay reads, so a down relay trips the same
   deadline. Check the error `details` (live relay states) before
   blaming storage or wiping data.
-- Dev builds store to their OWN IndexedDB (`gunService.storageDbName`
+- Dev builds store to their OWN IndexedDB (`holsterService.storageDbName`
   → Holster `opt.file`, default `radata_dev`; prod `radata`), so tests
   never touch production storage. `initialize(config)` records the
   resolved name on the service, so `clearHolsterStorage()` always targets
@@ -120,7 +120,7 @@ is this signature.
   never closes its connection, so `deleteDatabase` is always `onblocked`
   while the app runs. It now defers — logout + localStorage
   `holster.storageClearPending` — and `completePendingStorageClear()`
-  (main.tsx, BEFORE `gunService.initialize()`) deletes it on the next
+  (main.tsx, BEFORE `holsterService.initialize()`) deletes it on the next
   load. It returns `StorageClearOutcome` (`deleted`/`deferred`/`error`/
   `unavailable`) instead of resolving void, and a no-IndexedDB env
   discards the pending flag rather than retrying forever. A failed or
@@ -142,11 +142,11 @@ were unaffected, which is the signature.
   `.put()` on a chain after `.next(null, cb)`/`.get(key, cb)`, and never
   call `.next(key)` twice on the same chain (it accumulates the path).
 - Every user-scoped **put** goes through
-  `gunService.buildUserChain(path)` (private) and `putUserPath`, so the
+  `holsterService.buildUserChain(path)` (private) and `putUserPath`, so the
   fresh-chain rule for writes lives in one place. Service private reads
   (`readPrivateData`/`readPrivateMap`) also use `buildUserChain`; other
   reads build a fresh chain per call —
-  `documentStore.readOwnDocument`, `gunService.readUsername`/
+  `documentStore.readOwnDocument`, `holsterService.readUsername`/
   `listUserItems`, and `documentStore.getDocument` (reads another `~pub`)
   — and never reuse one across a read and a write.
   `writeUserPath(path, data, description)` is the public plaintext write
@@ -161,7 +161,7 @@ were unaffected, which is the signature.
 
 Holster's browser client keeps its peer WebSockets in a closure in
 `wire.js` and exposes no connection events, no `on('hi')`, and no `opt()`
-method — our `GunInstance` type used to declare `opt`, which does not
+method — our `HolsterInstance` type used to declare `opt`, which does not
 exist (removed). Any `holster.opt(...)` call throws `TypeError`.
 
 - Holster RECONNECTS FOREVER at ~1s: `start()` in `wire.js` creates a NEW
@@ -170,7 +170,7 @@ exist (removed). Any `holster.opt(...)` call throws `TypeError`.
   attempt also hits `ws.onerror = e => console.log(e)`, so killing the
   relay spams the console and flips status connecting↔disconnected.
 - `relayMonitor` wraps `window.WebSocket` (installed in
-  `gunService.initialize()` BEFORE `Gun()`) and tracks the real sockets.
+  `holsterService.initialize()` BEFORE `Holster()`) and tracks the real sockets.
   It also mediates `onopen`/`onclose`: because Holster's close handler
   schedules the next attempt, the monitor DELAYS invoking it with real
   exponential backoff (1s→2s→4s→…→30s cap, reset on open). Do NOT remove
@@ -201,7 +201,7 @@ restores `user.is` from localStorage first, then sessionStorage;
 - Do NOT hand-write `user.is` to storage or assume `auth()` persists it;
   `store()` is the whole persistence API
   (`node_modules/@mblaney/holster/src/user.js`).
-- Where persistence lives: `gunService.authenticateUser()` calls
+- Where persistence lives: `holsterService.authenticateUser()` calls
   `user().store()` (sessionStorage) on auth success — the single choke
   point for both login and register (register runs `createUser` then
   `authenticateUser`; `createUser` alone leaves `user.is` null, so it is
@@ -250,7 +250,7 @@ any of this without a human.
 Holster's SEA (`node_modules/@mblaney/holster/src/sea.js`) is NOT Gun's
 string-based SEA. Code written against Gun's API compiles if types are
 loose but fails at runtime. Rules (mirrored by `SEACipher`/`SEAPair`/
-`SEAInstance` in `src/types/gun.ts`):
+`SEAInstance` in `src/types/holster.ts`):
 
 - Keys must be OBJECTS: `SEA.encrypt(data, {epriv: keyString})`. A bare
   string key hits the `!pair.epriv` guard and returns null. (This is
@@ -267,7 +267,7 @@ loose but fails at runtime. Rules (mirrored by `SEACipher`/`SEAPair`/
   Extract `.epriv` for hashed path strings — returning the whole
   object as a path makes Holster coerce it with `String(key)` to the
   literal `'[object Object]'`, colliding every private path into one
-  node (fixed in `gunService.getPrivatePathPart`). The `salt` argument
+  node (fixed in `holsterService.getPrivatePathPart`). The `salt` argument
   must ALSO be a scalar: pass `sea.epriv`, not the whole `user.is`/pair
   object, or `SEA.work` stringifies it to that same literal
   `'[object Object]'` for every user — all users then derive identical
@@ -294,7 +294,7 @@ loose but fails at runtime. Rules (mirrored by `SEACipher`/`SEAPair`/
 The legacy GunDB string-SEA surface (`code_references/holster.d.ts`,
 `code_references/testNewGunSEAScheme.ts`) is historical only — do not
 use either as a reference. The real API types live in
-`src/types/gun.ts`; `src/types/holster.d.ts` declares only a loose
+`src/types/holster.ts`; `src/types/holster-package.d.ts` declares only a loose
 default export.
 
 # User Profiles & Discovery: the `~@username` Alias Index (2026-09-18)
@@ -319,13 +319,13 @@ mechanism — do not invent a "profiles directory" node.
   read `holster.user().get('profile', cb)`, which follows the profile
   rel.
 - NEVER treat `~@username` as resolved profiles — it is an alias index
-  of pubs claiming that username. Use `gunService.discoverUsers()`.
+  of pubs claiming that username. Use `holsterService.discoverUsers()`.
 
 Reference implementations for `createUser`, `authenticateUser`,
 `writeProfile`, `discoverUsers`, `writePrivateData`/`readPrivateData`/
 `readPrivateMap`/`deletePrivateData`, `writeUserPath`, and contacts live in
 `code_references/holster.md`; it documents reusable Holster/SEA patterns,
-not every `gunService` method.
+not every `holsterService` method.
 
 # Functional Result Utility (2026-09-18)
 
@@ -358,7 +358,7 @@ manual, in the browser dev console — helpful tools live in
 No artificial delays, ever: Holster loads SYNCHRONOUSLY from local
 storage/cache, so there is nothing to "wait for". Delays added before
 `.next(null, cb)`/`.get(key, cb)` or after
-`await gunService.authenticateUser(...)` only mask broken read code
+`await holsterService.authenticateUser(...)` only mask broken read code
 (usually GunDB-style `.get(cb)`/`.once()` calls — see the Holster Read
 API entry above). Exponentially increasing delays have been tried
 repeatedly; it never works. Use callbacks, not delays.
@@ -366,7 +366,7 @@ repeatedly; it never works. Use callbacks, not delays.
 For write/read races in tests: wait for `put` acks (never
 fire-and-forget `await chain.put(x)`) and poll reads with
 `retryWithBackoff` (`src/lib/retry`) on a real condition — see the
-listItems and user-operations tests in `src/test/gunService.test.ts`.
+listItems and user-operations tests in `src/test/holsterService.test.ts`.
 
 Clearing storage is deferred (see Wedged Local Storage above):
 `clearHolsterStorage()` flags a pending clear that
