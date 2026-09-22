@@ -162,7 +162,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     });
   };
 
-  const validateAllRelays = useCallback((): Result<string[], RelayValidationError> => {
+  const validateAllRelays = useCallback((): Result<
+    string[],
+    RelayValidationError
+  > => {
     return sequence(
       tempRelays.map((relay, index) =>
         validateRelayUrl(
@@ -207,7 +210,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   }, [validateAllRelays, tempRelays, onClose]);
 
   const registerShortcut = useKeyboardShortcutsStore(s => s.registerShortcut);
-  const unregisterShortcut = useKeyboardShortcutsStore(s => s.unregisterShortcut);
+  const unregisterShortcut = useKeyboardShortcutsStore(
+    s => s.unregisterShortcut
+  );
 
   useEffect(() => {
     if (isOpen) {

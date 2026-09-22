@@ -43,7 +43,9 @@ export function DocumentEditor() {
   } = useDocumentStore();
 
   const registerShortcut = useKeyboardShortcutsStore(s => s.registerShortcut);
-  const unregisterShortcut = useKeyboardShortcutsStore(s => s.unregisterShortcut);
+  const unregisterShortcut = useKeyboardShortcutsStore(
+    s => s.unregisterShortcut
+  );
 
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -189,7 +191,19 @@ export function DocumentEditor() {
       setCameFromNewDoc(true);
       navigate(`/doc/${currentUserPub}/${result.data.id}`);
     }
-  }, [clearDocError, docId, updateDocument, title, content, tags, clearDocumentMetadata, createDocument, isPublic, currentUserPub, navigate]);
+  }, [
+    clearDocError,
+    docId,
+    updateDocument,
+    title,
+    content,
+    tags,
+    clearDocumentMetadata,
+    createDocument,
+    isPublic,
+    currentUserPub,
+    navigate,
+  ]);
 
   const handleShareClick = async () => {
     if (!currentDocument) return;

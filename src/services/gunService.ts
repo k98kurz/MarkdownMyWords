@@ -160,7 +160,9 @@ function transformGunError(error: unknown): GunError {
  * Type guard for values readable from a Holster node entry. Holster values
  * are strings, numbers, booleans, rels, or nested node objects.
  */
-function isListEntryData(value: unknown): value is string | Record<string, unknown> {
+function isListEntryData(
+  value: unknown
+): value is string | Record<string, unknown> {
   if (typeof value === 'string') {
     return true;
   }
@@ -187,7 +189,7 @@ class GunService {
    * @returns URL with WebSocket protocol
    */
   private convertToWebSocketUrl(url: string): string {
-    return url.replace(/^https?:\/\//, (match) =>
+    return url.replace(/^https?:\/\//, match =>
       match === 'https://' ? 'wss://' : 'ws://'
     );
   }
@@ -321,7 +323,7 @@ class GunService {
     const holster = this.holster;
     withDeadline<void>(
       (resolve, _reject) => {
-        holster.wire.get({'#': 'root'}, () => resolve());
+        holster.wire.get({ '#': 'root' }, () => resolve());
       },
       'Storage health check',
       10_000
@@ -455,7 +457,7 @@ class GunService {
    */
   private readSoul(soul: string): Promise<Record<string, unknown> | null> {
     return new Promise(resolve => {
-      this.getGun().wire.get({'#': soul}, msg => {
+      this.getGun().wire.get({ '#': soul }, msg => {
         const node = msg.put?.[soul];
         resolve(
           node && typeof node === 'object'
@@ -518,21 +520,27 @@ class GunService {
   ): Promise<Result<void, GunError>> {
     return tryCatch<void, GunError>(async () => {
       if (!this.holster) {
-        throw createGunError(GunErrorCode.INIT_FAILED, 'Holster not initialized');
+        throw createGunError(
+          GunErrorCode.INIT_FAILED,
+          'Holster not initialized'
+        );
       }
 
-      await withDeadline<void>((resolve, reject) => {
-        const holster = this.holster!;
-        holster.user().create(username, password, err => {
-          // Holster callbacks are Node-style: err is a string or null.
-          if (err) {
-            reject(new Error(`User creation failed: ${err}`));
-          } else {
-            resolve();
-          }
-        });
-      }, 'User creation', OPERATION_DEADLINE_MS, () =>
-        this.relayStatusSummary()
+      await withDeadline<void>(
+        (resolve, reject) => {
+          const holster = this.holster!;
+          holster.user().create(username, password, err => {
+            // Holster callbacks are Node-style: err is a string or null.
+            if (err) {
+              reject(new Error(`User creation failed: ${err}`));
+            } else {
+              resolve();
+            }
+          });
+        },
+        'User creation',
+        OPERATION_DEADLINE_MS,
+        () => this.relayStatusSummary()
       );
     }, transformGunError);
   }
@@ -550,31 +558,37 @@ class GunService {
   ): Promise<Result<void, GunError>> {
     return tryCatch<void, GunError>(async () => {
       if (!this.holster) {
-        throw createGunError(GunErrorCode.INIT_FAILED, 'Holster not initialized');
+        throw createGunError(
+          GunErrorCode.INIT_FAILED,
+          'Holster not initialized'
+        );
       }
 
-      await withDeadline<void>((resolve, reject) => {
-        const holster = this.holster!;
-        holster.user().auth(username, password, err => {
-          // Holster callbacks are Node-style: err is a string or null.
-          if (err) {
-            reject(new Error(`Authentication failed: ${err}`));
-          } else {
-            // auth() only sets user.is in memory; persist it to
-            // sessionStorage so a page refresh can recall() the session.
-            // store() without an argument uses sessionStorage. Guard it so a
-            // storage failure (e.g. setItem throwing) cannot leave the auth
-            // promise unresolved until the deadline fires.
-            try {
-              holster.user().store();
-            } catch (storeErr) {
-              console.warn('Failed to persist Holster session:', storeErr);
+      await withDeadline<void>(
+        (resolve, reject) => {
+          const holster = this.holster!;
+          holster.user().auth(username, password, err => {
+            // Holster callbacks are Node-style: err is a string or null.
+            if (err) {
+              reject(new Error(`Authentication failed: ${err}`));
+            } else {
+              // auth() only sets user.is in memory; persist it to
+              // sessionStorage so a page refresh can recall() the session.
+              // store() without an argument uses sessionStorage. Guard it so a
+              // storage failure (e.g. setItem throwing) cannot leave the auth
+              // promise unresolved until the deadline fires.
+              try {
+                holster.user().store();
+              } catch (storeErr) {
+                console.warn('Failed to persist Holster session:', storeErr);
+              }
+              resolve();
             }
-            resolve();
-          }
-        });
-      }, 'Authentication', OPERATION_DEADLINE_MS, () =>
-        this.relayStatusSummary()
+          });
+        },
+        'Authentication',
+        OPERATION_DEADLINE_MS,
+        () => this.relayStatusSummary()
       );
     }, transformGunError);
   }
@@ -965,7 +979,9 @@ class GunService {
             return;
           }
 
-          const nodeKeys = Object.keys(data || {}).filter(k => k !== '_' && (data as Record<string, unknown>)[k] != null);
+          const nodeKeys = Object.keys(data || {}).filter(
+            k => k !== '_' && (data as Record<string, unknown>)[k] != null
+          );
           resolve(nodeKeys);
         });
       });

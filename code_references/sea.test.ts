@@ -1,3 +1,5 @@
+// DEPRECATED: this is an old file that was valid only for GunDB + SEA
+// This does NOT work for Holster and is retained only as a historical relic
 import Gun from '@mblaney/holster/src/holster.js';
 import { gunService } from '@/services';
 

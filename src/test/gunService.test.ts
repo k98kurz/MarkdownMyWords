@@ -4,7 +4,11 @@
  * Tests for GunDB service operations that can be run from the browser console.
  */
 
-import { gunService, GunService, type ListItemResult } from '@/services/gunService';
+import {
+  gunService,
+  GunService,
+  type ListItemResult,
+} from '@/services/gunService';
 import { GunErrorCode } from '@/types/gun';
 import {
   TestRunner,
@@ -225,10 +229,7 @@ async function testListItems(): Promise<TestSuiteResult> {
         console.error(`Malformed item: ${JSON.stringify(item)}`);
         throw new Error('Item missing required properties');
       }
-      if (
-        typeof item.data === 'string' &&
-        !itemIds.includes(item.data)
-      ) {
+      if (typeof item.data === 'string' && !itemIds.includes(item.data)) {
         console.error(`Unexpected item.data: ${item.data}`);
       }
     }

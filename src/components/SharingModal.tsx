@@ -98,7 +98,16 @@ export function SharingModal({
     } finally {
       setIsLoading(false);
     }
-  }, [setError, setIsLoading, selectedPrivacy, currentIsPublic, keyInput, keyChanged, docId, hasChanges]);
+  }, [
+    setError,
+    setIsLoading,
+    selectedPrivacy,
+    currentIsPublic,
+    keyInput,
+    keyChanged,
+    docId,
+    hasChanges,
+  ]);
 
   const handleGenerateKey = async () => {
     try {
@@ -155,7 +164,9 @@ export function SharingModal({
   }, [docId, currentIsPublic, isOpen]);
 
   const registerShortcut = useKeyboardShortcutsStore(s => s.registerShortcut);
-  const unregisterShortcut = useKeyboardShortcutsStore(s => s.unregisterShortcut);
+  const unregisterShortcut = useKeyboardShortcutsStore(
+    s => s.unregisterShortcut
+  );
 
   useEffect(() => {
     if (isOpen) {

@@ -25,11 +25,7 @@ import {
   type TestSuiteResult,
   sleep,
 } from '@/dev/testRunner';
-import {
-  tryCatch,
-  isFailure,
-  type Result,
-} from '@k98kurz/functional-result';
+import { tryCatch, isFailure, type Result } from '@k98kurz/functional-result';
 import type { AuthError } from '@/stores/authStore';
 
 /**
@@ -264,9 +260,7 @@ async function testBasicOperations(runner: TestRunner): Promise<void> {
   });
 
   await runner.run('Clear error works correctly', async () => {
-    await tryAuth<void>(() =>
-      useAuthStore.getState().register('', '')
-    );
+    await tryAuth<void>(() => useAuthStore.getState().register('', ''));
     let state = useAuthStore.getState();
     assert(state.error !== null, 'Should have error after failed validation');
 

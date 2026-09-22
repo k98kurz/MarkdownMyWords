@@ -47,9 +47,9 @@ export function InfoModal({ isOpen, onClose }: InfoModalProps) {
               SEA (Security, Encryption, Authorization) is Holster's encryption
               library. It secures your data with cryptographic keys derived from
               your password (documents have their own encryption keys which are
-              encrypted with your password before being saved to your data). Your
-              documents are encrypted locally and only you (or those you share
-              with) can decrypt them.
+              encrypted with your password before being saved to your data).
+              Your documents are encrypted locally and only you (or those you
+              share with) can decrypt them.
             </p>
           </div>
         </div>
