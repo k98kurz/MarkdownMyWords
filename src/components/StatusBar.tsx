@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useConnectionStore } from '@/stores/connectionStore';
 import { Modal } from './ui/Modal';
+import { Button } from './ui/Button';
 import { ChangelogModal } from './ChangelogModal';
 import { getChangelogTitle } from '@/lib/changelog';
 
@@ -47,7 +48,9 @@ export const StatusBar: React.FC = () => {
       ? 'Not Connected to a Relay'
       : connectedCount > 0
         ? `Connected to ${connectedCount} of ${totalRelays} Relay${totalRelays !== 1 ? 's' : ''}`
-        : `Connecting to ${totalRelays} Relay${totalRelays !== 1 ? 's' : ''}`;
+        : status === 'connecting'
+          ? `Connecting to ${totalRelays} Relay${totalRelays !== 1 ? 's' : ''}`
+          : 'Disconnected - click to reconnect';
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -135,6 +138,20 @@ export const StatusBar: React.FC = () => {
                 : `${connectedCount} of ${relays.size} relay${relays.size > 1 ? 's' : ''} connected`}
             </div>
           </div>
+          {status === 'disconnected' && relays.size > 0 && (
+            <div className="mt-4 flex items-center justify-between gap-3 rounded-md border border-border-20 bg-muted p-4">
+              <p className="text-sm text-muted-foreground">
+                Unable to reach a relay. Reconnecting automatically with
+                backoff.
+              </p>
+              <Button
+                variant="secondary"
+                onClick={() => window.location.reload()}
+              >
+                Reload
+              </Button>
+            </div>
+          )}
         </div>
       </Modal>
       <ChangelogModal

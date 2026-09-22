@@ -121,10 +121,20 @@ export interface GunInstance {
   get: ((key: string) => GunNodeRef) &
     ((key: string, callback: (data: unknown) => void) => void);
   user: () => GunUserNode;
-  opt: (config: { peers: string[] }) => void;
   SEA: SEAInstance;
   wire: GunWire;
 }
+
+/**
+ * Observed state of a configured relay's real Holster peer socket.
+ * `init` means no socket has been observed yet. Holster exposes no connection
+ * events, so these are derived by `relayMonitor` from the actual sockets.
+ */
+export type RelayStatus =
+  | 'init'
+  | 'connecting'
+  | 'connected'
+  | 'disconnected';
 
 /**
  * User Profile

@@ -7,6 +7,8 @@
 
 import { create } from 'zustand';
 import { gunService } from '@/services/gunService';
+import { relayMonitor } from '@/services/relayMonitor';
+import type { RelayStatus } from '@/types/gun';
 
 /**
  * Connection State Interface
@@ -16,7 +18,7 @@ interface ConnectionState {
   isConnected: boolean;
   isConnecting: boolean;
   status: 'connected' | 'disconnected' | 'connecting';
-  relays: Map<string, 'init' | 'connecting' | 'connected' | 'disconnected'>;
+  relays: Map<string, RelayStatus>;
   peerConnectionTimes: Map<string, number>;
 
   // Actions
@@ -24,9 +26,17 @@ interface ConnectionState {
 }
 
 /**
+ * Revision of the relay monitor at the last state sync. The monitor bumps its
+ * revision on every real socket transition, so a poll with no changes is a
+ * no-op and never re-renders subscribers (see main.tsx's 5s interval).
+ */
+let lastRevision = -1;
+
+/**
  * Connection Store
  *
- * Manages connection state by polling gunService.
+ * Manages connection state by polling gunService, which reads the real
+ * relay sockets tracked by relayMonitor.
  */
 export const useConnectionStore = create<ConnectionState>(set => ({
   // Initial state
@@ -38,6 +48,12 @@ export const useConnectionStore = create<ConnectionState>(set => ({
 
   // Action to update connection status
   updateConnectionStatus: () => {
+    const revision = relayMonitor.getRevision();
+    if (revision === lastRevision) {
+      return;
+    }
+    lastRevision = revision;
+
     const status = gunService.getConnectionState();
     const relays = gunService.getRelayStatuses();
     const peerConnectionTimes = new Map<string, number>();

@@ -46,9 +46,11 @@ full-node + `Object.entries()` pattern above. See
 maps.
 
 **Connection monitoring**: Holster has NO peer events (GunDB's
-`'hi'`/`'bye'` do not exist). Relay connectivity is tracked with
-WebSocket probes — see `gunService.setupConnectionMonitoring()`.
-`user().recall()` is synchronous.
+`'hi'`/`'bye'` do not exist) and no public reconnect API. Relay
+connectivity is derived from Holster's REAL peer sockets by
+`relayMonitor` (`src/services/relayMonitor.ts`), which wraps
+`window.WebSocket` before Holster is constructed — see the socket-tracking
+entry below. `user().recall()` is synchronous.
 
 **Session shape**: `user().is` = `{username, pub, epub, priv, epriv}` —
 the SEA pair lives there, NOT in `user._.sea` (a GunDB pattern; Holster
@@ -154,6 +156,34 @@ were unaffected, which is the signature.
   use `writeOwnDocument` for ALL document writes, including
   `createDocument` (a raw `put` there would skip the deadline). Reference:
   `code_references/holster.md` section 2.
+
+# Relay Status via Socket Tracking; Holster Reconnects Forever (2026-09-22)
+
+Holster's browser client keeps its peer WebSockets in a closure in
+`wire.js` and exposes no connection events, no `on('hi')`, and no `opt()`
+method — our `GunInstance` type used to declare `opt`, which does not
+exist (removed). Any `holster.opt(...)` call throws `TypeError`.
+
+- Holster RECONNECTS FOREVER at ~1s: `start()` in `wire.js` creates a NEW
+  `createRetryHandler()` on every attempt, so `retryCount` always starts
+  at 0 and its `maxRetries`/exponential backoff never apply. Each failed
+  attempt also hits `ws.onerror = e => console.log(e)`, so killing the
+  relay spams the console and flips status connecting↔disconnected.
+- `relayMonitor` wraps `window.WebSocket` (installed in
+  `gunService.initialize()` BEFORE `Gun()`) and tracks the real sockets.
+  It also mediates `onopen`/`onclose`: because Holster's close handler
+  schedules the next attempt, the monitor DELAYS invoking it with real
+  exponential backoff (1s→2s→4s→…→30s cap, reset on open). Do NOT remove
+  this gate or Holster will hammer the relay every second.
+- NEVER reintroduce throwaway reachability probes. Opening a WebSocket on
+  a timer and closing it while CONNECTING spams "WebSocket is closed
+  before the connection is established" and leaves half-open sockets;
+  that was the cause of the observed long-idle tab lockups.
+- Status is READ from the real sockets (`getConnectionState()`/
+  `getRelayStatuses()`/`getPeerConnectionTime()`). Recovery happens
+  automatically on a backed-off retry; do not fake "Connected" — the
+  monitor reports the socket's actual state. The StatusBar still offers a
+  manual Reload.
 
 # SEA Encryption & ECDH for Document Sharing (2026-09-18)
 
@@ -272,6 +302,11 @@ composable operations.
 
 - `pipe` (and `flow`) are for composing MULTIPLE operations. Never wrap
   a single operation in `pipe`.
+- A helper that RETURNS `Promise<Result<...>>` does not throw on failure.
+  `await`-ing it and ignoring the result silently treats failure as
+  success — check `.success` and surface `.error`. (`writeProfile`
+  previously swallowed a failed `writeUserPath` this way, making
+  registration succeed without writing a profile.)
 - In pipelines, check each Result and short-circuit before the next
   operation (see `authStore.register`); `await`-ing several operations
   into an array and passing them to `sequence` runs ALL of them before

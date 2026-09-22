@@ -37,42 +37,22 @@ const holster = Holster({
 // Get SEA instance from holster
 const SEA = holster.SEA;
 
-// Connection monitoring: Holster does NOT expose peer connection events.
-// GunDB's 'hi'/'bye' events do not exist in Holster. Determine relay
-// reachability with a throwaway WebSocket probe instead:
-function probeRelay(url: string, onResult: (connected: boolean) => void): void {
-  let opened = false;
-  const socket = new WebSocket(url);
-
-  const timeout = window.setTimeout(() => {
-    if (!opened) {
-      socket.close();
-      onResult(false);
-    }
-  }, 5000);
-
-  socket.onopen = () => {
-    opened = true;
-    window.clearTimeout(timeout);
-    socket.close();
-    onResult(true);
-  };
-  socket.onclose = () => {
-    if (!opened) {
-      window.clearTimeout(timeout);
-      onResult(false);
-    }
-  };
-  socket.onerror = () => {
-    if (!opened) {
-      window.clearTimeout(timeout);
-      onResult(false);
-    }
-  };
-}
-
-// gunService tracks per-relay status in a Map and re-probes on a 10s interval;
-// see gunService.setupConnectionMonitoring()
+// Connection monitoring: Holster exposes NO peer connection events and no
+// public reconnect API — its browser client creates peer WebSockets inside a
+// closure in wire.js. The only way to report the REAL relay state is to
+// observe those sockets directly. gunService installs relayMonitor
+// (src/services/relayMonitor.ts) BEFORE constructing Holster; the monitor
+// wraps window.WebSocket, passively tracks open/close per configured relay,
+// and backs gunService.getConnectionState()/getRelayStatuses()/
+// getPeerConnectionTime().
+//
+// Do NOT "probe" reachability with throwaway sockets: opening a new WebSocket
+// every interval and closing it while still CONNECTING spams "WebSocket is
+// closed before the connection is established" and leaves half-open sockets
+// behind. Holster's client retries FOREVER at ~1s: wire.js's start()
+// creates a new createRetryHandler() on every attempt, so its maxRetries and
+// exponential backoff never apply. relayMonitor delays Holster's onclose
+// handler to enforce real backoff (1s→2s→4s→…→30s cap, reset on open).
 ```
 
 **Note**: Holster uses WebSocket protocol (`ws://` or `wss://`) for peer URLs. HTTP/HTTPS URLs must be converted to WebSocket protocol.
