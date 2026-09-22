@@ -591,17 +591,7 @@ class GunService {
         profileData.username = userState.username;
       }
 
-      await withDeadline<void>((resolve, reject) => {
-        userNode.get('profile').put(profileData, err => {
-          if (err) {
-            reject(new Error(`Profile storage failed: ${err}`));
-          } else {
-            resolve();
-          }
-        });
-      }, 'Profile storage', OPERATION_DEADLINE_MS, () =>
-        this.relayStatusSummary()
-      );
+      await this.writeUserPath(['profile'], profileData, 'Profile storage');
     }, transformGunError);
   }
 
@@ -910,6 +900,69 @@ class GunService {
   }
 
   /**
+   * Build a FRESH user-scoped chain for a path.
+   *
+   * Every read AND every write must use a fresh chain: a chain that has
+   * delivered a read callback has had its context deleted by Holster, so a
+   * later `.put()` on the same chain silently no-ops and its ack never fires
+   * (see docs/memory.md, "Holster Chains Are Single-Use After a Read").
+   * Centralizing this here makes reusing a chain structurally impossible.
+   *
+   * @param path - user-scoped path parts, e.g. ['docs', docId]
+   * @param emptyPathMessage - error message when `path` is empty
+   * @returns A fresh chain node rooted at the logged-in user's `~pub` soul
+   */
+  private buildUserChain(
+    path: string[],
+    emptyPathMessage = 'Path must contain at least one part'
+  ): GunNodeRef {
+    const [first, ...rest] = path;
+    if (first === undefined) {
+      throw createGunError(GunErrorCode.MISC_ERROR, emptyPathMessage);
+    }
+
+    let node: GunNodeRef = this.getGun().user().get(first);
+    for (const part of rest) {
+      node = node.next(part);
+    }
+    return node;
+  }
+
+  /**
+   * Put data at a user-scoped path, bounding the ack wait with withDeadline
+   * so a wedged storage layer fails loudly (see docs/memory.md). Shared by
+   * `writeUserPath` (plaintext) and the private-data write/delete paths
+   * (which pass already-hashed paths and ciphertext or null).
+   *
+   * @param path - user-scoped path parts (hashed for private data)
+   * @param data - value to put (any Holster-convertible data, or null)
+   * @param description - label for put/deadline errors
+   * @param emptyPathMessage - error message when `path` is empty
+   */
+  private async putUserPath(
+    path: string[],
+    data: unknown,
+    description: string,
+    emptyPathMessage?: string
+  ): Promise<void> {
+    const node = this.buildUserChain(path, emptyPathMessage);
+    await withDeadline<void>(
+      (resolve, reject) => {
+        node.put(data, err => {
+          if (err) {
+            reject(new Error(`${description}: ${err}`));
+          } else {
+            resolve();
+          }
+        });
+      },
+      description,
+      OPERATION_DEADLINE_MS,
+      () => this.relayStatusSummary()
+    );
+  }
+
+  /**
    * Write encrypted private data to user storage
    * Reference: code_references/holster.md
    * @param plainPath - Array of plain text path parts
@@ -926,46 +979,22 @@ class GunService {
       if (!privatePathResult.success) {
         throw privatePathResult.error;
       }
-      const privatePath = privatePathResult.data;
 
-      const [first, ...rest] = privatePath;
-      let node: GunNodeRef = holster.user().get(first);
-      for (const part of rest) {
-        node = node.next(part);
+      const sea = getUserSEA(holster.user());
+      if (!sea) {
+        throw new Error('User cryptographic keypair not available');
       }
 
-      await withDeadline<void>((resolve, reject) => {
-        const SEA = holster.SEA;
-        const sea = getUserSEA(holster.user());
-        if (!sea) {
-          reject(new Error('User cryptographic keypair not available'));
-          return;
-        }
+      const SEA = holster.SEA;
+      const ciphertext = await SEA?.encrypt(plaintext, sea);
+      if (!ciphertext) {
+        throw new Error('SEA.encrypt failed: returned null');
+      }
 
-        SEA?.encrypt(plaintext, sea)
-          .then(ciphertext => {
-            if (!ciphertext) {
-              reject(new Error('SEA.encrypt failed: returned null'));
-              return;
-            }
-
-            node.put(ciphertext, err => {
-              if (err) {
-                reject(
-                  createGunError(
-                    GunErrorCode.MISC_ERROR,
-                    'Failed to write private data',
-                    err
-                  )
-                );
-              } else {
-                resolve();
-              }
-            });
-          })
-          .catch(reject);
-      }, 'Private data write', OPERATION_DEADLINE_MS, () =>
-        this.relayStatusSummary()
+      await this.putUserPath(
+        privatePathResult.data,
+        ciphertext,
+        'Failed to write private data'
       );
     }, transformGunError);
   }
@@ -990,34 +1019,11 @@ class GunService {
     description: string
   ): Promise<Result<void, GunError>> {
     return tryCatch<void, GunError>(async () => {
-      const holster = this.getGun();
-      const userNode = holster.user();
-      const [first, ...rest] = path;
-      if (first === undefined) {
-        throw createGunError(
-          GunErrorCode.MISC_ERROR,
-          'writeUserPath requires a non-empty path'
-        );
-      }
-
-      let node: GunNodeRef = userNode.get(first);
-      for (const part of rest) {
-        node = node.next(part);
-      }
-
-      await withDeadline<void>(
-        (resolve, reject) => {
-          node.put(data, err => {
-            if (err) {
-              reject(new Error(`${description}: ${err}`));
-            } else {
-              resolve();
-            }
-          });
-        },
+      await this.putUserPath(
+        path,
+        data,
         description,
-        OPERATION_DEADLINE_MS,
-        () => this.relayStatusSummary()
+        'writeUserPath requires a non-empty path'
       );
     }, transformGunError);
   }
@@ -1040,12 +1046,7 @@ class GunService {
         throw pathResult.error;
       }
       const path = hashedPath || pathResult.data;
-
-      const [first, ...rest] = path;
-      let node: GunNodeRef = holster.user().get(first);
-      for (const part of rest) {
-        node = node.next(part);
-      }
+      const node = this.buildUserChain(path);
 
       const plaintext = await new Promise<string>((resolve, reject) => {
         const sea = getUserSEA(holster.user());
@@ -1090,18 +1091,12 @@ class GunService {
     fields: string[]
   ): Promise<Result<Record<string, string>[], GunError>> {
     return tryCatch<Record<string, string>[], GunError>(async () => {
-      const holster = this.getGun();
       const privatePathResult = await this.getPrivatePath(plainPath);
       if (!privatePathResult.success) {
         throw privatePathResult.error;
       }
       const privatePath = privatePathResult.data;
-      const user = holster.user();
-      const [first, ...rest] = privatePath;
-      let privateNode: GunNodeRef = user.get(first);
-      for (const part of rest) {
-        privateNode = privateNode.next(part);
-      }
+      const privateNode = this.buildUserChain(privatePath);
 
       const keys: string[] = await new Promise<string[]>(resolve => {
         privateNode.next(null, (data: unknown) => {
@@ -1160,29 +1155,14 @@ class GunService {
     plainPath: string[]
   ): Promise<Result<void, GunError>> {
     return tryCatch<void, GunError>(async () => {
-      const holster = this.getGun();
       const privatePathResult = await this.getPrivatePath(plainPath);
       if (!privatePathResult.success) {
         throw privatePathResult.error;
       }
-      const privatePath = privatePathResult.data;
-
-      const [first, ...rest] = privatePath;
-      let node: GunNodeRef = holster.user().get(first);
-      for (const part of rest) {
-        node = node.next(part);
-      }
-
-      await withDeadline<void>((resolve, reject) => {
-        node.put(null, err => {
-          if (err) {
-            reject(new Error(`Failed to delete private data: ${err}`));
-          } else {
-            resolve();
-          }
-        });
-      }, 'Private data delete', OPERATION_DEADLINE_MS, () =>
-        this.relayStatusSummary()
+      await this.putUserPath(
+        privatePathResult.data,
+        null,
+        'Failed to delete private data'
       );
     }, transformGunError);
   }

@@ -376,8 +376,6 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         validateTagsNoCommas(tags);
 
         const docId = gunService.newId();
-        const gun = gunService.getGun();
-        const userNode = gun.user();
 
         let docKey: string | undefined;
         let encryptedTitle = title.trim();
@@ -429,7 +427,6 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           }
         }
 
-        const docNode = userNode.get('docs').next(docId);
         const document: Partial<Document> = {
           id: docId,
           title: title,
@@ -447,15 +444,11 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           tags: tagsCSV,
         };
 
-        await new Promise<void>((resolve, reject) => {
-          docNode.put(documentForStorage, err => {
-            if (err) {
-              reject(new Error(`Failed to save document: ${err}`));
-            } else {
-              resolve();
-            }
-          });
-        });
+        await writeOwnDocument(
+          docId,
+          documentForStorage,
+          'Failed to save document'
+        );
 
         document.access = [];
 
@@ -953,28 +946,8 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       set({ status: 'LOADING', error: null });
 
       const result = (await tryCatch(async () => {
-        const gun = gunService.getGun();
-        const userNode = gun.user();
-        const docNode = userNode.get('docs').next(docId);
-
-        const docData = await new Promise<unknown>((resolve, reject) => {
-          docNode.next(null, (data: unknown) => {
-            if (data === null || data === undefined) {
-              reject(new Error('Document not found'));
-            } else {
-              resolve(data);
-            }
-          });
-        });
-
-        if (!docData || typeof docData !== 'object') {
-          throw new Error('Document not found');
-        }
-
-        const doc = docData as Partial<Document>;
-        if (!doc.id) {
-          throw new Error('Document not found');
-        }
+        const userNode = gunService.getGun().user();
+        const doc = await readOwnDocument(userNode, docId);
 
         let docKey: string | undefined;
         if (!doc.isPublic) {
@@ -1201,28 +1174,8 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           throw new Error('must be logged in to change document privacy');
         }
 
-        const gun = gunService.getGun();
-        const userNode = gun.user();
-        const docNode = userNode.get('docs').next(docId);
-
-        const docData = await new Promise<unknown>((resolve, reject) => {
-          docNode.next(null, (data: unknown) => {
-            if (data === null || data === undefined) {
-              reject(new Error('Document not found'));
-            } else {
-              resolve(data);
-            }
-          });
-        });
-
-        if (!docData || typeof docData !== 'object') {
-          throw new Error('Document not found');
-        }
-
-        const doc = docData as Partial<Document>;
-        if (!doc.id) {
-          throw new Error('Document not found');
-        }
+        const userNode = gunService.getGun().user();
+        const doc = await readOwnDocument(userNode, docId);
 
         if (doc.isPublic) {
           throw new Error('Public documents do not have a key');

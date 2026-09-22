@@ -146,6 +146,42 @@ Raw wire reads do NOT inline rels — rel properties arrive as `{'#': soul}`
 and must be followed with further wire reads. Chain reads (`.get(key, cb)`
 on a real property, `.next(...)`) DO inline rels.
 
+### User-Scoped Writes: Fresh Chains and Deadlines (CRITICAL)
+
+**Build a FRESH chain for every read AND every write.** A one-shot chain
+read (`.next(null, cb)` / `.get(key, cb)`) deletes the chain's context once
+it delivers data (`holster.js` `done()` calls `allctx.delete(ctxid)`), and
+`put()` returns early without one. Reusing a chain object for a read and
+then a put makes the put silently no-op — its ack never fires and any
+awaited promise around it hangs forever. Never `.put()` on a chain after
+`.next(null, cb)`/`.get(key, cb)`, and never call `.next(key)` twice on the
+same chain (it accumulates the path).
+
+Every user-scoped plaintext write goes through
+`gunService.writeUserPath(path, data, description)`, which builds a fresh
+chain and bounds the ack wait with `withDeadline` (a wedged storage layer
+fails loudly with live relay state in `details` instead of hanging):
+
+```typescript
+// Fresh chain + deadline. Write-only — never put after a read.
+const result = await gunService.writeUserPath(
+  ['docs', docId],
+  documentForStorage,
+  'Failed to save document'
+);
+if (!result.success) throw result.error;
+```
+
+**Plaintext only**: `writeUserPath` does NOT encrypt. Never route secret
+data through it — private data goes through `writePrivateData` (section 6),
+which hashes the path and encrypts the value. In `documentStore`, the
+`writeOwnDocument` helper wraps `writeUserPath` for the `docs` collection;
+`readOwnDocument` builds its own fresh read chain. All service user-scoped
+**writes** — plaintext and private — build chains via `buildUserChain` and
+write via `putUserPath`, so the fresh-chain rule for writes lives in one
+place. Private reads also use `buildUserChain`; other reads
+(`readOwnDocument`, `readUsername`) build a fresh chain per call.
+
 ## 3. Collection Iteration
 
 Holster does not use `.map()` like GunDB. Instead, read the full node and iterate with `Object.entries()`:
@@ -364,6 +400,26 @@ async function writePrivateData(holster: any, plainPath: string[], plaintext: st
   });
 }
 
+// Delete by putting null at the hashed path.
+async function deletePrivateData(holster: any, plainPath: string[]): Promise<void> {
+  const privatePath = await getPrivatePath(holster, plainPath);
+  const [firstDelete, ...restDelete] = privatePath;
+  let node = holster.user().get(firstDelete);
+  for (const part of restDelete) {
+    node = node.next(part);
+  }
+
+  return new Promise<void>((resolve, reject) => {
+    node.put(null, (err) => {
+      if (err) {
+        reject(new Error(`Failed to delete private data: ${err}`));
+      } else {
+        resolve();
+      }
+    });
+  });
+}
+
 async function readPrivateData(
   holster: any,
   plainPath: string[],
@@ -450,6 +506,9 @@ async function readPrivateMap(
   return results;
 }
 ```
+
+Service note: the private read/write/delete paths here use `buildUserChain`/
+`putUserPath` (deadline-bounded) — see section 2.
 
 ## 7. Contact System
 
