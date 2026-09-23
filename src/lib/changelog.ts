@@ -1,4 +1,4 @@
-import changelogContent from '@/changelog.md?raw';
+import changelogContent from '../../changelog.md?raw';
 
 export function getChangelogTitle(): string {
   const lines = changelogContent.split('\n');

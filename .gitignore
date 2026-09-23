@@ -42,7 +42,7 @@ radata*
 *.md
 !readme.md
 !AGENTS.md
-!src/changelog.md
+!changelog.md
 !docs/*.md
 !code_references/*.md
 !.opencode/skills/**/*.md

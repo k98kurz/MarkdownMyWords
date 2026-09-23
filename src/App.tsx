@@ -12,6 +12,7 @@ import { DocumentList } from './components/DocumentList';
 import { DocumentEditor } from './components/DocumentEditor';
 import { NotFound } from './components/NotFound';
 import { HomePage } from './components/HomePage';
+import { ReadmePage } from './components/ReadmePage';
 import { AppWidthProvider, useAppWidth } from './contexts/AppWidthContext';
 
 function AppContent() {
@@ -59,7 +60,8 @@ function AppContent() {
     } else {
       const isDocumentRoute = location.pathname.match(/^\/doc\/[^/]+\/[^/]+$/);
       const isHomePage = location.pathname === '/';
-      setShowAuthModal(!isDocumentRoute && !isHomePage);
+      const isReadmePage = location.pathname === '/readme';
+      setShowAuthModal(!isDocumentRoute && !isHomePage && !isReadmePage);
     }
   }, [isAuthenticated, location.pathname]);
 
@@ -107,6 +109,9 @@ function AppContent() {
             <Routes>
               {/* Public document route - accessible to guests */}
               <Route path="/doc/:userPub/:docId" element={<DocumentEditor />} />
+
+              {/* Public readme route - accessible to guests */}
+              <Route path="/readme" element={<ReadmePage />} />
 
               {/* Authenticated-only routes */}
               {isAuthenticated ? (

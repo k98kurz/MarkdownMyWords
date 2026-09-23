@@ -6,6 +6,7 @@
 - Migrated from internal functionalResult library to updated
   [@k98kurz/functional-result](https://www.npmjs.com/package/@k98kurz/functional-result)
 - Updated dependencies (including `npm audit fix`)
+- Changed readme.md hosting within the app to a static file
 
 ## 2026-06-27
 
