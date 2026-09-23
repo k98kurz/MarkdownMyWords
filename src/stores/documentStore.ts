@@ -14,10 +14,27 @@ import type {
   MinimalDocListItem,
   SharedDocNotification,
 } from '@/types/document';
-import { holsterService } from '@/services/holsterService';
-import { HolsterUserNode } from '@/types/holster';
+import { holsterService, withDeadline } from '@/services/holsterService';
+import { HolsterUserNode, HolsterErrorCode } from '@/types/holster';
 import { encryptionService } from '@/services/encryptionService';
 import { useAuthStore } from '@/stores/authStore';
+
+/**
+ * Map a HolsterError-shaped `code` (any string; enum values at runtime)
+ * onto the closest DocumentError code.
+ */
+function documentCodeFor(code: string): DocumentError['code'] {
+  switch (code) {
+    case HolsterErrorCode.NOT_FOUND:
+      return 'NOT_FOUND';
+    case HolsterErrorCode.PERMISSION_DENIED:
+      return 'PERMISSION_DENIED';
+    case HolsterErrorCode.INVALID_DATA:
+      return 'VALIDATION_ERROR';
+    default:
+      return 'NETWORK_ERROR';
+  }
+}
 
 const transformError = (error: unknown): DocumentError => {
   if (error instanceof Error) {
@@ -90,6 +107,25 @@ const transformError = (error: unknown): DocumentError => {
       details: error,
     };
   }
+  // `withDeadline` rejections and `getHolster()`'s INIT_FAILED throw are
+  // plain HolsterError objects (the holsterService convention), never Error
+  // instances — `instanceof Error` above misses them and would discard the
+  // diagnostic message (e.g. the deadline's wedge guidance) entirely.
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    typeof error.code === 'string' &&
+    'message' in error &&
+    typeof error.message === 'string'
+  ) {
+    console.error(error);
+    return {
+      code: documentCodeFor(error.code),
+      message: error.message,
+      details: error,
+    };
+  }
   return {
     code: 'NETWORK_ERROR',
     message: 'An unexpected error occurred',
@@ -138,29 +174,36 @@ type StoredDocument = Partial<Document> & { id: string };
  * Builds its own fresh chain: a chain that has delivered a read callback is
  * single-use — Holster deletes the chain context afterwards, so a later
  * `.put()` on the same chain silently no-ops and its ack never fires (see
- * docs/memory.md).
+ * docs/memory.md). The read settles only inside the Holster callback, so it
+ * is deadline-bounded like every other callback-only read (a down relay
+ * with nothing cached would otherwise hang forever).
  */
 function readOwnDocument(
   userNode: HolsterUserNode,
   docId: string
 ): Promise<StoredDocument> {
-  return new Promise<StoredDocument>((resolve, reject) => {
-    userNode
-      .get('docs')
-      .next(docId)
-      .next(null, (data: unknown) => {
-        if (!data || typeof data !== 'object') {
-          reject(new Error('Document not found'));
-          return;
-        }
-        const doc = data as Partial<Document>;
-        if (!doc.id) {
-          reject(new Error('Document not found'));
-          return;
-        }
-        resolve({ ...doc, id: doc.id });
-      });
-  });
+  return withDeadline<StoredDocument>(
+    (resolve, reject) => {
+      userNode
+        .get('docs')
+        .next(docId)
+        .next(null, (data: unknown) => {
+          if (!data || typeof data !== 'object') {
+            reject(new Error('Document not found'));
+            return;
+          }
+          const doc = data as Partial<Document>;
+          if (!doc.id) {
+            reject(new Error('Document not found'));
+            return;
+          }
+          resolve({ ...doc, id: doc.id });
+        });
+    },
+    'Read own document',
+    undefined,
+    () => holsterService.relayStatusSummary()
+  );
 }
 
 /**
@@ -489,15 +532,20 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         // `[pub, key]` form roots the chain at `~pub`, no login required.
         const docNode = holster.user().get([userPub, 'docs']).next(docId);
 
-        const docData = await new Promise<unknown>((resolve, reject) => {
-          docNode.next(null, (data: unknown) => {
-            if (data === null || data === undefined) {
-              reject(new Error('Document not found'));
-            } else {
-              resolve(data);
-            }
-          });
-        });
+        const docData = await withDeadline<unknown>(
+          (resolve, reject) => {
+            docNode.next(null, (data: unknown) => {
+              if (data === null || data === undefined) {
+                reject(new Error('Document not found'));
+              } else {
+                resolve(data);
+              }
+            });
+          },
+          'Read document',
+          undefined,
+          () => holsterService.relayStatusSummary()
+        );
 
         if (!docData || typeof docData !== 'object') {
           throw new Error('Document not found');
@@ -644,6 +692,15 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       return result;
     },
 
+    /**
+     * Update fields of a document.
+     *
+     * Omitted fields keep their stored values, which for private docs are
+     * already ciphertext and are never re-encrypted. `tags` is set when its
+     * key is present — including `tags: undefined`, which clears all tags;
+     * omit the key to leave tags unchanged (DocumentEditor.tsx relies on
+     * this: it sends `tags: undefined` when the user removes every tag).
+     */
     updateDocument: async (
       docId: string,
       updates: Partial<Pick<Document, 'title' | 'content' | 'tags'>>
@@ -676,20 +733,34 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
         const updatesToApply = updates;
 
-        let finalTitle = updatesToApply.title ?? doc.title;
-        let finalContent = updatesToApply.content ?? doc.content;
-        let finalTags = updatesToApply.tags
+        const titleProvided = updatesToApply.title !== undefined;
+        const contentProvided = updatesToApply.content !== undefined;
+        // A present `tags` key sets tags — including `undefined`, which
+        // clears them (JSON Merge Patch style). Omitting the key leaves the
+        // stored tags untouched. hasOwnProperty, not Object.hasOwn: this
+        // project's lib target is ES2020.
+        const tagsProvided = Object.prototype.hasOwnProperty.call(
+          updatesToApply,
+          'tags'
+        );
+
+        let finalTitle = updatesToApply.title ?? doc.title ?? '';
+        let finalContent = updatesToApply.content ?? doc.content ?? '';
+        let finalTags = tagsProvided
           ? arrayToCSV(updatesToApply.tags)
           : typeof doc.tags === 'string'
             ? doc.tags
             : arrayToCSV(doc.tags ?? []);
 
-        if (finalTitle !== undefined && !finalTitle?.trim()) {
+        if (!finalTitle.trim()) {
           throw new Error('Title cannot be empty');
         }
 
+        // Only encrypt fields the caller supplied. Stored values are already
+        // ciphertext for private docs; re-encrypting them corrupts the
+        // document (csvToArray later shreds the cipher JSON on commas).
         if (docKey && !doc.isPublic) {
-          if (finalTitle !== undefined) {
+          if (titleProvided) {
             const titleResult = await encryptionService.encrypt(
               finalTitle,
               docKey
@@ -699,7 +770,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
             }
             finalTitle = titleResult.data;
           }
-          if (finalContent !== undefined) {
+          if (contentProvided) {
             const contentResult = await encryptionService.encrypt(
               finalContent,
               docKey
@@ -709,7 +780,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
             }
             finalContent = contentResult.data;
           }
-          if (finalTags !== undefined) {
+          if (tagsProvided) {
             const tagsResult = await encryptionService.encrypt(
               finalTags,
               docKey

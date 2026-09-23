@@ -75,12 +75,14 @@ function createHolsterError(
 }
 
 /**
- * Upper bound for waits on Holster callbacks (user().create()/auth() and
- * chain .put() acks). Above the library's 30s radisk read watchdog plus its
- * 10s wire null-ack timeout, so genuine slow paths still complete — only a
- * genuinely wedged storage layer (reads hang, write acks never arrive) trips
- * this. Holster has no write-ack watchdog of its own, so without this a
- * wedged IndexedDB turns every write into a promise that never settles.
+ * Upper bound for waits on Holster callbacks (user().create()/auth(), chain
+ * .put() acks, and every callback-only read: wire reads, chain reads).
+ * Above the library's 30s radisk read watchdog plus its 10s wire null-ack
+ * timeout, so genuine slow paths still complete — only a genuinely wedged
+ * storage layer (reads hang, write acks never arrive) trips this. Holster
+ * has no write-ack watchdog of its own, so without this a wedged IndexedDB
+ * turns every write into a promise that never settles — and a down relay
+ * with nothing cached leaves callback-only reads settling forever.
  */
 const OPERATION_DEADLINE_MS = 45_000;
 
@@ -102,7 +104,7 @@ const WEDGE_GUIDANCE =
  * evaluated at timeout time, not call time — carries live relay state so
  * the caller can tell the two apart.
  */
-function withDeadline<T>(
+export function withDeadline<T>(
   operation: (
     resolve: (value: T) => void,
     reject: (error: unknown) => void
@@ -315,9 +317,10 @@ class HolsterService {
    * Snapshot of relay connection states, attached to deadline timeout
    * errors as details: a wedged local storage layer (relays connected)
    * can then be told apart from an unresponsive relay (the actual culprit
-   * for read-gated paths like create/auth).
+   * for read-gated paths like create/auth). Public so external read
+   * wrappers (e.g. documentStore) can pass it as `getDetails`.
    */
-  private relayStatusSummary(): Record<string, string> {
+  relayStatusSummary(): Record<string, string> {
     return Object.fromEntries(relayMonitor.getRelayStatuses());
   }
 
@@ -464,19 +467,26 @@ class HolsterService {
    * uses. Note: wire reads do NOT inline rels — rel properties arrive as
    * `{'#': soul}` references and must be followed manually.
    * @param soul - Soul to read (e.g. `~abc123...` or `~@username`)
-   * @returns Promise resolving to the node object, or null if absent
+   * @returns Promise resolving to the node object, or null if absent.
+   *   Rejects with a HolsterError (STORAGE_ERROR) if the wire callback
+   *   never fires within the operation deadline (down relay, wedged store).
    */
   private readSoul(soul: string): Promise<Record<string, unknown> | null> {
-    return new Promise(resolve => {
-      this.getHolster().wire.get({ '#': soul }, msg => {
-        const node = msg.put?.[soul];
-        resolve(
-          node && typeof node === 'object'
-            ? (node as Record<string, unknown>)
-            : null
-        );
-      });
-    });
+    return withDeadline<Record<string, unknown> | null>(
+      resolve => {
+        this.getHolster().wire.get({ '#': soul }, msg => {
+          const node = msg.put?.[soul];
+          resolve(
+            node && typeof node === 'object'
+              ? (node as Record<string, unknown>)
+              : null
+          );
+        });
+      },
+      'Read soul',
+      OPERATION_DEADLINE_MS,
+      () => this.relayStatusSummary()
+    );
   }
 
   /**
@@ -496,12 +506,18 @@ class HolsterService {
       }
 
       // Chain read rooted at the `~pub` soul: follows the profile rel and
-      // returns the profile node ({epub, username}).
-      const profile = await new Promise<unknown>(resolve => {
-        userNode.get('profile', (data: unknown) => {
-          resolve(data);
-        });
-      });
+      // returns the profile node ({epub, username}). Deadline-bounded: the
+      // callback never fires when the relay is down and nothing is cached.
+      const profile = await withDeadline<unknown>(
+        resolve => {
+          userNode.get('profile', (data: unknown) => {
+            resolve(data);
+          });
+        },
+        'Read user profile',
+        OPERATION_DEADLINE_MS,
+        () => this.relayStatusSummary()
+      );
 
       if (
         profile &&
@@ -685,31 +701,36 @@ class HolsterService {
       if (nodePath.length === 0) {
         return [];
       }
-      const items = await new Promise<ListItemResult[]>(resolve => {
-        const [first, ...rest] = nodePath;
-        let node: HolsterNodeRef = (startNode ?? holster).get(first);
-        for (const part of rest) {
-          node = node.next(part);
-        }
-
-        node.next(null, (data: unknown) => {
-          if (!data || typeof data !== 'object') {
-            resolve([]);
-            return;
+      const items = await withDeadline<ListItemResult[]>(
+        resolve => {
+          const [first, ...rest] = nodePath;
+          let node: HolsterNodeRef = (startNode ?? holster).get(first);
+          for (const part of rest) {
+            node = node.next(part);
           }
 
-          // Chain reads inline rels, so each entry's data is already the
-          // referenced value or node — no per-entry re-read needed.
-          const items = Object.entries(data)
-            .filter(([k, v]) => k !== '_' && v != null && isListEntryData(v))
-            .map(([soul, entryData]) => ({
-              soul: soul.startsWith('~') ? soul.slice(1) : soul,
-              data: entryData,
-            }));
+          node.next(null, (data: unknown) => {
+            if (!data || typeof data !== 'object') {
+              resolve([]);
+              return;
+            }
 
-          resolve(items);
-        });
-      });
+            // Chain reads inline rels, so each entry's data is already the
+            // referenced value or node — no per-entry re-read needed.
+            const items = Object.entries(data)
+              .filter(([k, v]) => k !== '_' && v != null && isListEntryData(v))
+              .map(([soul, entryData]) => ({
+                soul: soul.startsWith('~') ? soul.slice(1) : soul,
+                data: entryData,
+              }));
+
+            resolve(items);
+          });
+        },
+        'List items',
+        OPERATION_DEADLINE_MS,
+        () => this.relayStatusSummary()
+      );
       return items;
     }, transformHolsterError);
   }
@@ -936,33 +957,46 @@ class HolsterService {
       const path = hashedPath || pathResult.data;
       const node = this.buildUserChain(path);
 
-      const plaintext = await new Promise<string>((resolve, reject) => {
-        const sea = getUserSEA(holster.user());
-        if (!sea) {
-          reject(new Error('User cryptographic keypair not available'));
-          return;
-        }
+      const plaintext = await withDeadline<string>(
+        (resolve, reject) => {
+          const sea = getUserSEA(holster.user());
+          if (!sea) {
+            reject(new Error('User cryptographic keypair not available'));
+            return;
+          }
 
-        node.next(null, async (ciphertext: unknown) => {
-          // SEA.encrypt stores a {ct, iv, s} cipher object (plus Holster's
-          // `_` graph metadata on read-back), never a plain string.
-          if (ciphertext === undefined || !isSEACipher(ciphertext)) {
-            reject(
-              new Error('Private data not found or could not be decrypted')
-            );
-            return;
-          }
-          const SEA = holster.SEA;
-          const plaintext = await SEA?.decrypt<string>(ciphertext, sea);
-          if (plaintext === null || plaintext === undefined) {
-            reject(
-              new Error('Private data not found or could not be decrypted')
-            );
-            return;
-          }
-          resolve(plaintext);
-        });
-      });
+          node.next(null, async (ciphertext: unknown) => {
+            // A throw inside this async callback would otherwise become an
+            // unhandled rejection and the promise would only settle at the
+            // deadline — reject fast instead.
+            try {
+              // SEA.encrypt stores a {ct, iv, s} cipher object (plus
+              // Holster's `_` graph metadata on read-back), never a plain
+              // string.
+              if (ciphertext === undefined || !isSEACipher(ciphertext)) {
+                reject(
+                  new Error('Private data not found or could not be decrypted')
+                );
+                return;
+              }
+              const SEA = holster.SEA;
+              const plaintext = await SEA?.decrypt<string>(ciphertext, sea);
+              if (plaintext === null || plaintext === undefined) {
+                reject(
+                  new Error('Private data not found or could not be decrypted')
+                );
+                return;
+              }
+              resolve(plaintext);
+            } catch (error) {
+              reject(error);
+            }
+          });
+        },
+        'Read private data',
+        OPERATION_DEADLINE_MS,
+        () => this.relayStatusSummary()
+      );
       return plaintext;
     }, transformHolsterError);
   }
@@ -986,19 +1020,24 @@ class HolsterService {
       const privatePath = privatePathResult.data;
       const privateNode = this.buildUserChain(privatePath);
 
-      const keys: string[] = await new Promise<string[]>(resolve => {
-        privateNode.next(null, (data: unknown) => {
-          if (!data || typeof data !== 'object') {
-            resolve([]);
-            return;
-          }
+      const keys: string[] = await withDeadline<string[]>(
+        resolve => {
+          privateNode.next(null, (data: unknown) => {
+            if (!data || typeof data !== 'object') {
+              resolve([]);
+              return;
+            }
 
-          const nodeKeys = Object.keys(data || {}).filter(
-            k => k !== '_' && (data as Record<string, unknown>)[k] != null
-          );
-          resolve(nodeKeys);
-        });
-      });
+            const nodeKeys = Object.keys(data || {}).filter(
+              k => k !== '_' && (data as Record<string, unknown>)[k] != null
+            );
+            resolve(nodeKeys);
+          });
+        },
+        'Read private map',
+        OPERATION_DEADLINE_MS,
+        () => this.relayStatusSummary()
+      );
 
       const fieldHashResults = await sequence(
         await Promise.all(

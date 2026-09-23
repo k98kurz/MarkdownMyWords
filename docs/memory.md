@@ -99,16 +99,21 @@ is this signature.
   hard reload, AND the relay's `./radata` directory (Node fs store,
   written by the same radisk). Test users are disposable; never try to
   salvage these stores.
-- `holsterService.withDeadline` (45s, above the 30s+10s library timeouts)
-  bounds `createUser`/`authenticateUser`/`writeProfile`/private-data
-  put waits, and `initialize()` runs a 10s storage health probe — a
-  wedge now fails loudly with the recovery instructions instead of
-  freezing a test suite. Keep those wrappers (passing
-  `relayStatusSummary()` as timeout details) on any new Holster
-  write/auth path. The timeout rejects a HolsterError with code
-  STORAGE_ERROR; the deadline does NOT prove storage is wedged —
-  create/auth begin with relay reads, so a down relay trips the same
-  deadline. Check the error `details` (live relay states) before
+- `withDeadline` (exported from `holsterService`; 45s default, above the
+  30s+10s library timeouts) bounds EVERY callback-only Holster operation:
+  create/auth, all put acks, and ALL reads (`readSoul`, `readUsername`,
+  `listItems`, `readPrivateData`/`readPrivateMap`, `readOwnDocument`,
+  `getDocument`'s doc read). `initialize()` runs a separate 10s storage
+  health probe. A down relay with nothing cached or a wedged store now
+  fails loudly with the recovery instructions instead of hanging session
+  restore, discovery, document loads, or a test suite. Route ANY new
+  Holster read/write that settles inside a callback through `withDeadline`
+  (pass `relayStatusSummary()` as `getDetails`; it is public for external
+  callers such as documentStore). Regression test: the Deadline suite in
+  `src/test/holsterService.test.ts`. The timeout rejects a HolsterError
+  with code STORAGE_ERROR; the deadline does NOT prove storage is
+  wedged — create/auth begin with relay reads, so a down relay trips the
+  same deadline. Check the error `details` (live relay states) before
   blaming storage or wiping data.
 - Dev builds store to their OWN IndexedDB (`holsterService.storageDbName`
   → Holster `opt.file`, default `radata_dev`; prod `radata`), so tests
@@ -349,6 +354,20 @@ operations.
   never re-declare it at every call site.
 - Real-world usage: `src/stores/authStore.ts`.
 
+# updateDocument: Encrypt Only Caller-Provided Fields (2026-09-22)
+
+Stored `title/content/tags` on a private doc are CIPHERTEXT. In
+`documentStore.updateDocument`, never feed fallback values from `doc.*`
+into `encrypt()` — re-encrypting ciphertext corrupts the document, and
+`csvToArray` later shreds the cipher JSON on commas. Gate each encrypt on
+field presence (`titleProvided`/`contentProvided`; `tags` uses
+`Object.prototype.hasOwnProperty`, not `Object.hasOwn` — lib target is
+ES2020). Contract: a present `tags` key sets tags, `tags: undefined`
+clears, key absent keeps. `DocumentEditor.tsx` sends `tags: undefined`
+when the user clears tags — do not "simplify" that ternary away; the
+store treats it as an explicit clear. Regression tests:
+`testUpdateDocumentPartial` in `src/test/documentStore.test.ts`.
+
 # Testing (2026-09-22)
 
 `npm test` runs the existing `TestRunner` suites headless under vitest in Node.
@@ -379,6 +398,10 @@ Caveats:
   for the relay process to exit during teardown), but those legacy waits can
   mask broken reads; replace them with put-ack / `retryWithBackoff` condition
   waits when touching those suites.
+- `compareTwoThings` (documentStore.test.ts) only checks array length when
+  `expected` is the TOP-LEVEL argument; a nested `{ tags: [] }` vacuously
+  passes (the element loop runs zero times). Compare empty arrays as
+  `compareTwoThings([], actual, msg)`.
 - Browser tooling is unchanged: `window.runAllTests()` and `window.testX()`
   still work in dev mode.
 

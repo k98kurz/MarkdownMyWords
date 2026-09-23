@@ -174,7 +174,8 @@ if (!result.success) throw result.error;
 data through it — private data goes through `writePrivateData` (section 6),
 which hashes the path and encrypts the value. In `documentStore`, the
 `writeOwnDocument` helper wraps `writeUserPath` for the `docs` collection;
-`readOwnDocument` builds its own fresh read chain. All service user-scoped
+`readOwnDocument` builds its own fresh read chain (deadline-bounded like
+every callback-only read). All service user-scoped
 **writes** — plaintext and private — build chains via `buildUserChain` and
 write via `putUserPath`, so the fresh-chain rule for writes lives in one
 place. Private reads also use `buildUserChain`; other reads
@@ -335,16 +336,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 // Reads a standalone soul via the wire spec; returns null if absent.
+// The wire callback never fires when the relay is down and nothing is
+// cached, so the wait MUST be bounded by `withDeadline` (exported from
+// holsterService — see section 2) or the promise hangs forever.
 async function readSoul(
   holster: HolsterInstance,
   soul: string
 ): Promise<Record<string, unknown> | null> {
-  return new Promise(resolve => {
-    holster.wire.get({'#': soul}, (msg: WireMessage) => {
-      const node = msg.put?.[soul];
-      resolve(isRecord(node) ? node : null);
-    });
-  });
+  return withDeadline(
+    resolve => {
+      holster.wire.get({'#': soul}, (msg: WireMessage) => {
+        const node = msg.put?.[soul];
+        resolve(isRecord(node) ? node : null);
+      });
+    },
+    'Read soul'
+  );
 }
 
 async function discoverUsers(holster: HolsterInstance, username: string) {
@@ -380,7 +387,10 @@ async function discoverUsers(holster: HolsterInstance, username: string) {
 The typed service implementation lives in `holsterService.discoverUsers()`
 (`DiscoveredUser.data` is the resolved user node). For the logged-in
 user's own profile, use the chain read
-`holster.user().get('profile', cb)`, which follows the profile rel.
+`holster.user().get('profile', cb)`, which follows the profile rel —
+wrapped in `withDeadline` in `holsterService.readUsername()`. Every
+callback-only read (wire and chain) must go through `withDeadline`; a
+down relay with nothing cached never fires the callback.
 
 ## 6. Private User Data
 
