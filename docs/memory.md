@@ -49,7 +49,7 @@ maps.
 `'hi'`/`'bye'` do not exist) and no public reconnect API. Relay
 connectivity is derived from Holster's REAL peer sockets by
 `relayMonitor` (`src/services/relayMonitor.ts`), which wraps
-`window.WebSocket` before Holster is constructed — see the socket-tracking
+`globalThis.WebSocket` before Holster is constructed — see the socket-tracking
 entry below. `user().recall()` is synchronous.
 
 **Session shape**: `user().is` = `{username, pub, epub, priv, epriv}` —
@@ -169,7 +169,7 @@ exist (removed). Any `holster.opt(...)` call throws `TypeError`.
   at 0 and its `maxRetries`/exponential backoff never apply. Each failed
   attempt also hits `ws.onerror = e => console.log(e)`, so killing the
   relay spams the console and flips status connecting↔disconnected.
-- `relayMonitor` wraps `window.WebSocket` (installed in
+- `relayMonitor` wraps `globalThis.WebSocket` (installed in
   `holsterService.initialize()` BEFORE `Holster()`) and tracks the real sockets.
   It also mediates `onopen`/`onclose`: because Holster's close handler
   schedules the next attempt, the monitor DELAYS invoking it with real
@@ -349,11 +349,38 @@ operations.
   never re-declare it at every call site.
 - Real-world usage: `src/stores/authStore.ts`.
 
-# Testing Constraints (2026-09-18)
+# Testing (2026-09-22)
 
-Holster's auth/user flows do not work reliably in node. All testing is
-manual, in the browser dev console — helpful tools live in
-`src/dev/testRunner.ts`.
+`npm test` runs the existing `TestRunner` suites headless under vitest in Node.
+The old claim that "Holster auth/user flows do not work in node" is obsolete:
+Holster has a real Node path (`store.js` uses `node:fs`; `wire.js` imports
+`ws`). User-facing setup is in readme.md.
+
+Never fork the suite logic into a second copy. `src/test/vitest/suites.vitest.ts`
+is the only bridge: it initializes `holsterService` with a per-run temp `file`
+and `indexedDB: false`, calls the exported suite functions, and requires each
+returned `TestSuiteResult` to report zero failures. Supporting invariants:
+
+- vitest collects only `src/test/vitest/**/*.vitest.ts`, so suites must be
+  IMPORTED by the bridge, not left where vitest would collect them directly.
+- `src/test/setup.ts` shims web storage and points `relaySettings` at the
+  spawned test relay, so no run can reach the default/prod relay.
+- The relay and client storage use per-run temp dirs, so runs repeat with no
+  manual clearing. The test relay binds IPv4 loopback only (127.0.0.1), and the
+  run preflights the port before spawning: override it with
+  `MMW_TEST_RELAY_PORT` (default 8787), and an occupied port fails loudly.
+- Node needs no jsdom, `fake-indexeddb`, or explicit `WebSocket`
+  (`crypto.subtle` is built in).
+
+Caveats:
+
+- The suites still contain `sleep(...)` calls (authStore, documentStore,
+  encryptionService). The harness adds no wait-for-data delays (it only waits
+  for the relay process to exit during teardown), but those legacy waits can
+  mask broken reads; replace them with put-ack / `retryWithBackoff` condition
+  waits when touching those suites.
+- Browser tooling is unchanged: `window.runAllTests()` and `window.testX()`
+  still work in dev mode.
 
 No artificial delays, ever: Holster loads SYNCHRONOUSLY from local
 storage/cache, so there is nothing to "wait for". Delays added before
@@ -370,5 +397,5 @@ listItems and user-operations tests in `src/test/holsterService.test.ts`.
 
 Clearing storage is deferred (see Wedged Local Storage above):
 `clearHolsterStorage()` flags a pending clear that
-`completePendingStorageClear()` runs on the next page load, so clear +
-reload is a separate step before `runAllTests()`.
+`completePendingStorageClear()` runs on the next page load. This browser
+flow is not needed for the Node run, which uses temp dirs.

@@ -86,13 +86,15 @@ export default defineConfig({
   },
   test: {
     globals: true,
-    environment: 'jsdom',
+    // The suite is non-browser: Holster detects Node and uses its filesystem
+    // store, and setup.ts supplies localStorage/sessionStorage. Only the
+    // vitest bridge files are collected, so the bridge can import the existing
+    // TestRunner suites without vitest failing them for having no tests.
+    environment: 'node',
     setupFiles: './src/test/setup.ts',
-    exclude: [
-      'node_modules/**',
-      'dist/**',
-      // Exclude test files that export browser console functions
-      'src/test/**',
-    ],
+    globalSetup: './src/test/vitest/globalSetup.ts',
+    include: ['src/test/vitest/**/*.vitest.ts'],
+    testTimeout: 180_000,
+    hookTimeout: 120_000,
   },
 });

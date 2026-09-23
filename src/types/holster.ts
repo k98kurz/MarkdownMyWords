@@ -212,10 +212,12 @@ export interface HolsterConfig {
   peers?: string[];
   indexedDB?: boolean;
   /**
-   * IndexedDB database (and object store) name — Holster's `opt.file`.
-   * Defaults to STORAGE_DB_NAME from holsterService: 'radata_dev' in dev mode,
-   * 'radata' in production. Dev builds use a separate database so tests
-   * never touch "real" storage and it can be wiped via clearHolsterStorage.
+   * Storage location — Holster's `opt.file`. With `indexedDB: true` this is
+   * the IndexedDB database/object-store name; with `indexedDB: false` (Node)
+   * it is the filesystem directory Holster roots its store in. Defaults to
+   * STORAGE_DB_NAME from holsterService: 'radata_dev' in dev mode, 'radata'
+   * in production. Dev builds use a separate database so tests never touch
+   * "real" storage and it can be wiped via clearHolsterStorage.
    */
   file?: string;
   /**

@@ -2,9 +2,9 @@
 
 ## Process Notes
 
-1. Do not run `npm run dev` or `npm test`. They are not functional/safe for
-agentic code development. All testing must be done in the browser, manually,
-by a human (see docs/memory.md for why).
+1. Do not run `npm run dev`. Manual/browser testing is done by a human.
+`npm test` runs the full suite headless (vitest, Node) and is safe to run for
+verification — it provisions its own relay and isolated temp storage.
 2. Use `npm run verify` (lint + typecheck + format check) and `npm run build` to
 check for errors.
 3. Do not reference anything in the `.old/` directory as it contains outdated
@@ -15,6 +15,7 @@ need for backwards compatibility. Just make clean changes.
 6. Do not use 'text-sm' className as it is hard to read.
 7. Do not propose to create a 'utils/' directory. 'utils/' is banned because
 it has no coherent meaning. Use 'misc/' or 'lib/' instead.
+8. Do NOT use `git add` or `git checkout` or `git stash`.
 
 ## Memory
 
@@ -133,15 +134,13 @@ DO NOT PERSIST IN ERROR. DO NOT COVER UP ERRORS. **FIX ERRORS** and write
 
 ### Tool Usage Restrictions
 
-- **NEVER** run `npm run dev` or any development server commands
-- **NEVER** run test commands like `npm run test` unless explicitly requested
-- All development and testing should be done through proper code review and
-static analysis
+- **NEVER** run `npm run dev` or any development server commands.
+- Prefer `npm run verify` and static analysis for routine checks.
 
 ### NEVER USE ARTIFICIAL DELAYS IN TESTS
 
 - **FORBIDDEN**: Any `setTimeout` in test files, or any delay added to "wait
 for data" or "wait for auth synchronization", without explicit instruction
 from a human.
-- Delays mask broken Holster read code; they never fix it. See docs/memory.md
-("Testing Constraints").
+- Delays mask broken Holster read code; they never fix it. See the Testing
+entry in docs/memory.md.

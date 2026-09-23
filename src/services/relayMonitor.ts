@@ -5,7 +5,7 @@
  * API: its browser client creates peer WebSockets inside a closure in
  * node_modules/@mblaney/holster/src/wire.js and never surfaces them. The only
  * way to report the REAL relay connection state is to observe those sockets
- * directly, so this module wraps `window.WebSocket` before Holster is
+ * directly, so this module wraps `globalThis.WebSocket` before Holster is
  * constructed and tracks every socket whose URL matches a configured relay.
  *
  * Observation + reconnect mediation only: the wrapper delegates to the native
@@ -46,7 +46,7 @@ class RelaySocketMonitor {
     if (this.nativeWebSocket) return;
     this.configured = new Set(relayUrls);
 
-    const Native = window.WebSocket;
+    const Native = globalThis.WebSocket;
     this.nativeWebSocket = Native;
 
     const isRelay = this.configured.has.bind(this.configured);
@@ -103,7 +103,7 @@ class RelaySocketMonitor {
           // invoking it to enforce a real exponential backoff.
           const delay = reconnectDelay(this.relayUrl);
           if (delay > 0) {
-            window.setTimeout(() => handler.call(this, ev), delay);
+            globalThis.setTimeout(() => handler.call(this, ev), delay);
           } else {
             handler.call(this, ev);
           }
@@ -111,13 +111,13 @@ class RelaySocketMonitor {
       }
     }
 
-    window.WebSocket = TrackedWebSocket;
+    globalThis.WebSocket = TrackedWebSocket;
   }
 
   /** Restore the native constructor and drop all observed state. */
   uninstall(): void {
     if (!this.nativeWebSocket) return;
-    window.WebSocket = this.nativeWebSocket;
+    globalThis.WebSocket = this.nativeWebSocket;
     this.nativeWebSocket = null;
     this.configured.clear();
     this.currentSockets.clear();
