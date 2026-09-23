@@ -799,6 +799,220 @@ async function testCRUDe2e(): Promise<TestSuiteResult> {
 //  return runner.getResults();
 //}
 
+/**
+ * Regression tests for updateDocument's field-presence contract.
+ *
+ * Stored title/content/tags on a private doc are already ciphertext; omitted
+ * fields must pass through verbatim (never re-encrypted), and a present
+ * `tags` key with value undefined must clear tags (DocumentEditor.tsx sends
+ * exactly that when the user removes all tags).
+ */
+async function testUpdateDocumentPartial(): Promise<TestSuiteResult> {
+  console.log('Testing updateDocument field-presence contract');
+  const runner = new TestRunner('updateDocument partial/clear');
+
+  await runner.run(
+    'private doc: content-only update preserves title and tags',
+    async () => {
+      const title = generateTestTitle('_partial');
+      const tags = ['alpha', 'beta'];
+      const createResult = await useDocumentStore
+        .getState()
+        .createDocument(title, 'original content', tags, false);
+      assert(isSuccess(createResult), 'createDocument should succeed');
+      const docId = createResult.data!.id;
+      const userPub = getCurrentUserPubKey();
+
+      const updateResult = await useDocumentStore
+        .getState()
+        .updateDocument(docId, { content: 'updated content' });
+      assert(
+        isSuccess(updateResult),
+        'updateDocument should succeed' +
+          (updateResult.success
+            ? ''
+            : `: ${JSON.stringify(updateResult.error)}`)
+      );
+
+      // In-memory refresh: createDocument set currentDocument with a
+      // matching id, so updateDocument re-derives it from the written doc.
+      const current = useDocumentStore.getState().currentDocument;
+      assert(current, 'currentDocument should be set');
+      compareTwoThings(
+        { title, content: 'updated content', tags },
+        { title: current.title, content: current.content, tags: current.tags },
+        'currentDocument after partial update'
+      );
+
+      // Persisted round-trip. providedKey bypasses getDocument's authStore
+      // check (setupTestUser authenticates via holsterService, so
+      // useAuthStore.user is never set).
+      const keyResult = await holsterService.readPrivateData([
+        'docKeys',
+        docId,
+      ]);
+      assert(isSuccess(keyResult), 'readPrivateData(docKeys) should succeed');
+      const getResult = await useDocumentStore
+        .getState()
+        .getDocument(docId, userPub, keyResult.data);
+      assert(
+        isSuccess(getResult) && getResult.data,
+        'getDocument should succeed'
+      );
+      compareTwoThings(
+        { title, content: 'updated content', tags },
+        getResult.data,
+        'persisted doc after partial update'
+      );
+
+      assert(
+        isSuccess(await useDocumentStore.getState().deleteDocument(docId)),
+        'deleteDocument should succeed'
+      );
+    }
+  );
+
+  await runner.run(
+    'private doc: explicit undefined tags clear them',
+    async () => {
+      const title = generateTestTitle('_clear');
+      const content = 'clear me';
+      const createResult = await useDocumentStore
+        .getState()
+        .createDocument(title, content, ['gamma', 'delta'], false);
+      assert(isSuccess(createResult), 'createDocument should succeed');
+      const docId = createResult.data!.id;
+      const userPub = getCurrentUserPubKey();
+
+      // Mirrors DocumentEditor.tsx handleSave when the tag list is emptied:
+      // the `tags` key is present with value undefined → clear.
+      const updateResult = await useDocumentStore
+        .getState()
+        .updateDocument(docId, { title, content, tags: undefined });
+      assert(
+        isSuccess(updateResult),
+        'updateDocument should succeed' +
+          (updateResult.success
+            ? ''
+            : `: ${JSON.stringify(updateResult.error)}`)
+      );
+
+      const current = useDocumentStore.getState().currentDocument;
+      assert(current, 'currentDocument should be set');
+      compareTwoThings([], current.tags, 'currentDocument tags after clear');
+
+      const keyResult = await holsterService.readPrivateData([
+        'docKeys',
+        docId,
+      ]);
+      assert(isSuccess(keyResult), 'readPrivateData(docKeys) should succeed');
+      const getResult = await useDocumentStore
+        .getState()
+        .getDocument(docId, userPub, keyResult.data);
+      assert(
+        isSuccess(getResult) && getResult.data,
+        'getDocument should succeed'
+      );
+      compareTwoThings([], getResult.data!.tags, 'persisted tags after clear');
+
+      assert(
+        isSuccess(await useDocumentStore.getState().deleteDocument(docId)),
+        'deleteDocument should succeed'
+      );
+    }
+  );
+
+  await runner.run(
+    'public doc: explicit undefined tags clear them',
+    async () => {
+      const title = generateTestTitle('_clear_pub');
+      const content = 'clear me too';
+      const createResult = await useDocumentStore
+        .getState()
+        .createDocument(title, content, ['epsilon', 'zeta'], true);
+      assert(isSuccess(createResult), 'createDocument should succeed');
+      const docId = createResult.data!.id;
+
+      const updateResult = await useDocumentStore
+        .getState()
+        .updateDocument(docId, { title, content, tags: undefined });
+      assert(
+        isSuccess(updateResult),
+        'updateDocument should succeed' +
+          (updateResult.success
+            ? ''
+            : `: ${JSON.stringify(updateResult.error)}`)
+      );
+
+      const getResult = await useDocumentStore
+        .getState()
+        .getDocument(docId, getCurrentUserPubKey());
+      assert(
+        isSuccess(getResult) && getResult.data,
+        'getDocument should succeed'
+      );
+      compareTwoThings(
+        [],
+        getResult.data!.tags,
+        'persisted public tags after clear'
+      );
+
+      assert(
+        isSuccess(await useDocumentStore.getState().deleteDocument(docId)),
+        'deleteDocument should succeed'
+      );
+    }
+  );
+
+  runner.printResults();
+  await cleanupDocumentStore();
+  return runner.getResults();
+}
+
+/**
+ * Regression guard for transformError dropping plain HolsterError messages.
+ *
+ * `withDeadline` rejections and `getHolster()`'s INIT_FAILED throw are plain
+ * `{code, message, details}` objects, never Error instances — the
+ * `instanceof Error` gate used to collapse them to "An unexpected error
+ * occurred", discarding the deadline's wedge guidance and the Holster
+ * diagnostic. Uses the INIT_FAILED throw (same shape, same branch as the
+ * deadline) so the test stays instant instead of waiting out a 45s deadline.
+ */
+async function testHolsterErrorMapping(): Promise<TestSuiteResult> {
+  console.log('Testing HolsterError → DocumentError mapping');
+  const runner = new TestRunner('error mapping');
+
+  await runner.run('plain HolsterError preserves its message', async () => {
+    const savedHolster = holsterService.holster;
+    const savedInitialized = holsterService.isInitialized;
+    holsterService.holster = null;
+    holsterService.isInitialized = false;
+    try {
+      const result = await useDocumentStore
+        .getState()
+        .getDocument('doc_error_mapping', 'pub_error_mapping');
+      assert(isFailure(result), 'getDocument should fail while down');
+      assert(isDocumentError(result.error), 'Should return DocumentError');
+      assert(
+        result.error?.code === 'NETWORK_ERROR',
+        `expected NETWORK_ERROR, got ${String(result.error?.code)}`
+      );
+      assert(
+        result.error?.message.includes('Holster not initialized') === true,
+        `Holster message must survive; got: ${String(result.error?.message)}`
+      );
+    } finally {
+      holsterService.holster = savedHolster;
+      holsterService.isInitialized = savedInitialized;
+      useDocumentStore.setState({ error: null });
+    }
+  });
+
+  runner.printResults();
+  return runner.getResults();
+}
+
 // ============================================================================
 // MAIN EXPORT FUNCTION
 // ============================================================================
@@ -825,7 +1039,15 @@ export async function testDocumentStore(
 
   const e2eResult = await testCRUDe2e();
   suiteResults.push(e2eResult);
-  console.log('='.repeat(60));
+  console.log('\n' + '='.repeat(60) + '\n');
+
+  const partialResult = await testUpdateDocumentPartial();
+  suiteResults.push(partialResult);
+  console.log('\n' + '='.repeat(60) + '\n');
+
+  const errorMappingResult = await testHolsterErrorMapping();
+  suiteResults.push(errorMappingResult);
+  console.log('\n' + '='.repeat(60) + '\n');
 
   //  const shareResult = await testShareDocument();
   //  suiteResults.push(shareResult);

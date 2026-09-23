@@ -7,9 +7,10 @@
 import {
   holsterService,
   HolsterService,
+  withDeadline,
   type ListItemResult,
 } from '@/services/holsterService';
-import { HolsterErrorCode } from '@/types/holster';
+import { HolsterErrorCode, type HolsterError } from '@/types/holster';
 import {
   TestRunner,
   printTestSummary,
@@ -636,6 +637,66 @@ async function testConnectionState(): Promise<TestSuiteResult> {
 }
 
 /**
+ * Test withDeadline — the wrapper that bounds every callback-only Holster
+ * read/write. Regression guard for the bug class where a read settles only
+ * inside a Holster callback that never fires (down relay, wedged storage)
+ * and the promise hangs forever.
+ */
+async function testWithDeadline(): Promise<TestSuiteResult> {
+  console.log('🧪 Testing withDeadline...\n');
+
+  const runner = new TestRunner('Deadline');
+
+  await runner.run('Rejects when callback never fires', async () => {
+    let detailsEvaluated = false;
+    let caught: HolsterError | null = null;
+    try {
+      await withDeadline<void>(
+        () => {
+          // Intentionally never settles: simulates a Holster callback that
+          // never fires (relay down, nothing cached).
+        },
+        'Test operation',
+        50,
+        () => {
+          detailsEvaluated = true;
+          return { sample: 'detail' };
+        }
+      );
+    } catch (error) {
+      caught = error as HolsterError;
+    }
+    if (caught === null) {
+      throw new Error('expected rejection, but operation resolved');
+    }
+    if (caught.code !== HolsterErrorCode.STORAGE_ERROR) {
+      throw new Error(`expected STORAGE_ERROR, got ${String(caught.code)}`);
+    }
+    if (!caught.message.includes('Test operation timed out after 50ms')) {
+      throw new Error(`unexpected message: ${caught.message}`);
+    }
+    if (!detailsEvaluated) {
+      throw new Error('getDetails was not evaluated at timeout time');
+    }
+  });
+
+  await runner.run('Resolves immediately on callback', async () => {
+    const value = await withDeadline<string>(
+      resolve => resolve('ok'),
+      'Quick op',
+      50
+    );
+    if (value !== 'ok') {
+      throw new Error(`expected 'ok', got ${String(value)}`);
+    }
+  });
+
+  console.log('\n✅ Deadline tests complete!');
+  runner.printResults();
+  return runner.getResults();
+}
+
+/**
  * Run all Holster Service tests
  */
 export async function testHolsterService(
@@ -682,6 +743,10 @@ export async function testHolsterService(
 
   const connResult = await testConnectionState();
   suiteResults.push(connResult);
+  console.log('\n' + '='.repeat(60) + '\n');
+
+  const deadlineResult = await testWithDeadline();
+  suiteResults.push(deadlineResult);
   console.log('\n' + '='.repeat(60));
 
   // Final cleanup: Log out any test user

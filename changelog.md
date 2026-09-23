@@ -5,8 +5,12 @@
   app-breaking issues with GunDB
 - Migrated from internal functionalResult library to updated
   [@k98kurz/functional-result](https://www.npmjs.com/package/@k98kurz/functional-result)
+- Misc reliability improvements
 - Updated dependencies (including `npm audit fix`)
 - Changed readme.md hosting within the app to a static file
+- Fixed `updateDocument` corrupting private-doc fields when a save omitted
+  them (stored ciphertext was being re-encrypted); clearing tags now also
+  works on public docs
 
 ## 2026-06-27
 
