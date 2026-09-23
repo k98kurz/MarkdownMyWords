@@ -279,7 +279,10 @@ class HolsterService {
         file?: string;
       } = {
         peers: relayUrls,
-        indexedDB: true,
+        // Selects the storage backend: true uses IndexedDB, false uses
+        // Holster's Node filesystem store. Node has no IndexedDB, so the
+        // vitest run passes false.
+        indexedDB: config?.indexedDB ?? true,
         file: this.storageDbName,
       };
 

@@ -4,13 +4,23 @@ import http from 'http';
 const SHUTDOWN_TIMEOUT = 2000;
 
 const PORT = process.env.GUN_PORT || 8765;
+// undefined => bind all interfaces (dev default); set to a host such as
+// 127.0.0.1 to restrict, as the test harness does.
+const HOST = process.env.GUN_HOST;
 
 const server = http.createServer();
 Holster({ server, indexedDB: false });
 
-server.listen(PORT, () => {
-  console.log(`Holster relay on ws://localhost:${PORT}`);
-});
+function onListen() {
+  const where = HOST ? `${HOST}:${PORT}` : `localhost:${PORT}`;
+  console.log(`Holster relay on ws://${where}`);
+}
+
+if (HOST) {
+  server.listen(PORT, HOST, onListen);
+} else {
+  server.listen(PORT, onListen);
+}
 
 server.on('error', error => {
   if (error.code === 'EADDRINUSE') {

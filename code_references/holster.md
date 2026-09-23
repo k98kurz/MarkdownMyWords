@@ -52,7 +52,7 @@ const SEA = holster.SEA;
 // closure in wire.js. The only way to report the REAL relay state is to
 // observe those sockets directly. holsterService installs relayMonitor
 // (src/services/relayMonitor.ts) BEFORE constructing Holster; the monitor
-// wraps window.WebSocket, passively tracks open/close per configured relay,
+// wraps globalThis.WebSocket, passively tracks open/close per configured relay,
 // and backs holsterService.getConnectionState()/getRelayStatuses()/
 // getPeerConnectionTime().
 //

@@ -17,6 +17,8 @@
     "format": "prettier --write \"src/**/*.{ts,tsx}\" \"*.{js,mjs,ts}\"",
     "check:format": "prettier --check \"src/**/*.{ts,tsx}\" \"*.{js,mjs,ts}\"",
     "verify": "npm run lint && npm run typecheck && npm run check:format",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "preview": "vite preview"
   },
   "dependencies": {

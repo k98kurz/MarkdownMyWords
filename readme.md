@@ -38,11 +38,16 @@ cd MarkdownMyWords
 npm ci
 cp dev.env .env
 npm run dev # or `npm run dev:server` and `npm run dev:relay` in separate terminals
+npm test    # run the full suite headless (vitest, no browser)
 ```
 
-I had an impossible time with vitest, so all testing must be done in the browser.
-I will need to rethink how I do testing at some point and come up with something
-better.
+`npm test` runs the existing suites non-browser under vitest. It provisions
+everything itself: a global setup starts a Holster relay in a temp directory,
+and each run uses a fresh temp directory for client storage, so runs are
+isolated and repeatable with no manual clearing. Override the test relay port
+with `MMW_TEST_RELAY_PORT` (default `8787`). The browser console tools
+(`window.runAllTests()` and the individual `window.testX()` hooks) remain
+available in dev mode as a fallback.
 
 ## Hosting
 
