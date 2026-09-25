@@ -227,6 +227,105 @@ async function writeOwnDocument(
 }
 
 /**
+ * Envelope stored in the `['docKeys', docId]` slot while a key transition
+ * is in flight: `active` was the key for the doc as of the last completed
+ * transition, `pending` is the replacement the doc is being re-encrypted
+ * with. Steady state is a plain key string — envelopes only exist between
+ * the envelope write and the collapse in `changeDocumentKey`.
+ */
+interface DocKeyEnvelope {
+  v: 1;
+  active: string;
+  pending?: string;
+}
+
+/**
+ * Parse `raw` as a DocKeyEnvelope, or return null when it is a plain key
+ * string. A user password key can be any string, so only the exact
+ * envelope shape counts; `resolveDocumentKey` keeps the raw value as a
+ * fallback candidate anyway.
+ */
+function parseDocKeyEnvelope(raw: string): DocKeyEnvelope | null {
+  if (!raw.startsWith('{')) {
+    return null;
+  }
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null) {
+      return null;
+    }
+    const record = parsed as Record<string, unknown>;
+    if (record.v !== 1 || typeof record.active !== 'string') {
+      return null;
+    }
+    const envelope: DocKeyEnvelope = { v: 1, active: record.active };
+    if (typeof record.pending === 'string') {
+      envelope.pending = record.pending;
+    }
+    return envelope;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Read the private `['docKeys', docId]` slot and return the key that
+ * decrypts `doc`.
+ *
+ * Steady state: the slot holds a plain key string, returned unmodified
+ * with no probe (identical to the old raw read). Mid-transition: the slot
+ * holds a JSON envelope and candidates (`active`, `pending`, then the raw
+ * value) are probed against the stored title ciphertext until one
+ * decrypts.
+ *
+ * Read-only by design: it never rewrites or collapses the slot, so a
+ * crashed transition cannot race a healing write on the read path. The
+ * envelope is cleared only by a later successful `changeDocumentKey`
+ * (collapse), `setDocumentPublic`, or `deleteDocument`.
+ *
+ * Governing rule for the write ordering around this slot — never destroy
+ * or overwrite the only decryptability material until the replacement
+ * representation is durable: `changeDocumentKey` writes the envelope
+ * BEFORE the doc ciphertext changes and collapses to the plain key only
+ * AFTER the new ciphertext is acked, so every intermediate failure leaves
+ * a slot value that still contains a key decrypting the current doc.
+ */
+async function resolveDocumentKey(
+  docId: string,
+  doc: Partial<Document>
+): Promise<string> {
+  const readResult = await holsterService.readPrivateData(['docKeys', docId]);
+  if (!readResult.success) {
+    throw readResult.error;
+  }
+  const raw = readResult.data;
+
+  const envelope = parseDocKeyEnvelope(raw);
+  if (!envelope) {
+    if (!raw) {
+      throw new Error('Document key not found');
+    }
+    return raw;
+  }
+
+  const candidates: string[] = [envelope.active];
+  if (envelope.pending !== undefined && envelope.pending !== envelope.active) {
+    candidates.push(envelope.pending);
+  }
+  // A password that is literally envelope-shaped JSON is still a valid
+  // key: keep the raw value as the last candidate.
+  candidates.push(raw);
+
+  for (const candidate of candidates) {
+    const probe = await encryptionService.decrypt(doc.title ?? '', candidate);
+    if (probe.success) {
+      return candidate;
+    }
+  }
+  throw new Error('Document key not found');
+}
+
+/**
  * Document State Interface
  */
 interface DocumentState {
@@ -576,16 +675,9 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
               throw new Error('must be logged in to view this document');
             }
 
-            const readKeyResult = await holsterService.readPrivateData([
-              'docKeys',
-              docId,
-            ]);
-            if (!readKeyResult.success) {
-              throw new Error('You do not have access to this document');
-            }
-            docKey = readKeyResult.data;
-
-            if (!docKey) {
+            try {
+              docKey = await resolveDocumentKey(docId, doc);
+            } catch {
               throw new Error('You do not have access to this document');
             }
           }
@@ -718,14 +810,11 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
         let docKey: string | undefined;
         if (!doc.isPublic) {
-          const readKeyResult = await holsterService.readPrivateData([
-            'docKeys',
-            docId,
-          ]);
-          if (!readKeyResult.success) {
+          try {
+            docKey = await resolveDocumentKey(docId, doc);
+          } catch {
             throw new Error('Document key not found');
           }
-          docKey = readKeyResult.data;
         }
 
         const currentDoc = get();
@@ -1022,14 +1111,11 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
         let docKey: string | undefined;
         if (!doc.isPublic) {
-          const readKeyResult = await holsterService.readPrivateData([
-            'docKeys',
-            docId,
-          ]);
-          if (!readKeyResult.success) {
+          try {
+            docKey = await resolveDocumentKey(docId, doc);
+          } catch {
             throw new Error('Document key not found');
           }
-          docKey = readKeyResult.data;
         }
 
         let decryptedTitle = doc.title ?? '';
@@ -1129,14 +1215,12 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         let encryptedDocKey = '';
 
         if (!doc.isPublic) {
-          const docKeyResult = await holsterService.readPrivateData([
-            'docKeys',
-            docId,
-          ]);
-          if (!docKeyResult.success) {
+          let docKey: string;
+          try {
+            docKey = await resolveDocumentKey(docId, doc);
+          } catch {
             throw new Error('Document key not found');
           }
-          const docKey = docKeyResult.data;
           const encryptResult = await encryptionService.encryptECDH(
             docKey,
             recipientEpub
@@ -1256,16 +1340,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           throw new Error('Public documents do not have a key');
         }
 
-        const docKeyResult = await holsterService.readPrivateData([
-          'docKeys',
-          docId,
-        ]);
-
-        if (!docKeyResult.success) {
-          throw docKeyResult.error;
-        }
-
-        return docKeyResult.data;
+        return await resolveDocumentKey(docId, doc);
       }, transformError)) as Result<string, DocumentError>;
 
       return result;
@@ -1416,14 +1491,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         const doc = await readOwnDocument(userNode, docId);
 
         if (!doc.isPublic) {
-          const keyResult = await holsterService.readPrivateData([
-            'docKeys',
-            docId,
-          ]);
-          if (!keyResult.success) {
-            throw keyResult.error;
-          }
-          const docKey = keyResult.data;
+          const docKey = await resolveDocumentKey(docId, doc);
 
           const titleResult = await encryptionService.decrypt(
             doc.title ?? '',
@@ -1453,14 +1521,6 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
               throw tagsResult.error;
             }
             decryptedTags = tagsResult.data;
-          }
-
-          const deleteKeyResult = await holsterService.deletePrivateData([
-            'docKeys',
-            docId,
-          ]);
-          if (!deleteKeyResult.success) {
-            throw deleteKeyResult.error;
           }
 
           type UpdatedDoc = {
@@ -1501,6 +1561,18 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
             updatedDoc,
             'Failed to update document'
           );
+
+          // Key deletion last: a failed doc write must leave the ciphertext
+          // + key intact (recoverable); a failed key deletion after a
+          // successful plaintext write only leaves an orphan key, which is
+          // benign — never the reverse.
+          const deleteKeyResult = await holsterService.deletePrivateData([
+            'docKeys',
+            docId,
+          ]);
+          if (!deleteKeyResult.success) {
+            throw deleteKeyResult.error;
+          }
         } else {
           throw new Error('Document is already public');
         }
@@ -1549,18 +1621,13 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           throw new Error('Cannot change key for public documents');
         }
 
-        const oldKeyResult = await holsterService.readPrivateData([
-          'docKeys',
-          docId,
-        ]);
-        if (!oldKeyResult.success) {
-          throw oldKeyResult.error;
-        }
-        const oldKey = oldKeyResult.data;
+        // Resolves the key that decrypts the CURRENT doc, including a
+        // `pending` key left behind by a previously crashed transition.
+        const workingKey = await resolveDocumentKey(docId, doc);
 
         const titleResult = await encryptionService.decrypt(
           doc.title ?? '',
-          oldKey
+          workingKey
         );
         if (!titleResult.success) {
           throw titleResult.error;
@@ -1569,7 +1636,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
         const contentResult = await encryptionService.decrypt(
           doc.content ?? '',
-          oldKey
+          workingKey
         );
         if (!contentResult.success) {
           throw contentResult.error;
@@ -1578,7 +1645,10 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
         let decryptedTags: string = '';
         if (doc.tags && typeof doc.tags === 'string') {
-          const tagsResult = await encryptionService.decrypt(doc.tags, oldKey);
+          const tagsResult = await encryptionService.decrypt(
+            doc.tags,
+            workingKey
+          );
           if (!tagsResult.success) {
             throw tagsResult.error;
           }
@@ -1625,12 +1695,20 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           encryptedTags = encryptTagsResult.data;
         }
 
-        const writeKeyResult = await holsterService.writePrivateData(
+        // Envelope BEFORE the doc ciphertext changes: until the doc write
+        // below is acked, `active` still decrypts the stored doc; once it
+        // is acked, `pending` decrypts the new ciphertext. Neither plain
+        // order works (new key first destroys the old key while the doc
+        // still needs it; doc first stores ciphertext no slot value can
+        // decrypt), so both keys stay in the slot until the collapse after
+        // the doc write — the only step where dropping `active` destroys
+        // nothing the current doc needs.
+        const envelopeResult = await holsterService.writePrivateData(
           ['docKeys', docId],
-          newKey
+          JSON.stringify({ v: 1, active: workingKey, pending: newKey })
         );
-        if (!writeKeyResult.success) {
-          throw writeKeyResult.error;
+        if (!envelopeResult.success) {
+          throw envelopeResult.error;
         }
 
         type UpdatedDoc = {
@@ -1667,6 +1745,18 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
         }
 
         await writeOwnDocument(docId, updatedDoc, 'Failed to update document');
+
+        // Collapse to the plain key now that the new ciphertext is durable.
+        // A failure here leaves the envelope + new ciphertext, which
+        // resolveDocumentKey disambiguates via `pending` on the next read;
+        // the next successful transition, publish, or delete clears it.
+        const collapseResult = await holsterService.writePrivateData(
+          ['docKeys', docId],
+          newKey
+        );
+        if (!collapseResult.success) {
+          throw collapseResult.error;
+        }
 
         return undefined;
       }, transformError)) as Result<void, DocumentError>;

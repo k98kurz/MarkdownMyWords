@@ -980,14 +980,26 @@ class HolsterService {
                 return;
               }
               const SEA = holster.SEA;
-              const plaintext = await SEA?.decrypt<string>(ciphertext, sea);
-              if (plaintext === null || plaintext === undefined) {
+              const decrypted: unknown = await SEA?.decrypt<string>(
+                ciphertext,
+                sea
+              );
+              if (decrypted === null || decrypted === undefined) {
                 reject(
                   new Error('Private data not found or could not be decrypted')
                 );
                 return;
               }
-              resolve(plaintext);
+              // SEA.decrypt JSON.parses the plaintext (sea-utils `parse`),
+              // so a JSON-string payload — e.g. the doc-key transition
+              // envelope — comes back as an object despite this API's
+              // string contract. Normalize back to the string that was
+              // written (same approach as encryptionService.decrypt).
+              resolve(
+                typeof decrypted === 'string'
+                  ? decrypted
+                  : JSON.stringify(decrypted)
+              );
             } catch (error) {
               reject(error);
             }

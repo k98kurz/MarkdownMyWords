@@ -32,7 +32,7 @@ export function HomePage({ onOpenAuthModal }: HomePageProps) {
     <>
       <div className="flex min-h-[50vh] flex-col items-center justify-center px-4">
         <h1 className="mb-6 text-3xl font-bold text-card-foreground text-center">
-          Secure Markdown Editor
+          Encrypted Markdown Editor
         </h1>
 
         <ul className="mb-8 space-y-3 text-lg text-card-foreground text-center">
@@ -40,7 +40,7 @@ export function HomePage({ onOpenAuthModal }: HomePageProps) {
           <li>• Markdown with live preview and Mermaid diagram support</li>
           <li>• Share documents securely with password/key protection</li>
           <li>
-            • Coming soon: collaborative editing and AI review/revise via
+            • Coming eventually: collaborative editing and AI review/revise via
             OpenRouter
           </li>
         </ul>
