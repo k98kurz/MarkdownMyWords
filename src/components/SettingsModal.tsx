@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
+import { ConfirmModal } from './ConfirmModal';
 import { Input } from './ui/Input';
 import { usePreferences } from '@/providers/PreferenceProvider';
 import { holsterService } from '@/services/holsterService';
+import { clearHolsterStorage } from '@/dev/clearHolsterStorage';
 import { useKeyboardShortcutsStore } from '@/stores/keyboardShortcutsStore';
 import {
   success,
@@ -74,6 +76,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     Map<number, RelayValidationError>
   >(new Map());
   const [showReloadMessage, setShowReloadMessage] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [showHolsterClearConfirm, setShowHolsterClearConfirm] = useState(false);
+  const [isClearingHolster, setIsClearingHolster] = useState(false);
+  const [holsterClearError, setHolsterClearError] = useState<string | null>(
+    null
+  );
 
   useEffect(() => {
     if (isOpen) {
@@ -176,6 +184,28 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       )
     );
   }, [tempRelays]);
+
+  const handleClearLocalStorage = () => {
+    localStorage.clear();
+    window.location.reload();
+  };
+
+  const handleClearHolster = async () => {
+    setIsClearingHolster(true);
+    setHolsterClearError(null);
+    try {
+      const outcome = await clearHolsterStorage();
+      if (outcome === 'error' || outcome === 'unavailable') {
+        setHolsterClearError(
+          'Holster storage was not cleared. See the console for details.'
+        );
+        return;
+      }
+      window.location.reload();
+    } finally {
+      setIsClearingHolster(false);
+    }
+  };
 
   const handleSaveAll = useCallback(() => {
     const result = validateAllRelays();
@@ -348,6 +378,29 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           </div>
         </section>
 
+        <section>
+          <h3 className="text-sm font-medium mb-3">Data</h3>
+          <div className="flex gap-2">
+            <Button
+              variant="danger"
+              onClick={() => setShowClearConfirm(true)}
+              disabled={isClearingHolster}
+            >
+              Clear localStorage
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => setShowHolsterClearConfirm(true)}
+              disabled={isClearingHolster}
+            >
+              Clear Holster
+            </Button>
+          </div>
+          {holsterClearError && (
+            <div className="mt-2 text-destructive">{holsterClearError}</div>
+          )}
+        </section>
+
         <div className="flex justify-between items-center pt-4 border-t">
           {showReloadMessage && (
             <span className="text-sm text-muted-foreground">
@@ -368,6 +421,28 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           </div>
         </div>
       </div>
+
+      <ConfirmModal
+        isOpen={showClearConfirm}
+        title="Clear localStorage"
+        message="This will erase your theme, editor preferences, and relay configuration stored in this browser, then reload the page. Your login session and documents are not affected. This cannot be undone."
+        confirmLabel="Clear"
+        cancelLabel="Cancel"
+        onConfirm={handleClearLocalStorage}
+        onClose={() => setShowClearConfirm(false)}
+        isDangerous
+      />
+
+      <ConfirmModal
+        isOpen={showHolsterClearConfirm}
+        title="Clear Holster storage"
+        message="This will log you out and delete this browser's local Holster data (IndexedDB), including any locally cached documents, then reload the page to finish the deletion. Data still held on the relay may be re-synced the next time you log in. This cannot be undone."
+        confirmLabel="Clear"
+        cancelLabel="Cancel"
+        onConfirm={handleClearHolster}
+        onClose={() => setShowHolsterClearConfirm(false)}
+        isDangerous
+      />
     </Modal>
   );
 }
