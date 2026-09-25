@@ -11,6 +11,7 @@
 - Fixed `updateDocument` corrupting private-doc fields when a save omitted
   them (stored ciphertext was being re-encrypted); clearing tags now also
   works on public docs
+- Added buttons to clear localStorage and Holster IndexedDB to Settings modal
 
 ## 2026-06-27
 
