@@ -6,6 +6,8 @@
 
 import { useDocumentStore } from '@/stores/documentStore';
 import { holsterService } from '@/services/holsterService';
+import { encryptionService } from '@/services/encryptionService';
+import { useAuthStore } from '@/stores/authStore';
 import {
   TestRunner,
   printTestSummary,
@@ -1014,6 +1016,493 @@ async function testHolsterErrorMapping(): Promise<TestSuiteResult> {
 }
 
 // ============================================================================
+// KEY / PRIVACY TRANSITION TESTS
+// ============================================================================
+
+/**
+ * Overwrite `['docs', docId]` with the doc re-encrypted under `key` —
+ * the state changeDocumentKey leaves when it crashes after the ciphertext
+ * write is acked but before the key slot collapses. Mirrors the private-doc
+ * shape writeOwnDocument stores. `tagsCsv` must be non-empty plaintext.
+ */
+async function craftEncryptedDoc(
+  docId: string,
+  key: string,
+  doc: { title: string; content: string; tagsCsv: string; createdAt: number },
+  failurePrefix: string
+): Promise<void> {
+  const encTitle = await encryptionService.encrypt(doc.title, key);
+  const encContent = await encryptionService.encrypt(doc.content, key);
+  const encTags = await encryptionService.encrypt(doc.tagsCsv, key);
+  assert(
+    encTitle.success && encContent.success && encTags.success,
+    `${failurePrefix}: re-encryption should succeed`
+  );
+  const docWrite = await holsterService.writeUserPath(
+    ['docs', docId],
+    {
+      id: docId,
+      title: encTitle.data,
+      content: encContent.data,
+      tags: encTags.data,
+      createdAt: doc.createdAt,
+      updatedAt: Date.now(),
+      isPublic: false,
+    },
+    failurePrefix
+  );
+  assert(docWrite.success, `${failurePrefix}: doc write should succeed`);
+}
+
+/**
+ * Read the raw stored `['docs', docId]` node (ciphertext fields intact) via
+ * listUserItems, which returns inlined entry data. Used to prove a read path
+ * did not rewrite the node: the encrypted fields are JSON strings, and SEA
+ * encryption is non-deterministic, so a hidden healing re-encrypt would
+ * change them.
+ */
+async function readStoredDoc(docId: string): Promise<Record<string, unknown>> {
+  const itemsResult = await holsterService.listUserItems(['docs']);
+  assert(isSuccess(itemsResult), 'listUserItems should succeed');
+  const item = itemsResult.data.find(
+    i => typeof i.data === 'object' && i.data !== null && i.data.id === docId
+  );
+  assert(item !== undefined, `stored doc ${docId} should be found`);
+  assert(
+    typeof item.data === 'object' && item.data !== null,
+    'stored doc should be an object'
+  );
+  return item.data;
+}
+
+/**
+ * Regression tests for write-ordering in privacy/key transitions.
+ *
+ * Governing rule: never destroy or overwrite the only decryptability
+ * material until the replacement representation is durable. During
+ * changeDocumentKey the `['docKeys', docId]` slot holds a JSON envelope
+ * `{v: 1, active, pending}` from before the doc ciphertext changes until
+ * after it is acked; resolveDocumentKey disambiguates by probing and is
+ * read-only, so a crashed transition stays recoverable.
+ */
+async function testKeyTransitions(): Promise<TestSuiteResult> {
+  console.log('Testing privacy/key transition write ordering');
+  const runner = new TestRunner('key transitions');
+
+  await cleanupDocumentStore();
+
+  // Privacy actions gate on useAuthStore.user, but setupTestUser
+  // authenticates via holsterService directly — mirror authStore.login's
+  // state for the duration of the gated tests.
+  const authGateOn = (): void => {
+    useAuthStore.setState({ user: holsterService.getHolster().user() });
+  };
+  const authGateOff = (): void => {
+    useAuthStore.setState({ user: null });
+  };
+
+  await runner.run(
+    'mid-transition envelope: read recovers via pending, stays read-only',
+    async () => {
+      const title = generateTestTitle('_midtransition');
+      const content = 'mid-transition content';
+      const tags = ['alpha', 'beta'];
+      const createResult = await useDocumentStore
+        .getState()
+        .createDocument(title, content, tags, false);
+      assert(isSuccess(createResult), 'createDocument should succeed');
+      const docId = createResult.data!.id;
+
+      const key1Result = await holsterService.readPrivateData([
+        'docKeys',
+        docId,
+      ]);
+      assert(isSuccess(key1Result), 'read of original key should succeed');
+      const key1 = key1Result.data;
+
+      const key2Result = await encryptionService.generateKey();
+      assert(key2Result.success, 'generateKey should succeed');
+      const key2 = key2Result.data;
+
+      // Recreate the crash point: envelope written and doc re-encrypted
+      // under `pending`, collapse never ran.
+      const envelopeWrite = await holsterService.writePrivateData(
+        ['docKeys', docId],
+        JSON.stringify({ v: 1, active: key1, pending: key2 })
+      );
+      assert(envelopeWrite.success, 'envelope write should succeed');
+
+      await craftEncryptedDoc(
+        docId,
+        key2,
+        {
+          title,
+          content,
+          tagsCsv: 'alpha,beta',
+          createdAt: createResult.data!.createdAt,
+        },
+        'Failed to craft mid-transition doc'
+      );
+
+      // resolveDocumentKey must pick `pending` and decrypt through it.
+      const meta = await useDocumentStore.getState().getDocumentMetadata(docId);
+      assert(
+        isSuccess(meta) && meta.data,
+        'getDocumentMetadata should succeed mid-transition' +
+          (meta.success ? '' : `: ${JSON.stringify(meta.error)}`)
+      );
+      compareTwoThings(title, meta.data!.title, 'mid-transition title');
+      compareTwoThings(tags, meta.data!.tags, 'mid-transition tags');
+
+      // Read-only resolve: no heal/collapse on the read path.
+      const slot = await holsterService.readPrivateData(['docKeys', docId]);
+      assert(isSuccess(slot), 'slot read after access should succeed');
+      let parsedSlot: unknown;
+      try {
+        parsedSlot = JSON.parse(slot.data);
+      } catch {
+        parsedSlot = null;
+      }
+      assert(
+        typeof parsedSlot === 'object' && parsedSlot !== null,
+        'slot should still hold the envelope after a read'
+      );
+      const envelope = parsedSlot as Record<string, unknown>;
+      assert(
+        envelope.v === 1 &&
+          envelope.active === key1 &&
+          envelope.pending === key2,
+        'envelope must be unchanged (resolve is read-only); got: ' + slot.data
+      );
+
+      assert(
+        isSuccess(await useDocumentStore.getState().deleteDocument(docId)),
+        'deleteDocument should succeed'
+      );
+    }
+  );
+
+  await runner.run(
+    'crash before doc write: read recovers via active, stays read-only',
+    async () => {
+      authGateOn();
+      try {
+        const title = generateTestTitle('_crashbefore');
+        const content = 'crash-before content';
+        const tags = ['omega'];
+        const createResult = await useDocumentStore
+          .getState()
+          .createDocument(title, content, tags, false);
+        assert(isSuccess(createResult), 'createDocument should succeed');
+        const docId = createResult.data!.id;
+
+        const key1Result = await holsterService.readPrivateData([
+          'docKeys',
+          docId,
+        ]);
+        assert(isSuccess(key1Result), 'read of original key should succeed');
+        const key1 = key1Result.data;
+
+        const key2Result = await encryptionService.generateKey();
+        assert(key2Result.success, 'generateKey should succeed');
+        const key2 = key2Result.data;
+
+        // Crash point: envelope written, doc write never started — the
+        // stored ciphertext is still under `active`.
+        const envelope = JSON.stringify({ v: 1, active: key1, pending: key2 });
+        const envelopeWrite = await holsterService.writePrivateData(
+          ['docKeys', docId],
+          envelope
+        );
+        assert(envelopeWrite.success, 'envelope write should succeed');
+
+        const docBefore = await readStoredDoc(docId);
+
+        // resolveDocumentKey must probe `active` first and decrypt through it.
+        const meta = await useDocumentStore
+          .getState()
+          .getDocumentMetadata(docId);
+        assert(
+          isSuccess(meta) && meta.data,
+          'getDocumentMetadata should succeed after crash' +
+            (meta.success ? '' : `: ${JSON.stringify(meta.error)}`)
+        );
+        compareTwoThings(title, meta.data!.title, 'crash-before title');
+        compareTwoThings(tags, meta.data!.tags, 'crash-before tags');
+
+        // No providedKey → the full resolveDocumentKey path, incl. content.
+        const getResult = await useDocumentStore
+          .getState()
+          .getDocument(docId, getCurrentUserPubKey());
+        assert(
+          isSuccess(getResult) && getResult.data,
+          'getDocument should succeed via active' +
+            (getResult.success ? '' : `: ${JSON.stringify(getResult.error)}`)
+        );
+        compareTwoThings(
+          title,
+          getResult.data!.title,
+          'crash-before title (getDocument)'
+        );
+        compareTwoThings(
+          content,
+          getResult.data!.content,
+          'crash-before content'
+        );
+        compareTwoThings(
+          tags,
+          getResult.data!.tags,
+          'crash-before tags (getDocument)'
+        );
+
+        // Read-only resolve: no heal/collapse on either read path.
+        const slot = await holsterService.readPrivateData(['docKeys', docId]);
+        assert(isSuccess(slot), 'slot read after access should succeed');
+        assert(
+          slot.data === envelope,
+          'envelope must be unchanged (resolve is read-only); got: ' + slot.data
+        );
+
+        const docAfter = await readStoredDoc(docId);
+        assert(
+          docAfter.title === docBefore.title,
+          'read must not rewrite stored title'
+        );
+        assert(
+          docAfter.content === docBefore.content,
+          'read must not rewrite stored content'
+        );
+        assert(
+          docAfter.tags === docBefore.tags,
+          'read must not rewrite stored tags'
+        );
+
+        assert(
+          isSuccess(await useDocumentStore.getState().deleteDocument(docId)),
+          'deleteDocument should succeed'
+        );
+      } finally {
+        authGateOff();
+      }
+    }
+  );
+
+  await runner.run(
+    'changeDocumentKey: collapses to plain key, doc decrypts',
+    async () => {
+      authGateOn();
+      try {
+        const title = generateTestTitle('_keychange');
+        const content = 'key change content';
+        const createResult = await useDocumentStore
+          .getState()
+          .createDocument(title, content, ['gamma'], false);
+        assert(isSuccess(createResult), 'createDocument should succeed');
+        const docId = createResult.data!.id;
+        const newPassword = 'newpassword123';
+
+        const changeResult = await useDocumentStore
+          .getState()
+          .changeDocumentKey(docId, newPassword);
+        assert(
+          isSuccess(changeResult),
+          'changeDocumentKey should succeed' +
+            (changeResult.success
+              ? ''
+              : `: ${JSON.stringify(changeResult.error)}`)
+        );
+
+        // Slot collapsed to the plain new key, not an envelope.
+        const slot = await holsterService.readPrivateData(['docKeys', docId]);
+        assert(isSuccess(slot), 'slot read after key change should succeed');
+        assert(
+          slot.data === newPassword,
+          `slot should be the plain new key; got: ${slot.data}`
+        );
+
+        // The slot path resolves and decrypts (getDocumentMetadata reads
+        // through resolveDocumentKey — getDocument's providedKey would
+        // bypass it, and the authStore gate is unset in this suite).
+        const meta = await useDocumentStore
+          .getState()
+          .getDocumentMetadata(docId);
+        assert(
+          isSuccess(meta) && meta.data,
+          'getDocumentMetadata should succeed after key change' +
+            (meta.success ? '' : `: ${JSON.stringify(meta.error)}`)
+        );
+        compareTwoThings(title, meta.data!.title, 'title after key change');
+        compareTwoThings(['gamma'], meta.data!.tags, 'tags after key change');
+
+        assert(
+          isSuccess(await useDocumentStore.getState().deleteDocument(docId)),
+          'deleteDocument should succeed'
+        );
+      } finally {
+        authGateOff();
+      }
+    }
+  );
+
+  await runner.run(
+    'changeDocumentKey over crashed transition: resolves pending, collapses',
+    async () => {
+      authGateOn();
+      try {
+        const title = generateTestTitle('_crashedchange');
+        const content = 'crashed transition content';
+        const tags = ['delta'];
+        const createResult = await useDocumentStore
+          .getState()
+          .createDocument(title, content, tags, false);
+        assert(isSuccess(createResult), 'createDocument should succeed');
+        const docId = createResult.data!.id;
+
+        const key1Result = await holsterService.readPrivateData([
+          'docKeys',
+          docId,
+        ]);
+        assert(isSuccess(key1Result), 'read of original key should succeed');
+        const key1 = key1Result.data;
+
+        const key2Result = await encryptionService.generateKey();
+        assert(key2Result.success, 'generateKey should succeed');
+        const key2 = key2Result.data;
+
+        // Prior crash: envelope written, doc re-encrypted under `pending`,
+        // collapse never ran — the working key must resolve via `pending`.
+        const envelopeWrite = await holsterService.writePrivateData(
+          ['docKeys', docId],
+          JSON.stringify({ v: 1, active: key1, pending: key2 })
+        );
+        assert(envelopeWrite.success, 'envelope write should succeed');
+        await craftEncryptedDoc(
+          docId,
+          key2,
+          {
+            title,
+            content,
+            tagsCsv: 'delta',
+            createdAt: createResult.data!.createdAt,
+          },
+          'Failed to craft crashed-transition doc'
+        );
+
+        const newPassword = 'recovered1234';
+        const changeResult = await useDocumentStore
+          .getState()
+          .changeDocumentKey(docId, newPassword);
+        assert(
+          isSuccess(changeResult),
+          'changeDocumentKey should succeed' +
+            (changeResult.success
+              ? ''
+              : `: ${JSON.stringify(changeResult.error)}`)
+        );
+
+        // Slot collapsed to the plain new key: the stale envelope pair
+        // (key1/key2) was discarded only after the new ciphertext was acked.
+        const slot = await holsterService.readPrivateData(['docKeys', docId]);
+        assert(isSuccess(slot), 'slot read after key change should succeed');
+        assert(
+          slot.data === newPassword,
+          `slot should be the plain new key; got: ${slot.data}`
+        );
+
+        const meta = await useDocumentStore
+          .getState()
+          .getDocumentMetadata(docId);
+        assert(
+          isSuccess(meta) && meta.data,
+          'getDocumentMetadata should succeed after recovery' +
+            (meta.success ? '' : `: ${JSON.stringify(meta.error)}`)
+        );
+        compareTwoThings(title, meta.data!.title, 'recovered title');
+        compareTwoThings(tags, meta.data!.tags, 'recovered tags');
+
+        // End-to-end: the re-encrypted content must decrypt back under the
+        // collapsed new key, through resolveDocumentKey (no providedKey).
+        const getResult = await useDocumentStore
+          .getState()
+          .getDocument(docId, getCurrentUserPubKey());
+        assert(
+          isSuccess(getResult) && getResult.data,
+          'getDocument should succeed after recovery' +
+            (getResult.success ? '' : `: ${JSON.stringify(getResult.error)}`)
+        );
+        compareTwoThings(
+          title,
+          getResult.data!.title,
+          'recovered title (getDocument)'
+        );
+        compareTwoThings(content, getResult.data!.content, 'recovered content');
+        compareTwoThings(
+          tags,
+          getResult.data!.tags,
+          'recovered tags (getDocument)'
+        );
+
+        assert(
+          isSuccess(await useDocumentStore.getState().deleteDocument(docId)),
+          'deleteDocument should succeed'
+        );
+      } finally {
+        authGateOff();
+      }
+    }
+  );
+
+  await runner.run(
+    'setDocumentPublic: plaintext doc, key slot removed',
+    async () => {
+      authGateOn();
+      try {
+        const title = generateTestTitle('_topublic');
+        const content = 'going public';
+        const createResult = await useDocumentStore
+          .getState()
+          .createDocument(title, content, [], false);
+        assert(isSuccess(createResult), 'createDocument should succeed');
+        const docId = createResult.data!.id;
+
+        const pubResult = await useDocumentStore
+          .getState()
+          .setDocumentPublic(docId);
+        assert(
+          isSuccess(pubResult),
+          'setDocumentPublic should succeed' +
+            (pubResult.success ? '' : `: ${JSON.stringify(pubResult.error)}`)
+        );
+
+        const slot = await holsterService.readPrivateData(['docKeys', docId]);
+        assert(isFailure(slot), 'key slot should be removed after publishing');
+
+        const getResult = await useDocumentStore
+          .getState()
+          .getDocument(docId, getCurrentUserPubKey());
+        assert(
+          isSuccess(getResult) && getResult.data,
+          'getDocument should succeed for the published doc'
+        );
+        compareTwoThings(title, getResult.data!.title, 'public title');
+        compareTwoThings(content, getResult.data!.content, 'public content');
+
+        assert(
+          isSuccess(await useDocumentStore.getState().deleteDocument(docId)),
+          'deleteDocument should succeed'
+        );
+      } finally {
+        authGateOff();
+      }
+    }
+  );
+
+  runner.printResults();
+  await cleanupDocumentStore();
+  return runner.getResults();
+}
+
+// ============================================================================
 // MAIN EXPORT FUNCTION
 // ============================================================================
 
@@ -1043,6 +1532,10 @@ export async function testDocumentStore(
 
   const partialResult = await testUpdateDocumentPartial();
   suiteResults.push(partialResult);
+  console.log('\n' + '='.repeat(60) + '\n');
+
+  const keyTransitionsResult = await testKeyTransitions();
+  suiteResults.push(keyTransitionsResult);
   console.log('\n' + '='.repeat(60) + '\n');
 
   const errorMappingResult = await testHolsterErrorMapping();

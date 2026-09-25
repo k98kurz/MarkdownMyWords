@@ -422,3 +422,48 @@ Clearing storage is deferred (see Wedged Local Storage above):
 `clearHolsterStorage()` flags a pending clear that
 `completePendingStorageClear()` runs on the next page load. This browser
 flow is not needed for the Node run, which uses temp dirs.
+
+# Doc-Key Transitions: Envelope Before Ciphertext (2026-09-22)
+
+The `['docKeys', docId]` private slot holds a plain key string in steady
+state. During `changeDocumentKey` it holds JSON
+`{v: 1, active, pending}`, written BEFORE the doc is re-encrypted and
+collapsed back to the plain new key only AFTER the new ciphertext is
+acked. Neither plain order works: key-first strands old-key ciphertext,
+doc-first stores ciphertext no slot value can decrypt. Governing rule:
+never destroy or overwrite the only decryptability material until the
+replacement representation is durable.
+
+- `resolveDocumentKey(docId, doc)` (documentStore.ts) is the ONLY reader
+  of this slot. Plain values return untouched (no probe); envelope
+  candidates are probed against the stored title. It is READ-ONLY —
+  never heals or collapses on read, so a crashing transition cannot race
+  a healing write. Never add a raw `readPrivateData(['docKeys', ...])`
+  call.
+- `setDocumentPublic`: plaintext doc write FIRST, key delete LAST (failed
+  doc write stays recoverable; a failed delete only orphans a key).
+  Key-first remains correct for `setDocumentPrivate`/`createDocument` —
+  the doc is plaintext beforehand, so failure only orphans a key; doc
+  first would store ciphertext with no key.
+- Tests: `testKeyTransitions` in `src/test/documentStore.test.ts`. The
+  privacy actions gate on `useAuthStore.user`, which `setupTestUser`
+  never sets — tests mirror it via `useAuthStore.setState({ user:
+  holster.user() })` around the gated calls.
+
+# SEA.decrypt Auto-Parses JSON-Looking Plaintext (2026-09-22)
+
+Holster's `SEA.decrypt` runs `JSON.parse` over the decrypted text
+(`sea-utils.parse`: parse-or-return-raw), so any JSON-STRING payload
+written via `writePrivateData` comes back as an OBJECT — despite
+`readPrivateData`'s declared `string` return. Calling `.startsWith`/
+`.split` on it then throws `TypeError` (surfacing far away as whatever
+the caller's catch maps it to — cost an hour while debugging the
+doc-key envelope).
+
+- String-typed SEA wrappers MUST normalize after decrypt:
+  `typeof v === 'string' ? v : JSON.stringify(v)` — done in
+  `encryptionService.decrypt` and `holsterService.readPrivateData`
+  (also fixes `readPrivateMap`, which delegates to it). Any new wrapper
+  over `SEA.decrypt` needs the same line.
+- Symptom signature: the value `console.log`s as a multi-line object
+  tree with single-quoted strings (Node inspect) instead of one line.
