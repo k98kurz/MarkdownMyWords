@@ -12,7 +12,6 @@ import {
   TestRunner,
   printTestSummary,
   type TestSuiteResult,
-  sleep,
 } from '@/dev/testRunner';
 import { isFailure, isSuccess } from '@k98kurz/functional-result';
 import type { DocumentError, MinimalDocListItem } from '@/types/document';
@@ -151,7 +150,6 @@ async function cleanupDocumentStore(): Promise<void> {
     status: 'READY',
     error: null,
   });
-  await sleep(100);
 }
 
 async function setupTestUser(): Promise<void> {
@@ -161,7 +159,6 @@ async function setupTestUser(): Promise<void> {
 
   if (holster && holster.user()) {
     holster.user().leave();
-    await sleep(500);
   }
 
   try {
@@ -176,7 +173,6 @@ async function setupTestUser(): Promise<void> {
   console.log(`  ✅ Authenticated user: ${TEST_USERNAME}`);
 
   await holsterService.writeProfile();
-  await sleep(500);
 
   console.log('  ✅ Test user setup complete\n');
 }
@@ -186,7 +182,6 @@ async function cleanupTestUser(): Promise<void> {
   const holster = holsterService.getHolster();
   if (holster && holster.user()) {
     holster.user().leave();
-    await sleep(500);
     console.log('  Logged out test user');
   }
   console.log(

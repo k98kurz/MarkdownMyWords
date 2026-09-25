@@ -393,11 +393,12 @@ returned `TestSuiteResult` to report zero failures. Supporting invariants:
 
 Caveats:
 
-- The suites still contain `sleep(...)` calls (authStore, documentStore,
-  encryptionService). The harness adds no wait-for-data delays (it only waits
-  for the relay process to exit during teardown), but those legacy waits can
-  mask broken reads; replace them with put-ack / `retryWithBackoff` condition
-  waits when touching those suites.
+- The harness adds no wait-for-data delays (it only waits for the relay
+  process to exit during teardown). All legacy `sleep(...)`/`setTimeout` waits
+  in authStore/documentStore/encryptionService/holsterService suites have been
+  removed: `holster.user().leave()` and `initialize()` are synchronous, and
+  writes already await their put ack. Keep it that way — use put-ack /
+  `retryWithBackoff` condition waits, never delays.
 - `compareTwoThings` (documentStore.test.ts) only checks array length when
   `expected` is the TOP-LEVEL argument; a nested `{ tags: [] }` vacuously
   passes (the element loop runs zero times). Compare empty arrays as

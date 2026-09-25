@@ -179,7 +179,6 @@ async function testListItems(): Promise<TestSuiteResult> {
     if (!writeProfileResult.success) {
       throw writeProfileResult.error;
     }
-    await new Promise(resolve => setTimeout(resolve, 500));
   });
 
   await runner.run('Test listItems on public namespace', async () => {
@@ -274,16 +273,23 @@ async function testListItems(): Promise<TestSuiteResult> {
         });
     });
 
-    // Read
-    await new Promise(resolve => setTimeout(resolve, 500));
-    const itemsResult = await holsterService.listUserItems(['private']);
-    if (!itemsResult.success) {
-      throw itemsResult.error;
-    }
-    const items = itemsResult.data;
-    if (items.length === 0) {
-      throw new Error('No user items found in private namespace');
-    }
+    // Poll until both items are readable (condition-based, no blind delay)
+    let items: ListItemResult[] = [];
+    await retryWithBackoff(
+      async () => {
+        const itemsResult = await holsterService.listUserItems(['private']);
+        if (!itemsResult.success) {
+          throw itemsResult.error;
+        }
+        if (itemsResult.data.length < 2) {
+          throw new Error(
+            `expected 2 user items, found ${itemsResult.data.length}`
+          );
+        }
+        items = itemsResult.data;
+      },
+      { maxAttempts: 6, baseDelay: 150, backoffMultiplier: 1.5 }
+    );
     console.log(
       `  Found ${items.length} user items: ${items.map((i: { soul: string }) => i.soul.substring(0, 10)).join(', ')}`
     );
@@ -594,7 +600,6 @@ async function testPrivateDataOperations(): Promise<TestSuiteResult> {
 
   await runner.task('Cleanup test user', async () => {
     holster.user().leave();
-    await new Promise(resolve => setTimeout(resolve, 500));
   });
 
   await runner.run('Error when writing without authentication', async () => {
@@ -714,8 +719,7 @@ export async function testHolsterService(
         `\n📝 Pre-test: User already logged in (${currentUser.is.pub.substring(0, 20)}...), logging out...`
       );
       holster.user().leave();
-      await new Promise(resolve => setTimeout(resolve, 500));
-      console.log('   ✅ Logged out and waited 500ms\n');
+      console.log('   ✅ Logged out\n');
     }
   }
 

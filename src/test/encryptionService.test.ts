@@ -8,7 +8,6 @@ import {
   TestRunner,
   printTestSummary,
   type TestSuiteResult,
-  sleep,
 } from '@/dev/testRunner';
 
 const assert = (condition: unknown, message: string) => {
@@ -372,8 +371,7 @@ export async function testEncryptionService(
         `\n📝 Pre-test: User already logged in (${currentUser.is.pub.substring(0, 20)}...), logging out...`
       );
       holster.user().leave();
-      await sleep(800);
-      console.log('   ✅ Logged out and waited 800ms\n');
+      console.log('   ✅ Logged out\n');
     }
   }
 
@@ -381,8 +379,7 @@ export async function testEncryptionService(
   if (!holsterService.isReady()) {
     console.log('\n📝 Pre-test: Holster not ready, initializing...\n');
     holsterService.initialize();
-    await sleep(1000);
-    console.log('   ✅ Holster initialized and waited 1s\n');
+    console.log('   ✅ Holster initialized\n');
   } else {
     console.log('\n📝 Pre-test: Holster already ready\n');
   }
@@ -410,8 +407,7 @@ export async function testEncryptionService(
     if (finalUser.is && finalUser.is.pub) {
       console.log('\n📝 Cleanup: Logging out test user');
       holster.user().leave();
-      await sleep(800);
-      console.log('   ✅ Logged out and waited 800ms');
+      console.log('   ✅ Logged out');
     }
   }
 

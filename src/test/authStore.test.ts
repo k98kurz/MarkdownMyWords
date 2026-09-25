@@ -23,7 +23,6 @@ import {
   TestRunner,
   printTestSummary,
   type TestSuiteResult,
-  sleep,
 } from '@/dev/testRunner';
 import { tryCatch, isFailure, type Result } from '@k98kurz/functional-result';
 import type { AuthError } from '@/stores/authStore';
@@ -35,9 +34,6 @@ async function cleanupAuthStore(): Promise<void> {
   const { logout, clearError } = useAuthStore.getState();
   logout();
   clearError();
-
-  // Wait a bit for Holster operations to complete
-  await sleep(500);
 }
 
 /**
