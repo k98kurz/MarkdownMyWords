@@ -107,15 +107,17 @@ export function HomePage({ onOpenAuthModal }: HomePageProps) {
           </Button>
         </div>
 
-        <h2 className="mt-8 mb-3 text-lg text-card-foreground">Migration Notice</h2>
+        <h2 className="mt-8 mb-3 text-lg text-card-foreground">
+          Migration Notice
+        </h2>
         <p className="mb-3 text-center">
           This app has switched from GunDB to Holster. GunDB was fundamentally
           flawed and ultimately unusable: it stored everything in localStorage
           and ignored the configuration to use IndexedDB; this resulted in the
           entire app breaking in May 2026. The replacement for GunDB, Holster,
           which is actively maintained (in contrast to GunDB), has resolved
-          these issues. The app now works properly with IndexedDB and should
-          not break as easily. However, if you used this app previously, your
+          these issues. The app now works properly with IndexedDB and should not
+          break as easily. However, if you used this app previously, your
           localStorage might be full of old GunDB crap.
         </p>
         <p className="text-center">

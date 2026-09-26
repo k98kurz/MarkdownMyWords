@@ -5,7 +5,17 @@ const SHUTDOWN_TIMEOUT = 2000;
 
 const PORT = process.env.PORT || process.env.GUN_PORT || 8765;
 
-const server = http.createServer();
+// Respond 200 to every HTTP request so Railway's deploy-time health check
+// (any configured path) passes, as Gun.serve did before the Holster migration.
+const server = http.createServer((req, res) => {
+  console.log(
+    `[HealthCheck] ${req.method} ${req.url} ${req.socket.host} ` +
+      `${req.socket.remoteAddress}`
+  );
+
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('OK');
+});
 Holster({ server, indexedDB: false });
 
 server.listen(PORT, () => {
