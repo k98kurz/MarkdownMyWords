@@ -45,13 +45,6 @@ full-node + `Object.entries()` pattern above. See
 `readPrivateMap()` in `code_references/holster.md` for private data
 maps.
 
-**Connection monitoring**: Holster has NO peer events (GunDB's
-`'hi'`/`'bye'` do not exist) and no public reconnect API. Relay
-connectivity is derived from Holster's REAL peer sockets by
-`relayMonitor` (`src/services/relayMonitor.ts`), which wraps
-`globalThis.WebSocket` before Holster is constructed — see the socket-tracking
-entry below. `user().recall()` is synchronous.
-
 **Session shape**: `user().is` = `{username, pub, epub, priv, epriv}` —
 the SEA pair lives there, NOT in `user._.sea` (a GunDB pattern; Holster
 never populates `user._`, so reading it returns `undefined` and every
@@ -100,15 +93,11 @@ is this signature.
   written by the same radisk). Test users are disposable; never try to
   salvage these stores.
 - `withDeadline` (exported from `holsterService`; 45s default, above the
-  30s+10s library timeouts) bounds EVERY callback-only Holster operation:
-  create/auth, all put acks, and ALL reads (`readSoul`, `readUsername`,
-  `listItems`, `readPrivateData`/`readPrivateMap`, `readOwnDocument`,
-  `getDocument`'s doc read). `initialize()` runs a separate 10s storage
-  health probe. A down relay with nothing cached or a wedged store now
-  fails loudly with the recovery instructions instead of hanging session
-  restore, discovery, document loads, or a test suite. Route ANY new
-  Holster read/write that settles inside a callback through `withDeadline`
-  (pass `relayStatusSummary()` as `getDetails`; it is public for external
+  30s+10s library timeouts) bounds EVERY callback-only Holster operation
+  (create/auth, put acks, reads). `initialize()` runs a separate 10s
+  storage health probe. Route ANY new Holster read/write that settles
+  inside a callback through `withDeadline` (pass
+  `relayStatusSummary()` as `getDetails`; it is public for external
   callers such as documentStore). Regression test: the Deadline suite in
   `src/test/holsterService.test.ts`. The timeout rejects a HolsterError
   with code STORAGE_ERROR; the deadline does NOT prove storage is
@@ -148,19 +137,16 @@ were unaffected, which is the signature.
   call `.next(key)` twice on the same chain (it accumulates the path).
 - Every user-scoped **put** goes through
   `holsterService.buildUserChain(path)` (private) and `putUserPath`, so the
-  fresh-chain rule for writes lives in one place. Service private reads
-  (`readPrivateData`/`readPrivateMap`) also use `buildUserChain`; other
-  reads build a fresh chain per call —
-  `documentStore.readOwnDocument`, `holsterService.readUsername`/
-  `listUserItems`, and `documentStore.getDocument` (reads another `~pub`)
-  — and never reuse one across a read and a write.
-  `writeUserPath(path, data, description)` is the public plaintext write
-  (never for secret data — it does not encrypt) and is deadline-bounded
-  (see Wedged Local Storage above). `readOwnDocument`/`writeOwnDocument`
-  in `src/stores/documentStore.ts` wrap this for the `docs` collection —
+  fresh-chain rule for writes lives in one place; the service private
+  reads (`readPrivateData`/`readPrivateMap`) use it too, and every other
+  read builds a fresh chain per call. `writeUserPath(path, data,
+  description)` is the public plaintext write (never for secret data —
+  it does not encrypt) and is deadline-bounded (see Wedged Local Storage
+  above). `readOwnDocument`/`writeOwnDocument` in
+  `src/stores/documentStore.ts` wrap this for the `docs` collection —
   use `writeOwnDocument` for ALL document writes, including
-  `createDocument` (a raw `put` there would skip the deadline). Reference:
-  `code_references/holster.md` section 2.
+  `createDocument` (a raw `put` there would skip the deadline).
+  Reference: `code_references/holster.md` section 2.
 
 # Relay Status via Socket Tracking; Holster Reconnects Forever (2026-09-22)
 
@@ -280,10 +266,6 @@ loose but fails at runtime. Rules (mirrored by `SEACipher`/`SEAPair`/
   `getPrivatePathPart`).
 - `SEA.secret()` takes `{epub}`, never a bare epub string (returns
   null otherwise).
-- `SEA.decrypt` runs `utils.parse` on plaintext: plaintext that is
-  itself valid JSON (`123`, `{"a":1}`) comes back re-serialized, so
-  round-trips are not byte-identical. The service coerces non-strings
-  back with `JSON.stringify`.
 - Cipher values read back from nodes carry extra `_` graph metadata;
   validate with `isSEACipher()` (`src/misc/seaHelpers.ts`), which
   checks for ct/iv/s fields.
@@ -326,11 +308,10 @@ mechanism — do not invent a "profiles directory" node.
 - NEVER treat `~@username` as resolved profiles — it is an alias index
   of pubs claiming that username. Use `holsterService.discoverUsers()`.
 
-Reference implementations for `createUser`, `authenticateUser`,
-`writeProfile`, `discoverUsers`, `writePrivateData`/`readPrivateData`/
-`readPrivateMap`/`deletePrivateData`, `writeUserPath`, and contacts live in
-`code_references/holster.md`; it documents reusable Holster/SEA patterns,
-not every `holsterService` method.
+Reference implementations for the Holster/SEA patterns — user
+create/auth, profiles/discovery, private data, plaintext writes,
+contacts — live in `code_references/holster.md`; it documents reusable
+patterns, not every `holsterService` method.
 
 # Functional Result Utility (2026-09-18)
 
@@ -393,12 +374,6 @@ returned `TestSuiteResult` to report zero failures. Supporting invariants:
 
 Caveats:
 
-- The harness adds no wait-for-data delays (it only waits for the relay
-  process to exit during teardown). All legacy `sleep(...)`/`setTimeout` waits
-  in authStore/documentStore/encryptionService/holsterService suites have been
-  removed: `holster.user().leave()` and `initialize()` are synchronous, and
-  writes already await their put ack. Keep it that way — use put-ack /
-  `retryWithBackoff` condition waits, never delays.
 - `compareTwoThings` (documentStore.test.ts) only checks array length when
   `expected` is the TOP-LEVEL argument; a nested `{ tags: [] }` vacuously
   passes (the element loop runs zero times). Compare empty arrays as
@@ -411,18 +386,15 @@ storage/cache, so there is nothing to "wait for". Delays added before
 `.next(null, cb)`/`.get(key, cb)` or after
 `await holsterService.authenticateUser(...)` only mask broken read code
 (usually GunDB-style `.get(cb)`/`.once()` calls — see the Holster Read
-API entry above). Exponentially increasing delays have been tried
-repeatedly; it never works. Use callbacks, not delays.
+API entry above). The harness adds no wait-for-data delays (it only
+waits for the relay process to exit during teardown) — keep it that
+way. For write/read races: wait for `put` acks (never fire-and-forget
+`await chain.put(x)`) and poll reads with `retryWithBackoff`
+(`src/lib/retry`) on a real condition — see the listItems and
+user-operations tests in `src/test/holsterService.test.ts`.
 
-For write/read races in tests: wait for `put` acks (never
-fire-and-forget `await chain.put(x)`) and poll reads with
-`retryWithBackoff` (`src/lib/retry`) on a real condition — see the
-listItems and user-operations tests in `src/test/holsterService.test.ts`.
-
-Clearing storage is deferred (see Wedged Local Storage above):
-`clearHolsterStorage()` flags a pending clear that
-`completePendingStorageClear()` runs on the next page load. This browser
-flow is not needed for the Node run, which uses temp dirs.
+Browser storage clearing is deferred to the next page load (see Wedged
+Local Storage above); the Node run needs none of it (per-run temp dirs).
 
 # Doc-Key Transitions: Envelope Before Ciphertext (2026-09-22)
 
@@ -456,7 +428,9 @@ replacement representation is durable.
 Holster's `SEA.decrypt` runs `JSON.parse` over the decrypted text
 (`sea-utils.parse`: parse-or-return-raw), so any JSON-STRING payload
 written via `writePrivateData` comes back as an OBJECT — despite
-`readPrivateData`'s declared `string` return. Calling `.startsWith`/
+`readPrivateData`'s declared `string` return. Even scalar JSON
+(`123`, `{"a":1}`) comes back re-serialized, so round-trips are not
+byte-identical. Calling `.startsWith`/
 `.split` on it then throws `TypeError` (surfacing far away as whatever
 the caller's catch maps it to — cost an hour while debugging the
 doc-key envelope).
