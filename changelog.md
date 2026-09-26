@@ -12,6 +12,8 @@
   them (stored ciphertext was being re-encrypted); clearing tags now also
   works on public docs
 - Added buttons to clear localStorage and Holster IndexedDB to Settings modal
+- Improved UX: documents will now load after relay connection instead of saying
+  "Document Not Found" and requiring a reload
 
 ## 2026-06-27
 

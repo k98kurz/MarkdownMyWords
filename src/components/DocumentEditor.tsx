@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   useParams,
   useNavigate,
@@ -8,6 +8,7 @@ import {
 } from 'react-router-dom';
 import { useDocumentStore } from '@/stores/documentStore';
 import { useAuthStore } from '@/stores/authStore';
+import { useConnectionStore } from '@/stores/connectionStore';
 import { useKeyboardShortcutsStore } from '@/stores/keyboardShortcutsStore';
 import { EditorArea } from '@/components/EditorArea';
 import { ConfirmModal } from '@/components/ConfirmModal';
@@ -42,6 +43,8 @@ export function DocumentEditor() {
     getDocumentKey,
   } = useDocumentStore();
 
+  const isConnected = useConnectionStore(s => s.isConnected);
+
   const registerShortcut = useKeyboardShortcutsStore(s => s.registerShortcut);
   const unregisterShortcut = useKeyboardShortcutsStore(
     s => s.unregisterShortcut
@@ -70,39 +73,82 @@ export function DocumentEditor() {
   const [viewError, setViewError] = useState<ViewError>(undefined);
   const [cameFromNewDoc, setCameFromNewDoc] = useState(false);
 
+  /**
+   * Key (`${userPub}/${docId}`) of the load currently in flight, or null.
+   * Keyed so a load started for a newer document is never cleared by the
+   * settle of an older one, and runAutoRetry never fires a parallel read
+   * behind an unresolved load.
+   */
+  const loadInFlightRef = useRef<string | null>(null);
+  /**
+   * One automatic re-read per connection cycle. Consumed when the retry
+   * fires; reset when the relay disconnects, the document route changes, or
+   * the user logs in — so a genuinely missing document settles stably after
+   * exactly one confirming re-read instead of retrying forever.
+   */
+  const [autoRetryUsed, setAutoRetryUsed] = useState(false);
+  const prevIsAuthenticated = useRef(isAuthenticated);
+
+  const applyGetResult = useCallback(
+    (docIdArg: string, docPubArg: string) => {
+      const inFlightKey = `${docPubArg}/${docIdArg}`;
+      loadInFlightRef.current = inFlightKey;
+      // A load in progress is authoritative over any prior error screen;
+      // without this the stale NOT_FOUND renders during the retried read.
+      setViewError(undefined);
+      return getDocument(docIdArg, docPubArg)
+        .then(result => {
+          if (result.success && result.data) {
+            setTitle(result.data.title || '');
+            setContent(result.data.content || '');
+            setTags(result.data.tags ? [...result.data.tags].sort() : []);
+            setIsPublic(result.data.isPublic);
+            setViewError(undefined);
+          } else if (!result.success) {
+            setTitle('');
+            setContent('');
+            setTags([]);
+            setIsPublic(false);
+            if (result.error.code === 'NOT_FOUND') {
+              setViewError('NOT_FOUND');
+            } else if (result.error.code === 'PERMISSION_DENIED') {
+              setViewError('PERMISSION_DENIED');
+            } else if (result.error.code === 'AUTH_REQUIRED') {
+              setViewError('AUTH_REQUIRED');
+            }
+          } else if (result.success && result.data === null) {
+            setTitle('');
+            setContent('');
+            setTags([]);
+            setIsPublic(false);
+            setViewError('NOT_FOUND');
+          }
+        })
+        .finally(() => {
+          if (loadInFlightRef.current === inFlightKey) {
+            loadInFlightRef.current = null;
+          }
+        });
+    },
+    [getDocument]
+  );
+
+  const runAutoRetry = useCallback(() => {
+    if (loadInFlightRef.current || autoRetryUsed) {
+      return;
+    }
+    setAutoRetryUsed(true);
+    void applyGetResult(docId as string, userPub as string);
+  }, [applyGetResult, autoRetryUsed, docId, userPub]);
+
   useEffect(() => {
     mermaidCache.clear();
+    setAutoRetryUsed(false);
 
     const state = location.state as { title?: string; content?: string } | null;
 
     if (docId && docId !== 'new' && userPub) {
-      getDocument(docId, userPub).then(result => {
-        if (result.success && result.data) {
-          setTitle(result.data.title || '');
-          setContent(result.data.content || '');
-          setTags(result.data.tags ? [...result.data.tags].sort() : []);
-          setIsPublic(result.data.isPublic);
-          setViewError(undefined);
-        } else if (!result.success) {
-          setTitle('');
-          setContent('');
-          setTags([]);
-          setIsPublic(false);
-          if (result.error.code === 'NOT_FOUND') {
-            setViewError('NOT_FOUND');
-          } else if (result.error.code === 'PERMISSION_DENIED') {
-            setViewError('PERMISSION_DENIED');
-          } else if (result.error.code === 'AUTH_REQUIRED') {
-            setViewError('AUTH_REQUIRED');
-          }
-        } else if (result.success && result.data === null) {
-          setTitle('');
-          setContent('');
-          setTags([]);
-          setIsPublic(false);
-          setViewError('NOT_FOUND');
-        }
-      });
+      applyGetResult(docId, userPub);
     } else if (
       (docId === 'new' || docId === undefined) &&
       state?.title &&
@@ -132,7 +178,61 @@ export function DocumentEditor() {
       setIsPublic(false);
       setViewError(undefined);
     }
-  }, [docId, userPub, getDocument, location.state]);
+  }, [docId, userPub, applyGetResult, location.state]);
+
+  /**
+   * Automatic recovery when a load failed prematurely (fresh browser still
+   * syncing with the relay, or a wire/deadline timeout while reconnecting).
+   *
+   * Re-runs the load when the error state is present and the relay is up,
+   * bounded by the autoRetryUsed latch: one re-read per connection cycle.
+   * A login transition also resets the latch and retries AUTH_ERROR and
+   * NOT_FOUND error states, since documents that require auth fail until the
+   * user authenticates. A load already in flight (loadInFlightRef) blocks
+   * re-entry, so the trigger cannot race the initial or in-progress read.
+   */
+  useEffect(() => {
+    const wasAuthenticated = prevIsAuthenticated.current;
+    prevIsAuthenticated.current = isAuthenticated;
+
+    if (!isConnected) {
+      setAutoRetryUsed(false);
+      return;
+    }
+
+    if (!(docId && docId !== 'new' && userPub) || currentDocument) {
+      return;
+    }
+
+    const hasAnyError = !!viewError || !!docError;
+    const hasTransientError =
+      viewError === 'NOT_FOUND' || (!viewError && !!docError);
+    // An authenticated user seeing AUTH_REQUIRED is contradictory: the
+    // earlier read must have run before login completed.
+    const authRecoverable = isAuthenticated && viewError === 'AUTH_REQUIRED';
+    const authEdge = isAuthenticated && !wasAuthenticated;
+
+    if (authEdge) {
+      setAutoRetryUsed(false);
+    }
+
+    if (
+      ((hasTransientError || authRecoverable) && !autoRetryUsed) ||
+      (authEdge && hasAnyError)
+    ) {
+      runAutoRetry();
+    }
+  }, [
+    isConnected,
+    isAuthenticated,
+    viewError,
+    docError,
+    docId,
+    userPub,
+    currentDocument,
+    autoRetryUsed,
+    runAutoRetry,
+  ]);
 
   const handleDownload = () => {
     const currentTitle =
@@ -258,6 +358,9 @@ export function DocumentEditor() {
   };
 
   const canEdit = !userPub || userPub === currentUserPub;
+  // A route with no loadable document (no userPub) can never recover;
+  // retry-eligible routes get connection-aware copy and auto-retry instead.
+  const retryEligible = !!docId && docId !== 'new' && !!userPub;
 
   useEffect(() => {
     if (canEdit) {
@@ -270,7 +373,22 @@ export function DocumentEditor() {
     }
   }, [canEdit, handleSave, registerShortcut, unregisterShortcut]);
 
-  if (docId && loadingDocId === docId && !currentDocument && !viewError) {
+  /**
+   * A premature failure on a retry-eligible route with retry budget left.
+   * Painted as the loading view so the error screen never appears between
+   * the connect transition and the retry starting (which is the flash).
+   */
+  const waitingForRecovery =
+    retryEligible &&
+    isConnected &&
+    !currentDocument &&
+    !autoRetryUsed &&
+    (viewError === 'NOT_FOUND' || (!viewError && !!docError));
+
+  if (
+    (docId && loadingDocId === docId && !currentDocument && !viewError) ||
+    waitingForRecovery
+  ) {
     return (
       <div className="px-8 py-16 text-center text-lg">Loading document...</div>
     );
@@ -282,8 +400,16 @@ export function DocumentEditor() {
     let actions = <Button onClick={() => navigate('/')}>Home</Button>;
 
     if (viewError === 'NOT_FOUND') {
-      title = 'Document Not Found';
-      description = "The document you're looking for doesn't exist.";
+      if (retryEligible && !isConnected) {
+        title = 'Still Connecting';
+        description =
+          'The document was not found in the local database, and the relay ' +
+          'connection is not up yet. After connecting, if the document can ' +
+          'be retrieved, it will be.';
+      } else {
+        title = 'Document Not Found';
+        description = "The document you're looking for doesn't exist.";
+      }
     } else if (
       viewError === 'PERMISSION_DENIED' ||
       viewError === 'AUTH_REQUIRED'
