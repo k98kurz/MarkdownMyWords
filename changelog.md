@@ -3,6 +3,7 @@
 - Improved UX: documents being viewed will now automatically update whenever updates
   sync through the relay; viewers are notified when a viewed document's key changes
   (re-enter key) or document is deleted, instead of silently keeping a stale copy
+- Fixed bug where autofill of new encryption key in Sharing/Privacy modal errored
 
 ## 2026-09-26
 

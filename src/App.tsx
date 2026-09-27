@@ -73,7 +73,11 @@ function AppContent() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      useKeyboardShortcutsStore.getState().handleEvent(e);
+      try {
+        useKeyboardShortcutsStore.getState().handleEvent(e);
+      } catch (err) {
+        console.error('Keyboard shortcut handler failed:', err);
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);

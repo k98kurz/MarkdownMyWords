@@ -46,6 +46,10 @@ export const useKeyboardShortcutsStore = create<KeyboardShortcutsState>(
     handleEvent: (event: KeyboardEvent): boolean => {
       const { shortcuts } = get();
 
+      if (typeof event.key !== 'string' || event.key.length === 0) {
+        return false;
+      }
+
       const modifiers: string[] = [];
       if (event.ctrlKey) modifiers.push('ctrl');
       if (event.metaKey) modifiers.push('meta');
