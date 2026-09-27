@@ -1010,9 +1010,386 @@ async function testHolsterErrorMapping(): Promise<TestSuiteResult> {
   return runner.getResults();
 }
 
+/**
+ * Silent-mode getDocument: the viewer-refresh path.
+ *
+ * DocumentEditor polls getDocument({silent}) for documents the user cannot
+ * edit; the polled read must replace currentDocument only with an actually
+ * changed same-id doc, and must never touch status/loadingDocId/error or
+ * wipe the displayed doc on NOT_FOUND (owner deletion) or failure — silent
+ * errors are unhandled by the store and result only in the returned error.
+ */
+async function testSilentGetDocument(): Promise<TestSuiteResult> {
+  console.log('Testing getDocument silent mode (viewer refresh)');
+  const runner = new TestRunner('silent getDocument');
+
+  await cleanupDocumentStore();
+
+  const title = generateTestTitle('_silent');
+  const content = 'Silent-mode polling content';
+  const createResult = await useDocumentStore
+    .getState()
+    .createDocument(title, content, undefined, true);
+  assert(isSuccess(createResult), 'createDocument should succeed');
+  const docId = createResult.data!.id;
+  const userPub = getCurrentUserPubKey();
+
+  await runner.run(
+    'silent same-value read leaves state untouched',
+    async () => {
+      // Seed the exact doc as the current on-screen one.
+      const prime = await useDocumentStore
+        .getState()
+        .getDocument(docId, userPub);
+      assert(
+        isSuccess(prime) && prime.data,
+        'priming getDocument should succeed'
+      );
+
+      const result = await useDocumentStore
+        .getState()
+        .getDocument(docId, userPub, undefined, { silent: true });
+      assert(isSuccess(result) && result.data, 'silent read should succeed');
+      compareTwoThings(title, result.data!.title, 'silent title');
+      compareTwoThings(content, result.data!.content, 'silent content');
+      const state = useDocumentStore.getState();
+      assert(
+        state.status === 'READY',
+        `status must stay READY, got ${state.status}`
+      );
+      assert(state.error === null, 'error must stay null');
+      assert(
+        state.loadingDocId === undefined,
+        'loadingDocId must stay undefined'
+      );
+      assert(
+        state.currentDocument?.id === docId,
+        'currentDocument must still hold the doc'
+      );
+    }
+  );
+
+  await runner.run(
+    'silent success replaces changed currentDocument',
+    async () => {
+      await useDocumentStore.getState().updateDocument(docId, {
+        content: 'Silent-mode polling content v2',
+      });
+      const result = await useDocumentStore
+        .getState()
+        .getDocument(docId, userPub, undefined, { silent: true });
+      assert(isSuccess(result) && result.data, 'silent read should succeed');
+      compareTwoThings(
+        'Silent-mode polling content v2',
+        useDocumentStore.getState().currentDocument?.content,
+        'currentDocument content after silent refresh'
+      );
+      const state = useDocumentStore.getState();
+      assert(
+        state.status === 'READY' && state.error === null,
+        'status/error must stay READY/null after silent refresh'
+      );
+    }
+  );
+
+  await runner.run('silent NOT_FOUND leaves displayed doc intact', async () => {
+    assert(
+      useDocumentStore.getState().currentDocument?.id === docId,
+      'precondition: currentDocument is displayed'
+    );
+    const result = await useDocumentStore
+      .getState()
+      .getDocument(holsterService.newId(), userPub, undefined, {
+        silent: true,
+      });
+    assert(
+      isSuccess(result) && result.data === null,
+      'silent NOT_FOUND should return success/null'
+    );
+    assert(
+      useDocumentStore.getState().currentDocument?.id === docId,
+      'currentDocument must survive silent NOT_FOUND'
+    );
+    const state = useDocumentStore.getState();
+    assert(
+      state.status === 'READY' && state.error === null,
+      'silent NOT_FOUND must not touch status/error'
+    );
+  });
+
+  await runner.run(
+    'silent failure leaves no status/loading/error writes',
+    async () => {
+      // A genuine (non-NOT_FOUND) failure must leave no error state at all;
+      // the same instant INIT_FAILED throw the error-mapping suite uses.
+      const savedHolster = holsterService.holster;
+      const savedInitialized = holsterService.isInitialized;
+      holsterService.holster = null;
+      holsterService.isInitialized = false;
+
+      useDocumentStore.setState({ status: 'READY', error: null });
+      try {
+        const result = await useDocumentStore
+          .getState()
+          .getDocument('doc_silent_missing', 'pub_silent_missing', undefined, {
+            silent: true,
+          });
+        assert(isFailure(result), 'silent read should fail while down');
+        assert(isDocumentError(result.error), 'Should return DocumentError');
+        compareTwoThings(
+          { code: 'NETWORK_ERROR' },
+          result.error,
+          'silent failure code'
+        );
+        const state = useDocumentStore.getState();
+        assert(
+          state.status === 'READY',
+          `status must stay READY, got ${state.status}`
+        );
+        assert(state.error === null, 'error must stay null');
+        assert(
+          state.loadingDocId === undefined,
+          'loadingDocId must stay undefined'
+        );
+      } finally {
+        holsterService.holster = savedHolster;
+        holsterService.isInitialized = savedInitialized;
+        useDocumentStore.setState({ error: null });
+      }
+    }
+  );
+
+  await runner.run(
+    'getDocument failures log nothing on either path',
+    async () => {
+      // transformError is a pure mapper: the console spam that motivated it
+      // (a stale key failing every poll tick) is gone for silent AND
+      // non-silent reads; callers surface errors from the returned Result.
+      const savedHolster = holsterService.holster;
+      const savedInitialized = holsterService.isInitialized;
+      holsterService.holster = null;
+      holsterService.isInitialized = false;
+
+      const logged: unknown[] = [];
+      const originalConsoleError = console.error;
+      console.error = (error?: unknown) => {
+        logged.push(error);
+      };
+
+      useDocumentStore.setState({ status: 'READY', error: null });
+      try {
+        const silentResult = await useDocumentStore
+          .getState()
+          .getDocument('doc_silent_quiet', 'pub_silent_quiet', undefined, {
+            silent: true,
+          });
+        assert(isFailure(silentResult), 'silent read should fail while down');
+        assert(
+          logged.length === 0,
+          `silent failure must not log; got ${logged.length} console.error calls`
+        );
+
+        useDocumentStore.setState({ status: 'READY', error: null });
+        logged.length = 0;
+
+        const loudResult = await useDocumentStore
+          .getState()
+          .getDocument('doc_silent_loud', 'pub_silent_loud');
+        assert(isFailure(loudResult), 'non-silent read should fail while down');
+        assert(
+          logged.length === 0,
+          `non-silent failure must not log either; got ${logged.length} calls`
+        );
+      } finally {
+        console.error = originalConsoleError;
+        holsterService.holster = savedHolster;
+        holsterService.isInitialized = savedInitialized;
+        useDocumentStore.setState({ error: null });
+      }
+    }
+  );
+
+  await runner.run(
+    'silent different-id success cannot clobber displayed doc',
+    async () => {
+      // The store's silent write guard: a read that returns a DIFFERENT
+      // document (e.g. a stale poll for the previous route's doc resolving
+      // after navigation) must not replace what is on screen.
+      const other = await useDocumentStore
+        .getState()
+        .createDocument(
+          generateTestTitle('_silent_other'),
+          'A different document entirely',
+          undefined,
+          true
+        );
+      assert(isSuccess(other), 'createDocument should succeed');
+      const otherId = other.data!.id;
+
+      // createDocument runs non-silently and overwrites currentDocument with
+      // the new doc; put the displayed doc back before the guard check.
+      const prime = await useDocumentStore
+        .getState()
+        .getDocument(docId, userPub);
+      assert(
+        isSuccess(prime) && prime.data,
+        'priming getDocument should succeed'
+      );
+
+      const primeBefore = useDocumentStore.getState().currentDocument?.id;
+      assert(primeBefore === docId, 'precondition: first doc is displayed');
+
+      const result = await useDocumentStore
+        .getState()
+        .getDocument(otherId, userPub, undefined, { silent: true });
+      assert(
+        isSuccess(result) && result.data,
+        'silent read of other doc should succeed'
+      );
+      assert(
+        useDocumentStore.getState().currentDocument?.id === docId,
+        'currentDocument must stay on the displayed doc, not the polled other'
+      );
+
+      assert(
+        isSuccess(await useDocumentStore.getState().deleteDocument(otherId)),
+        'deleteDocument should succeed'
+      );
+    }
+  );
+
+  runner.printResults();
+  await cleanupDocumentStore();
+  return runner.getResults();
+}
+
 // ============================================================================
 // KEY / PRIVACY TRANSITION TESTS
 // ============================================================================
+
+/**
+ * Stale-key regression for the viewer-refresh path.
+ *
+ * When the owner rotates a private document's key while a viewer is open
+ * with the old password/key stashed (providedKeyRef), the poll keeps
+ * succeeding at the wire level while every decryption fails. The defect
+ * under test: transformError mapped DECRYPTION_FAILED to NETWORK_ERROR via
+ * documentCodeFor's default, so the component treated a permanent key
+ * problem as transient and polled (and failed) forever. It must surface as
+ * ENCRYPTION_ERROR, leave the displayed doc untouched, and print nothing
+ * to the console.
+ */
+async function testStaleKeySilent(): Promise<TestSuiteResult> {
+  console.log(
+    'Testing silent getDocument with a rotated key (stale providedKey)'
+  );
+  const runner = new TestRunner('stale key silent');
+
+  await cleanupDocumentStore();
+
+  // Mirrors testKeyTransitions' auth gate: changeDocumentKey and
+  // getDocumentKey gate on useAuthStore.user, while setupTestUser
+  // authenticates via holsterService directly.
+  const authGateOn = (): void => {
+    useAuthStore.setState({ user: holsterService.getHolster().user() });
+  };
+  const authGateOff = (): void => {
+    useAuthStore.setState({ user: null });
+  };
+
+  const title = generateTestTitle('_stalekey');
+  const content = 'Stale-key polling content';
+
+  // createDocument and the priming getDocument read through the owner's
+  // private key-slot path, so both need the auth gate (a previous test
+  // suite's cleanupTestUser has left the useAuthStore gate unset).
+  authGateOn();
+  const createResult = await useDocumentStore
+    .getState()
+    .createDocument(title, content, undefined, false);
+  assert(isSuccess(createResult), 'createDocument should succeed');
+  const docId = createResult.data!.id;
+
+  let staleKey;
+  let userPub = '';
+  try {
+    // The key the viewer stashed (providedKeyRef analog), captured before
+    // the owner rotates it out from under them.
+    const originalKeyResult = await useDocumentStore
+      .getState()
+      .getDocumentKey(docId);
+    assert(
+      isSuccess(originalKeyResult) && originalKeyResult.data,
+      'getDocumentKey should return the original key'
+    );
+    staleKey = originalKeyResult.data;
+    userPub = getCurrentUserPubKey();
+  } finally {
+    authGateOff();
+  }
+
+  await runner.run(
+    'rotation makes silent reads fail ENCRYPTION_ERROR, display survives',
+    async () => {
+      // Prime as the on-screen doc, the way the viewer had it open.
+      authGateOn();
+      const prime = await useDocumentStore
+        .getState()
+        .getDocument(docId, userPub);
+      assert(
+        isSuccess(prime) && prime.data,
+        'priming getDocument should succeed'
+      );
+      authGateOff();
+
+      authGateOn();
+      try {
+        const changeResult = await useDocumentStore
+          .getState()
+          .changeDocumentKey(docId, 'rotatedpassword123');
+        assert(
+          isSuccess(changeResult),
+          'changeDocumentKey should succeed' +
+            (changeResult.success
+              ? ''
+              : `: ${JSON.stringify(changeResult.error)}`)
+        );
+      } finally {
+        authGateOff();
+      }
+
+      // Warm state: the new ciphertext lives in the local database, so the
+      // poll's read succeeds at the wire level — only decryption fails.
+      const result = await useDocumentStore
+        .getState()
+        .getDocument(docId, userPub, staleKey, { silent: true });
+      assert(isFailure(result), 'stale-key silent read should fail');
+      assert(
+        result.error.code === 'ENCRYPTION_ERROR',
+        `expected ENCRYPTION_ERROR, got ${String(result.error.code)}`
+      );
+
+      const state = useDocumentStore.getState();
+      assert(
+        state.status === 'READY' && state.error === null,
+        'stale-key failure must not touch status/error'
+      );
+      assert(
+        state.currentDocument?.id === docId,
+        'currentDocument must survive the silent failure'
+      );
+      compareTwoThings(
+        content,
+        state.currentDocument?.content,
+        'stale displayed content after failed poll'
+      );
+    }
+  );
+
+  runner.printResults();
+  await cleanupDocumentStore();
+  return runner.getResults();
+}
 
 /**
  * Overwrite `['docs', docId]` with the doc re-encrypted under `key` —
@@ -1527,6 +1904,14 @@ export async function testDocumentStore(
 
   const partialResult = await testUpdateDocumentPartial();
   suiteResults.push(partialResult);
+  console.log('\n' + '='.repeat(60) + '\n');
+
+  const silentResult = await testSilentGetDocument();
+  suiteResults.push(silentResult);
+  console.log('\n' + '='.repeat(60) + '\n');
+
+  const staleKeyResult = await testStaleKeySilent();
+  suiteResults.push(staleKeyResult);
   console.log('\n' + '='.repeat(60) + '\n');
 
   const keyTransitionsResult = await testKeyTransitions();

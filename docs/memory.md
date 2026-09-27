@@ -442,3 +442,27 @@ doc-key envelope).
   over `SEA.decrypt` needs the same line.
 - Symptom signature: the value `console.log`s as a multi-line object
   tree with single-quoted strings (Node inspect) instead of one line.
+
+# Viewer Polling: Warm Reads, Lockout Decisiveness (2026-09-27)
+
+DocumentEditor polls `getDocument({silent})` every 5s for viewers; the
+silent contract, lockout mapping, and effect gating are documented in code
+at the call sites (`documentStore.getDocument`, DocumentEditor's poll
+effect). What the repo cannot tell you:
+
+- Polls are warm reads: Holster's wire.js debounces update-checks per lex
+  (10s TTL, `recentCheckTTL`) and answers from the local graph without
+  gating the callback, so after the initial successful load every poll
+  resolves locally. Therefore a null poll = genuine deletion (the 10s
+  offline null-ack arms only for cold reads), and premature NOT_FOUND is
+  a cold-start-only race (initial load vs relay sync) that auto-retry
+  covers — polls, gated on `currentDocument`, never hit it. Do not remove
+  that gate to "fix" cold polls; it reintroduces the race.
+- Polling was chosen over Holster `on()` deliberately: the app's read
+  discipline is one-shot deadline-bounded reads + fresh chains, and `on()`
+  holds persistent wire listeners the app has no lifecycle for. Revisit
+  only if push-latency ever matters.
+- `changeDocumentKey` writes the re-encrypted node as ONE put; that is
+  what makes a single ENCRYPTION_ERROR decisive for the viewer lockout
+  (no consecutive-failure counter). Splitting that write into multiple
+  puts silently breaks the lockout logic.

@@ -1,6 +1,12 @@
+## 2026-09-27
+
+- Improved UX: documents being viewed will now automatically update whenever updates
+  sync through the relay; viewers are notified when a viewed document's key changes
+  (re-enter key) or document is deleted, instead of silently keeping a stale copy
+
 ## 2026-09-26
 
-- Migrated application from GunDB to 
+- Migrated application from GunDB to
   [@mblaney/Holster](https://www.npmjs.com/package/@mblaney/holster) following
   app-breaking issues with GunDB
 - Migrated from internal functionalResult library to updated
@@ -28,9 +34,9 @@
 ## 2026-03-06
 
 - Slightly improved UX for document list and editor on mobile:
-    - Moved Save button to the top of the action buttons
-    - Moved Delete button to the bottom of the action buttons
-    - Desktop/non-mobile remains unchanged
+  - Moved Save button to the top of the action buttons
+  - Moved Delete button to the bottom of the action buttons
+  - Desktop/non-mobile remains unchanged
 
 ## 2026-02-10
 
@@ -71,4 +77,3 @@ Later that day:
 - Improved guest browsing UX
 - Improved tag editing UX
 - Added home page and placeholder dashboard
-

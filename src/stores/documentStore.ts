@@ -6,7 +6,12 @@
  */
 
 import { create } from 'zustand';
-import { type Result, tryCatch, match } from '@k98kurz/functional-result';
+import {
+  type Result,
+  tryCatch,
+  match,
+  success,
+} from '@k98kurz/functional-result';
 import type {
   Document,
   DocumentAccessEntry,
@@ -20,7 +25,8 @@ import { encryptionService } from '@/services/encryptionService';
 import { useAuthStore } from '@/stores/authStore';
 
 /**
- * Map a HolsterError-shaped `code` (any string; enum values at runtime)
+ * Map a `code` string from an error object (HolsterError enum values and
+ * encryptionService's EncryptionError codes, all plain strings at runtime)
  * onto the closest DocumentError code.
  */
 function documentCodeFor(code: string): DocumentError['code'] {
@@ -31,14 +37,25 @@ function documentCodeFor(code: string): DocumentError['code'] {
       return 'PERMISSION_DENIED';
     case HolsterErrorCode.INVALID_DATA:
       return 'VALIDATION_ERROR';
+    // encryptionService throws these as plain {code, message} objects:
+    // a stale/wrong key or ECDH failure must NOT fall through to
+    // NETWORK_ERROR, or permanent key problems look transient to callers.
+    case 'ENCRYPTION_FAILED':
+    case 'DECRYPTION_FAILED':
+    case 'ECDH_DECRYPTION_FAILED':
+      return 'ENCRYPTION_ERROR';
     default:
       return 'NETWORK_ERROR';
   }
 }
 
+/**
+ * Map an unknown throwable onto a typed DocumentError. Pure: the mapped
+ * Result carries code/message/details to the caller; logging is left to
+ * whichever surface ultimately presents it.
+ */
 const transformError = (error: unknown): DocumentError => {
   if (error instanceof Error) {
-    console.error(error);
     const msg = error.message;
     if (
       msg.includes('Title is required') ||
@@ -119,7 +136,6 @@ const transformError = (error: unknown): DocumentError => {
     'message' in error &&
     typeof error.message === 'string'
   ) {
-    console.error(error);
     return {
       code: documentCodeFor(error.code),
       message: error.message,
@@ -386,7 +402,8 @@ interface DocumentActions {
   getDocument: (
     docId: string,
     userPub: string,
-    providedKey?: string
+    providedKey?: string,
+    options?: { silent?: boolean }
   ) => Promise<Result<Document | null, DocumentError>>;
   updateDocument: (
     docId: string,
@@ -615,12 +632,27 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       return result;
     },
 
+    /**
+     * Read a document owned by `userPub`, decrypting it with the provided
+     * key, the viewer's own private key store, or nothing for public docs.
+     *
+     * `options.silent` is the viewer-refresh path (DocumentEditor polls it for
+     * documents the user cannot edit): no status/loading/error writes at all,
+     * and `currentDocument` is only replaced with an actually different doc
+     * for the same id. A NOT_FOUND therefore never wipes the doc still on
+     * screen — the caller sees success/null and decides what to display —
+     * and transient poll failures are invisible to the user.
+     */
     getDocument: async (
       docId: string,
       userPub: string,
-      providedKey?: string
+      providedKey?: string,
+      options?: { silent?: boolean }
     ): Promise<Result<Document | null, DocumentError>> => {
-      set({ status: 'LOADING', error: null, loadingDocId: docId });
+      const silent = options?.silent === true;
+      if (!silent) {
+        set({ status: 'LOADING', error: null, loadingDocId: docId });
+      }
 
       const result = (await tryCatch(async () => {
         const holster = holsterService.getHolster();
@@ -751,6 +783,25 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
 
       match(
         (doc: Document | null) => {
+          if (silent) {
+            // Only replace an on-screen doc with the same doc, differently
+            // valued; a deleted doc (null) or a different doc id must never
+            // clobber what the viewer is looking at.
+            const previous = get().currentDocument;
+            if (
+              doc &&
+              previous?.id === doc.id &&
+              (previous.title !== doc.title ||
+                previous.content !== doc.content ||
+                previous.updatedAt !== doc.updatedAt ||
+                previous.isPublic !== doc.isPublic ||
+                previous.tags.length !== doc.tags.length ||
+                previous.tags.some((tag, i) => tag !== doc.tags[i]))
+            ) {
+              set({ currentDocument: doc });
+            }
+            return;
+          }
           set({
             currentDocument: doc,
             status: 'READY',
@@ -759,6 +810,10 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
           });
         },
         (error: DocumentError) => {
+          if (silent) {
+            // Transient poll failures are invisible: state is untouched.
+            return;
+          }
           if (error.code === 'NOT_FOUND') {
             set({
               currentDocument: null,
@@ -778,7 +833,7 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       )(result);
 
       if (!result.success && result.error.code === 'NOT_FOUND') {
-        return { success: true, data: null };
+        return success(null);
       }
 
       return result;
