@@ -466,3 +466,36 @@ effect). What the repo cannot tell you:
   what makes a single ENCRYPTION_ERROR decisive for the viewer lockout
   (no consecutive-failure counter). Splitting that write into multiple
   puts silently breaks the lockout logic.
+
+# Keyboard Shortcuts: Single Dispatch Authority (2026-10-03)
+
+App-level shortcuts (`ctrl+s`/`meta+s` and friends) dispatch ONLY through
+`keyboardShortcutsStore`, fed by the single `window` keydown listener in
+`App.tsx`. Dialog keys (Tab/Escape) are `ui/Modal.tsx`'s job — see the last
+bullet. Never add an editor-level keybinding (e.g. CodeMirror `Mod-s`) that
+duplicates an app-level handler: both dispatches run synchronously in one
+event, before any re-render, so a state-based in-flight guard is bypassed.
+This was the root cause of duplicate documents on `/doc/new`: CM6's `Mod-s`
+binding and the window listener both fired `handleSave` synchronously while
+`docId` was still `'new'`, so both reached `createDocument` before the route
+change retargeted the editor.
+
+- `keyboardShortcutsStore` is owner-scoped and priority-aware:
+  `registerShortcut(key, owner, description, handler, priority = 0)` replaces
+  an existing entry for the same owner in place; otherwise appends.
+  `unregisterShortcut(key, owner)` removes only that owner's entry.
+  `handleEvent` picks the highest-priority entry (tie-break: last appended),
+  runs only that handler, and calls `preventDefault`.
+- Owners are the mounting component (`'document-editor'`, `'sharing-modal'`,
+  `'settings-modal'`); the editor registers at priority 0, any modal-scoped
+  shortcut at priority 1 — so registration order never decides the winner,
+  and owner scoping makes cleanup safe.
+- `DocumentEditor.handleSave` and `SharingModal.handleApplyChanges` also gate
+  on an in-flight **ref** (`saveInFlightRef`, `applyInFlightRef`), which
+  survives a same-event double dispatch and a double Ctrl+S press while a
+  save is pending. Only a ref works here: a state guard never gets a render
+  in between.
+- `ui/Modal.tsx` maintains a module-level dialog stack; only the topmost
+  dialog handles Tab/Escape. Focus is trapped within the dialog, restored to
+  the previously focused element on close, and not stolen from inputs with
+  `autoFocus` (e.g. `PasswordModal`).

@@ -15,7 +15,6 @@ interface EditorPaneProps {
   enableViewSwitch?: boolean;
   defaultViewMode?: ViewMode;
   isReadOnly?: boolean;
-  onSave?: () => void;
   onDownload?: () => void;
 }
 
@@ -28,7 +27,6 @@ export function EditorPane({
   enableViewSwitch = true,
   defaultViewMode = 'edit',
   isReadOnly = false,
-  onSave,
   onDownload,
 }: EditorPaneProps) {
   const [viewMode, setViewMode] = useState<ViewMode>(defaultViewMode);
@@ -140,7 +138,6 @@ export function EditorPane({
               value={content}
               onChange={onContentChange}
               readOnly={isReadOnly}
-              onSave={onSave}
               syntaxHighlightingEnabled={
                 editorPreferences.syntaxHighlightingEnabled
               }
@@ -161,7 +158,6 @@ export function EditorPane({
                 value={content}
                 onChange={onContentChange}
                 readOnly={isReadOnly}
-                onSave={onSave}
                 syntaxHighlightingEnabled={
                   editorPreferences.syntaxHighlightingEnabled
                 }

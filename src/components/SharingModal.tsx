@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import { Label } from './ui/Label';
@@ -13,7 +13,6 @@ interface SharingModalProps {
   userPub: string;
   isPublic: boolean;
   docKey?: string;
-  currentIsPublic: boolean;
 }
 
 export function SharingModal({
@@ -23,7 +22,6 @@ export function SharingModal({
   userPub,
   isPublic,
   docKey,
-  currentIsPublic,
 }: SharingModalProps) {
   const [pathCopyStatus, setPathCopyStatus] = useState<
     'idle' | 'success' | 'error'
@@ -34,54 +32,53 @@ export function SharingModal({
   const [copyError, setCopyError] = useState<string | null>(null);
 
   const [selectedPrivacy, setSelectedPrivacy] = useState<'public' | 'private'>(
-    currentIsPublic === true ? 'public' : 'private'
+    isPublic ? 'public' : 'private'
   );
   const [currentKey, setCurrentKey] = useState<string>('');
   const [keyInput, setKeyInput] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isFetchingKey, setIsFetchingKey] = useState(false);
+  const applyInFlightRef = useRef(false);
 
   const docUrl = `${window.location.origin}/doc/${userPub}/${docId}`;
 
-  const privacyChanged =
-    selectedPrivacy !== (currentIsPublic === true ? 'public' : 'private');
-  const keyChanged = !currentIsPublic && keyInput !== currentKey;
+  const privacyChanged = selectedPrivacy !== (isPublic ? 'public' : 'private');
+  const keyChanged = !isPublic && keyInput !== currentKey;
   const hasChanges = privacyChanged || keyChanged;
 
   const handleApplyChanges = useCallback(async () => {
-    if (!hasChanges) {
+    if (!hasChanges || applyInFlightRef.current) {
       return;
     }
+    applyInFlightRef.current = true;
 
     setError(null);
-
     setIsLoading(true);
 
     try {
       const documentStore = useDocumentStore.getState();
 
-      if (selectedPrivacy === 'private' && currentIsPublic !== false) {
+      if (selectedPrivacy === 'private' && isPublic !== false) {
         if (keyInput.length < 8) {
           setError('Encryption key must be at least 8 characters');
-          setIsLoading(false);
           return;
         }
       }
 
-      if (selectedPrivacy === 'public' && currentIsPublic !== true) {
+      if (selectedPrivacy === 'public' && isPublic !== true) {
         const result = await documentStore.setDocumentPublic(docId);
         if (!result.success) {
           throw new Error(result.error.message);
         }
-      } else if (selectedPrivacy === 'private' && currentIsPublic !== false) {
+      } else if (selectedPrivacy === 'private' && isPublic !== false) {
         const result = await documentStore.setDocumentPrivate(docId, keyInput);
         if (!result.success) {
           throw new Error(result.error.message);
         }
       } else if (
         selectedPrivacy === 'private' &&
-        currentIsPublic === false &&
+        isPublic === false &&
         keyChanged
       ) {
         const result = await documentStore.changeDocumentKey(docId, keyInput);
@@ -96,13 +93,14 @@ export function SharingModal({
         err instanceof Error ? err.message : 'An unexpected error occurred'
       );
     } finally {
+      applyInFlightRef.current = false;
       setIsLoading(false);
     }
   }, [
     setError,
     setIsLoading,
     selectedPrivacy,
-    currentIsPublic,
+    isPublic,
     keyInput,
     keyChanged,
     docId,
@@ -128,14 +126,14 @@ export function SharingModal({
   };
 
   useEffect(() => {
-    setSelectedPrivacy(currentIsPublic ? 'public' : 'private');
+    setSelectedPrivacy(isPublic ? 'public' : 'private');
     setKeyInput('');
     setError(null);
-  }, [currentIsPublic]);
+  }, [isPublic]);
 
   useEffect(() => {
     const fetchCurrentKey = async () => {
-      if (!currentIsPublic && isOpen) {
+      if (!isPublic && isOpen) {
         setIsFetchingKey(true);
         try {
           const documentStore = useDocumentStore.getState();
@@ -161,7 +159,7 @@ export function SharingModal({
     };
 
     fetchCurrentKey();
-  }, [docId, currentIsPublic, isOpen]);
+  }, [docId, isPublic, isOpen]);
 
   const registerShortcut = useKeyboardShortcutsStore(s => s.registerShortcut);
   const unregisterShortcut = useKeyboardShortcutsStore(
@@ -170,11 +168,23 @@ export function SharingModal({
 
   useEffect(() => {
     if (isOpen) {
-      registerShortcut('ctrl+s', 'Apply changes', handleApplyChanges);
-      registerShortcut('meta+s', 'Apply changes', handleApplyChanges);
+      registerShortcut(
+        'ctrl+s',
+        'sharing-modal',
+        'Apply changes',
+        handleApplyChanges,
+        1
+      );
+      registerShortcut(
+        'meta+s',
+        'sharing-modal',
+        'Apply changes',
+        handleApplyChanges,
+        1
+      );
       return () => {
-        unregisterShortcut('ctrl+s');
-        unregisterShortcut('meta+s');
+        unregisterShortcut('ctrl+s', 'sharing-modal');
+        unregisterShortcut('meta+s', 'sharing-modal');
       };
     }
   }, [isOpen, handleApplyChanges, registerShortcut, unregisterShortcut]);

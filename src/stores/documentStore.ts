@@ -523,8 +523,6 @@ export const useDocumentStore = create<DocumentState & DocumentActions>(
       set({ status: 'SAVING', error: null });
 
       const result = (await tryCatch(async () => {
-        console.log('documentStore.createDocument called...');
-        console.log({ title, content, tags, isPublic });
         if (!title?.trim()) {
           throw new Error('Title is required');
         }

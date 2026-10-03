@@ -1,3 +1,13 @@
+## 2026-10-03
+
+- Fixed duplicate document creation on `/doc/new` when pressing Ctrl+S (CM6
+  keybinding and window listener both dispatched `handleSave`)
+- Fixed keyboard shortcut conflicts between editor and modals (owner-scoped,
+  priority-aware shortcut store)
+- Added focus trap, focus restore, and Escape-to-close to all modals
+- Fixed Sharing/Privacy modal displaying wrong privacy state (single `isPublic`
+  source)
+
 ## 2026-09-27
 
 - Improved UX: documents being viewed will now automatically update whenever updates

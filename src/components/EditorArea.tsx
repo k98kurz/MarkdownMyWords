@@ -9,7 +9,6 @@ interface EditorAreaProps {
   enableViewSwitch?: boolean;
   defaultViewMode?: 'edit' | 'preview' | 'split';
   isReadOnly?: boolean;
-  onSave?: () => void;
   onDownload?: () => void;
 }
 
@@ -21,7 +20,6 @@ export function EditorArea({
   enableViewSwitch = true,
   defaultViewMode = 'edit',
   isReadOnly = false,
-  onSave,
   onDownload,
 }: EditorAreaProps) {
   return (
@@ -34,7 +32,6 @@ export function EditorArea({
         enableViewSwitch={enableViewSwitch}
         defaultViewMode={defaultViewMode}
         isReadOnly={isReadOnly}
-        onSave={onSave}
         onDownload={onDownload}
       />
     </div>

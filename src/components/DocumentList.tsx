@@ -566,7 +566,6 @@ export function DocumentList() {
         userPub={sharingDoc?.userPub || ''}
         isPublic={sharingDoc?.isPublic || false}
         docKey={sharingDoc?.docKey}
-        currentIsPublic={sharingDoc?.isPublic || false}
       />
     </>
   );

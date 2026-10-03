@@ -71,7 +71,6 @@ export function DocumentEditor() {
   const [sharingDoc, setSharingDoc] = useState<{
     docId: string;
     userPub: string;
-    isPublic: boolean;
     docKey?: string;
   } | null>(null);
   const [keyError, setKeyError] = useState<string | undefined>();
@@ -90,6 +89,7 @@ export function DocumentEditor() {
    * behind an unresolved load.
    */
   const loadInFlightRef = useRef<string | null>(null);
+  const saveInFlightRef = useRef(false);
   /**
    * Password/key used to unlock the current document via PasswordModal, when
    * key-based access was needed. Viewer polling reuses it so a private doc
@@ -410,34 +410,43 @@ export function DocumentEditor() {
   };
 
   const handleSave = useCallback(async () => {
-    clearDocError();
+    if (saveInFlightRef.current) {
+      return;
+    }
+    saveInFlightRef.current = true;
 
-    if (docId && docId !== 'new') {
-      const result = await updateDocument(docId, {
-        title: title || 'Untitled',
-        content: content || '',
-        tags: tags.length > 0 ? tags : undefined,
-      });
+    try {
+      clearDocError();
 
-      if (!result.success) {
-        return;
+      if (docId && docId !== 'new') {
+        const result = await updateDocument(docId, {
+          title: title || 'Untitled',
+          content: content || '',
+          tags: tags.length > 0 ? tags : undefined,
+        });
+
+        if (!result.success) {
+          return;
+        }
+
+        clearDocumentMetadata(docId);
+      } else {
+        const result = await createDocument(
+          title || 'Untitled',
+          content || '',
+          tags.length > 0 ? tags : undefined,
+          isPublic
+        );
+
+        if (!result.success) {
+          return;
+        }
+
+        setCameFromNewDoc(true);
+        navigate(`/doc/${currentUserPub}/${result.data.id}`);
       }
-
-      clearDocumentMetadata(docId);
-    } else {
-      const result = await createDocument(
-        title || 'Untitled',
-        content || '',
-        tags.length > 0 ? tags : undefined,
-        isPublic
-      );
-
-      if (!result.success) {
-        return;
-      }
-
-      setCameFromNewDoc(true);
-      navigate(`/doc/${currentUserPub}/${result.data.id}`);
+    } finally {
+      saveInFlightRef.current = false;
     }
   }, [
     clearDocError,
@@ -459,7 +468,6 @@ export function DocumentEditor() {
     const sharingData = {
       docId: currentDocument.id,
       userPub: currentUserPub!,
-      isPublic: currentDocument.isPublic,
     };
 
     if (!currentDocument.isPublic) {
@@ -507,11 +515,23 @@ export function DocumentEditor() {
 
   useEffect(() => {
     if (canEdit) {
-      registerShortcut('ctrl+s', 'Save document', handleSave);
-      registerShortcut('meta+s', 'Save document', handleSave);
+      registerShortcut(
+        'ctrl+s',
+        'document-editor',
+        'Save document',
+        handleSave,
+        0
+      );
+      registerShortcut(
+        'meta+s',
+        'document-editor',
+        'Save document',
+        handleSave,
+        0
+      );
       return () => {
-        unregisterShortcut('ctrl+s');
-        unregisterShortcut('meta+s');
+        unregisterShortcut('ctrl+s', 'document-editor');
+        unregisterShortcut('meta+s', 'document-editor');
       };
     }
   }, [canEdit, handleSave, registerShortcut, unregisterShortcut]);
@@ -781,7 +801,6 @@ export function DocumentEditor() {
             enableViewSwitch={true}
             defaultViewMode="edit"
             isReadOnly={false}
-            onSave={canEdit ? handleSave : undefined}
             onDownload={handleDownload}
           />
         </div>
@@ -848,9 +867,8 @@ export function DocumentEditor() {
           }}
           docId={sharingDoc.docId}
           userPub={sharingDoc.userPub}
-          isPublic={sharingDoc.isPublic}
+          isPublic={isPublic}
           docKey={sharingDoc.docKey}
-          currentIsPublic={isPublic}
         />
       )}
 

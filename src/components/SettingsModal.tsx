@@ -246,11 +246,23 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   useEffect(() => {
     if (isOpen) {
-      registerShortcut('ctrl+s', 'Save settings', handleSaveAll);
-      registerShortcut('meta+s', 'Save settings', handleSaveAll);
+      registerShortcut(
+        'ctrl+s',
+        'settings-modal',
+        'Save settings',
+        handleSaveAll,
+        1
+      );
+      registerShortcut(
+        'meta+s',
+        'settings-modal',
+        'Save settings',
+        handleSaveAll,
+        1
+      );
       return () => {
-        unregisterShortcut('ctrl+s');
-        unregisterShortcut('meta+s');
+        unregisterShortcut('ctrl+s', 'settings-modal');
+        unregisterShortcut('meta+s', 'settings-modal');
       };
     }
   }, [isOpen, handleSaveAll, registerShortcut, unregisterShortcut]);
