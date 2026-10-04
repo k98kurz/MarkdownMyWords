@@ -1,5 +1,7 @@
 ## 2026-10-03
 
+- Added collapsible `<details>`/`<summary>` block support to the markdown
+  preview (with HTML sanitization to prevent XSS)
 - Fixed duplicate document creation on `/doc/new` when pressing Ctrl+S (CM6
   keybinding and window listener both dispatched `handleSave`)
 - Fixed keyboard shortcut conflicts between editor and modals (owner-scoped,

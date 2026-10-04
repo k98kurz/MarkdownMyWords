@@ -24,7 +24,7 @@ features.
 - State Management: Zustand
 - Routing: React Router DOM
 - Editor: CodeMirror (@codemirror/state, @codemirror/view, @codemirror/lang-markdown)
-- Markdown Rendering: React Markdown + Remark GFM (GitHub Flavored Markdown)
+- Markdown Rendering: React Markdown + Remark GFM (GitHub Flavored Markdown) + rehype-raw + rehype-sanitize
 - Diagram Rendering: Mermaid
 - Build Tool: Vite
 - Language: TypeScript

@@ -361,8 +361,8 @@ is the only bridge: it initializes `holsterService` with a per-run temp `file`
 and `indexedDB: false`, calls the exported suite functions, and requires each
 returned `TestSuiteResult` to report zero failures. Supporting invariants:
 
-- vitest collects only `src/test/vitest/**/*.vitest.ts`, so suites must be
-  IMPORTED by the bridge, not left where vitest would collect them directly.
+- vitest collects only `src/test/vitest/**/*.vitest.{ts,tsx}`, so suites must
+  be IMPORTED by the bridge, not left where vitest would collect them directly.
 - `src/test/setup.ts` shims web storage and points `relaySettings` at the
   spawned test relay, so no run can reach the default/prod relay.
 - The relay and client storage use per-run temp dirs, so runs repeat with no
@@ -499,3 +499,39 @@ change retargeted the editor.
   dialog handles Tab/Escape. Focus is trapped within the dialog, restored to
   the previously focused element on close, and not stolen from inputs with
   `autoFocus` (e.g. `PasswordModal`).
+
+# Markdown Preview: rehype-raw + rehype-sanitize Plugin Order (2026-10-03)
+
+`MarkdownPreview` wires `rehypePlugins` as
+`[rehypeRaw, [rehypeSanitize, schema], rehypeKatex]`. The order is
+load-bearing — do not reorder.
+
+- `rehypeRaw` must run first: `react-markdown` hard-codes
+  `allowDangerousHtml: true`, so raw HTML arrives as `raw` hast nodes;
+  `rehypeRaw` parses them into real elements. Without it, `toJsxRuntime`
+  stringifies them as escaped text.
+- `rehypeSanitize` must run after `rehypeRaw` (otherwise raw nodes are
+  dropped) and BEFORE `rehypeKatex`: `defaultSchema` has no `svg`/`math`
+  tags, no `style` attribute, and no KaTeX class allowlist, so
+  sanitize-after-katex strips KaTeX's classes/styles/MathML and math
+  renders unstyled.
+- Never add a `className` allowlist to `sanitizeSchema` to "fix" math
+  rendering: `defaultSchema` already gives `code` `/^language-./`, which
+  keeps `language-math` — all `rehype-katex` needs, since display mode
+  comes from the `<pre>` parent, not `math-display` (hast-util-sanitize
+  filters class tokens individually, dropping only the redundant
+  `math-display`/`math-inline`). The existing `/^math-/` and
+  `/^language-math$/` entry on `'*'` is redundant for markdown — it only
+  affects hand-authored raw HTML like `<span class="math-inline">`.
+- `sanitizeSchema` sets `clobber: []` — do not restore it. `remark-gfm`
+  already prefixes footnote ids *and* bakes the same prefix into the
+  `href`s, so sanitize's second pass rewrites only the ids and every
+  footnote ref/backref becomes a dangling anchor (no library option
+  prefixes `href`s). Accepted trade: author-supplied raw HTML keeps
+  literal `id`/`name`, tolerable because `defaultSchema.tagNames` omits
+  `form`/`iframe`/`object`/`embed`/`base`. If you ever re-enable
+  clobbering, rewrite internal `href="#…"` after sanitize.
+- Known limitation: an unclosed `<details>` around a mermaid block does
+  not collapse — `parseMarkdownSegments` splits the document into
+  separate `ReactMarkdown` instances, so the tag auto-closes before the
+  diagram.

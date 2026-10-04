@@ -2,6 +2,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
+import rehypeRaw from 'rehype-raw';
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import { MermaidDiagram } from './MermaidDiagram';
 import { useMemo } from 'react';
 import { hashString } from '@/lib/cache';
@@ -56,6 +58,19 @@ function parseMarkdownSegments(content: string): ContentSegment[] {
   return segments;
 }
 
+const sanitizeSchema = {
+  ...defaultSchema,
+  // remark-gfm already prefixes footnote ids and hrefs with `user-content-`; clobbering again here rewrites only the ids, leaving dangling anchors.
+  clobber: [],
+  attributes: {
+    ...(defaultSchema.attributes ?? {}),
+    '*': [
+      ...(defaultSchema.attributes?.['*'] ?? []),
+      ['className', /^math-/, /^language-math$/],
+    ],
+  },
+};
+
 export function MarkdownPreview({ content }: MarkdownPreviewProps) {
   const segments = useMemo(() => parseMarkdownSegments(content), [content]);
 
@@ -68,7 +83,11 @@ export function MarkdownPreview({ content }: MarkdownPreviewProps) {
           <ReactMarkdown
             key={segment.key}
             remarkPlugins={[remarkGfm, remarkMath]}
-            rehypePlugins={[rehypeKatex]}
+            rehypePlugins={[
+              rehypeRaw,
+              [rehypeSanitize, sanitizeSchema],
+              rehypeKatex,
+            ]}
             components={{
               code(props) {
                 const { className, children, ...rest } = props;
